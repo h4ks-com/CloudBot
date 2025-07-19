@@ -41,6 +41,7 @@ def add_alias(text: str, nick: str, db, reply, notice) -> None:
     """
     .addalias <name> = <cmdline> - Adds a new alias with the given name and commands
     """
+    global aliases_cache
     if not text:
         reply("Usage: .addalias <name> = <cmdline>")
         return
@@ -53,26 +54,33 @@ def add_alias(text: str, nick: str, db, reply, notice) -> None:
     name, cmdline = match.groups()
     name = name.lower()
 
-    if nick not in aliases_cache:
-        aliases_cache[nick] = {}
+    nick_lower = nick.lower()
+    if nick_lower not in aliases_cache:
+        aliases_cache[nick_lower] = {}
 
     # Check if alias already exists
     res = db.execute(
-        aliases_table.select().where(aliases_table.c.nick == nick.lower()).where(aliases_table.c.name == name)
+        aliases_table.select().where(aliases_table.c.nick == nick_lower).where(aliases_table.c.name == name)
     ).fetchone()
 
     if res:
         db.execute(
             aliases_table.update()
-            .where(aliases_table.c.nick == nick.lower())
+            .where(aliases_table.c.nick == nick_lower)
             .where(aliases_table.c.name == name)
             .values(cmdline=cmdline)
         )
     else:
-        db.execute(aliases_table.insert().values(nick=nick.lower(), name=name, cmdline=cmdline))
+        db.execute(
+            aliases_table.insert().values(
+                nick=nick_lower,
+                name=name,
+                cmdline=cmdline,
+            )
+        )
 
     db.commit()
-    aliases_cache[nick.lower()][name] = cmdline
+    aliases_cache[nick_lower][name] = cmdline
     reply(f"Alias '{name}' added successfully.")
 
 
@@ -81,6 +89,7 @@ def delete_alias(text: str, nick: str, db, reply, notice) -> None:
     """
     .delalias <name> - Deletes the alias with the given name
     """
+    global aliases_cache
     if not text:
         reply("Usage: .delalias <name>")
         return
@@ -107,6 +116,7 @@ def list_aliases(text: str, nick: str, reply, notice) -> None:
     """
     .aliases [nick] - Lists all aliases for the user or yourself
     """
+    global aliases_cache
     nick_lower = text.split()[0].lower() if text else nick.lower()
     if nick_lower not in aliases_cache or not aliases_cache[nick_lower]:
         reply(f"No aliases found for '{nick_lower}'.")
@@ -114,7 +124,7 @@ def list_aliases(text: str, nick: str, reply, notice) -> None:
 
     notice("Your aliases:")
     for name, cmdline in aliases_cache[nick_lower].items():
-        notice(f"{name}: {cmdline}")
+        reply(f"{name}: {cmdline}")
 
 
 @hook.command("aliascopy", autohelp=False)
@@ -168,6 +178,9 @@ async def run_alias(text: str, nick: str, bot: CloudBot, event, reply) -> str:
 
     cmdline = aliases_cache[nick_lower][name]
     cmdname = cmdline.split()[0]
+    if cmdname in ("alias", "a"):
+        return "You cannot run an alias from within itself."
+
     args = cmdline[len(cmdname) :].strip()
 
     if "<>" in args:

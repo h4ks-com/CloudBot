@@ -18,6 +18,8 @@ commands = Table(
 
 allow_cache: Dict[str, bool] = {}
 
+BLACKLIST = ["a", "alias", "chain"]
+
 
 @hook.on_start()
 def load_cache(db):
@@ -113,6 +115,9 @@ def chainallow(text, db, notice_doc, bot):
     _hook = get_hook_from_command(bot, name)
     if _hook is None:
         return f"Unable to find command '{name}'"
+
+    if name in BLACKLIST:
+        return f"The command '{name}' is blacklisted and cannot be used in chainallow."
 
     hook_name = format_hook_name(_hook)
 
