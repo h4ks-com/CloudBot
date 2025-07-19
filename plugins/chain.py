@@ -119,7 +119,7 @@ def chainallow(text, db, notice_doc, bot):
     return chainallow_subcmds[subcmd](args, notice_doc, hook_name, db)
 
 
-def parse_chain(text, bot):
+def parse_chain(text: str, bot):
     parts = text.split("|")
     cmds = []
 

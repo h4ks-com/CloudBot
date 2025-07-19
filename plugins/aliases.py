@@ -3,7 +3,9 @@ import re
 from sqlalchemy import Column, Integer, String, Table
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
 from cloudbot.util import database
+from plugins.chain import get_hook_from_command, wrap_event
 
 aliases_table = Table(
     "aliases",
@@ -19,7 +21,7 @@ aliases_cache = {}
 
 
 @hook.on_start()
-def load_cache(db):
+def load_cache(db) -> None:
     """
     Load aliases from the database into the cache
     """
@@ -34,18 +36,18 @@ def load_cache(db):
         aliases_cache[nick][row["name"].lower()] = row["cmdline"]
 
 
-@hook.command("addalias", autohelp=False)
-def add_alias(text, nick, db, reply, notice):
+@hook.command("aliasadd", autohelp=False)
+def add_alias(text: str, nick: str, db, reply, notice) -> None:
     """
-    .addalias <name> <cmdline> - Adds a new alias with the given name and commands
+    .addalias <name> = <cmdline> - Adds a new alias with the given name and commands
     """
     if not text:
-        reply("Usage: .addalias <name> <cmdline>")
+        reply("Usage: .addalias <name> = <cmdline>")
         return
 
-    match = re.match(r"(\S+)\s+(.*)", text)
+    match = re.match(r"(\S+)\s*=\s+(.*)", text)
     if not match:
-        reply("Usage: .addalias <name> <cmdline>")
+        reply("Usage: .addalias <name> = <cmdline>")
         return
 
     name, cmdline = match.groups()
@@ -74,8 +76,8 @@ def add_alias(text, nick, db, reply, notice):
     reply(f"Alias '{name}' added successfully.")
 
 
-@hook.command("delalias", autohelp=False)
-def delete_alias(text, nick, db, reply, notice):
+@hook.command("aliasdel", "aliasrm", "aliasremove", autohelp=False)
+def delete_alias(text: str, nick: str, db, reply, notice) -> None:
     """
     .delalias <name> - Deletes the alias with the given name
     """
@@ -100,14 +102,14 @@ def delete_alias(text, nick, db, reply, notice):
     reply(f"Alias '{name}' deleted successfully.")
 
 
-@hook.command("aliases", autohelp=False)
-def list_aliases(nick, reply, notice):
+@hook.command("aliases", "aliaslist", autohelp=False)
+def list_aliases(text: str, nick: str, reply, notice) -> None:
     """
-    .aliases - Lists all aliases for the user
+    .aliases [nick] - Lists all aliases for the user or yourself
     """
-    nick_lower = nick.lower()
+    nick_lower = text.split()[0].lower() if text else nick.lower()
     if nick_lower not in aliases_cache or not aliases_cache[nick_lower]:
-        reply("You have no aliases.")
+        reply(f"No aliases found for '{nick_lower}'.")
         return
 
     notice("Your aliases:")
@@ -115,26 +117,70 @@ def list_aliases(nick, reply, notice):
         notice(f"{name}: {cmdline}")
 
 
-@hook.command("alias", "a", autohelp=False)
-def run_alias(text, nick, bot, event):
+@hook.command("aliascopy", autohelp=False)
+def copy_alias(text: str, nick: str, db, reply, notice) -> None:
     """
-    .alias <name> - Executes the alias with the given name
+    .aliascopy <source_nick> <alias_name> - Copies an alias from another user
     """
     if not text:
-        return "Usage: .alias <name>"
+        reply("Usage: .aliascopy <source_nick> <alias_name>")
+        return
 
-    name = text.strip().split()[0].lower()
+    parts = text.split()
+    if len(parts) != 2:
+        reply("Usage: .aliascopy <source_nick> <alias_name>")
+        return
+
+    source_nick, alias_name = parts
+    source_nick_lower = source_nick.lower()
+    alias_name_lower = alias_name.lower()
+
+    if source_nick_lower not in aliases_cache or alias_name_lower not in aliases_cache[source_nick_lower]:
+        reply(f"Alias '{alias_name}' not found for user '{source_nick}'.")
+        return
+
+    cmdline = aliases_cache[source_nick_lower][alias_name_lower]
+
+    # Add the alias to the current user's aliases
+    db.execute(aliases_table.insert().values(nick=nick.lower(), name=alias_name_lower, cmdline=cmdline))
+    db.commit()
+
+    aliases_cache.setdefault(nick.lower(), {})[alias_name_lower] = cmdline
+    reply(f"Alias '{alias_name}' copied successfully from '{source_nick}'.")
+
+
+@hook.command("alias", "a", autohelp=False)
+async def run_alias(text: str, nick: str, bot: CloudBot, event, reply) -> str:
+    """
+    .alias <name> [args] - Executes the alias with the given name optionally with arguments.
+
+    Arguments are appended to the command if no placeholder "<>" is used in the alias definition.
+    """
+    if not text:
+        return "Usage: .alias <name> [args]"
+
+    # args may not be present
+    name, cmdargs = (text.split(maxsplit=1) + [""])[:2]
     nick_lower = nick.lower()
 
     if nick_lower not in aliases_cache or name not in aliases_cache[nick_lower]:
         return f"Alias '{name}' not found."
 
     cmdline = aliases_cache[nick_lower][name]
+    cmdname = cmdline.split()[0]
+    args = cmdline[len(cmdname) :].strip()
 
-    # Create a new event to process the command
-    cmd_event = event.copy()
-    cmd_event.text = cmdline
-    cmd_event.cmd_prefix = "."  # Ensure the command has the right prefix
+    if "<>" in args:
+        args = args.replace("<>", cmdargs.strip())
+    else:
+        args += " " + cmdargs.strip()
+
+    hook = get_hook_from_command(bot, cmdname)
+
+    cmd_event = wrap_event(hook, event, cmdname, args)
+    ok, res = await bot.plugin_manager.internal_launch(hook, cmd_event)
+    if not ok:
+        return "Error occurred while processing the alias."
 
     # Process the command through the bot's command dispatcher
-    return bot.process(cmd_event)
+    return res
