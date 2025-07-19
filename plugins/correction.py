@@ -94,6 +94,32 @@ def correction(match, conn, nick, chan, message):
         return "No match"
 
 
+@hook.command("sed", autohelp=False)
+def sed(bot, reply, text: str) -> str:
+    """s/<part1>/<part2>/<flags> <args> - Perform regex substitution on the given text."""
+    if not text:
+        return "Usage: sed s/<part1>/<part2>/<flags> <args>"
+
+    match = exp_re.match(text)
+    if not match:
+        return "Invalid format. Use: s/<part1>/<part2>/<flags> <args>"
+
+    find, replace, re_flags = paser_sed_exp(match.groups(), reply)
+    args = text[match.end() :].strip()
+
+    if not args:
+        return "No text provided to process. Did you forget an ending '/'?"
+
+    new = re.sub(
+        find,
+        "\x02" + replace + "\x02",
+        args,
+        count=re.MULTILINE not in re_flags,
+        flags=sum(re_flags),
+    )
+    return formatting.truncate(new, 420)
+
+
 @hook.command("valware", autohelp=False)
 def valware(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | str:
     """<nick> - Alias for s/\\s+/but also unrealircd and/g"""
