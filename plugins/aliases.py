@@ -124,10 +124,10 @@ def list_aliases(text: str, nick: str, reply, notice) -> None:
 
     notice("Your aliases:")
     for name, cmdline in aliases_cache[nick_lower].items():
-        reply(f"{name}: {cmdline}")
+        notice(f"{name}: {cmdline}")
 
 
-@hook.command("aliascopy", autohelp=False)
+@hook.command("aliascopy", "aliasimport", autohelp=False)
 def copy_alias(text: str, nick: str, db, reply, notice) -> None:
     """
     .aliascopy <source_nick> <alias_name> - Copies an alias from another user
