@@ -122,7 +122,10 @@ def list_aliases(text: str, nick: str, reply, notice) -> None:
         reply(f"No aliases found for '{nick_lower}'.")
         return
 
-    notice("Your aliases:")
+    if nick_lower != nick.lower():
+        notice(f"Aliases for {nick_lower}:")
+    else:
+        notice("Your aliases:")
     for name, cmdline in aliases_cache[nick_lower].items():
         notice(f"{name}: {cmdline}")
 
