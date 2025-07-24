@@ -98,7 +98,10 @@ def delete_alias(text: str, nick: str, db, reply, notice) -> None:
     nick_lower = nick.lower()
 
     if nick_lower not in aliases_cache or name not in aliases_cache[nick_lower]:
-        reply(f"Alias '{name}' not found.")
+        reply(
+            f"Alias '{name}' not found for you. Use 'aliases' to list your aliases or 'aliascopy' to copy an alias from"
+            " someone else"
+        )
         return
 
     db.execute(aliases_table.delete().where(aliases_table.c.nick == nick_lower).where(aliases_table.c.name == name))
