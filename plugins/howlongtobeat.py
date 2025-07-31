@@ -44,7 +44,7 @@ headers = {
 }
 
 
-@hook.command("hltbn", autohelp=False)
+@hook.command("hltbn", "hltb_next", autohelp=False)
 def hltbn(text, nick, chan):
     """Displays next game in queue for nick."""
     global results_queue
@@ -97,7 +97,7 @@ def try_api_search(game_name):
                 data = response.json()
                 if data and "data" in data:
                     return parse_api_response(data["data"])
-        except:
+        except (requests.RequestException, ValueError, KeyError):
             continue
 
     return None
@@ -116,7 +116,7 @@ def parse_api_response(data):
                 completionist=f"{float(item.get('comp_100', 0)) / 3600:.1f} Hours" if item.get("comp_100") else "N/A",
             )
             games.append(game)
-        except:
+        except (KeyError, TypeError, ValueError):
             continue
     return games
 
@@ -155,7 +155,7 @@ def extract_game_data_from_json(html):
             completionist=format_time(game.get("comp_100")),
         )
 
-    except:
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
         return None
 
 
@@ -176,7 +176,7 @@ def scrape_hltb_search(game_name):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
 
-        game_id = None
+        game_ids = []
 
         for search_url in search_urls:
             try:
@@ -185,50 +185,59 @@ def scrape_hltb_search(game_name):
                     # Look for HowLongToBeat game URLs in the response
                     game_id_matches = re.findall(r"howlongtobeat\.com/game/(\d+)", response.text)
                     if game_id_matches:
-                        game_id = game_id_matches[0]
+                        # Get up to 5 unique game IDs
+                        unique_ids = list(dict.fromkeys(game_id_matches))[:5]
+                        game_ids.extend(unique_ids)
                         break
-            except:
+            except (requests.RequestException, requests.Timeout):
                 continue
 
-        if not game_id:
+        if not game_ids:
             return None
 
-        # Get the game page with minimal timeout
-        game_url = f"https://howlongtobeat.com/game/{game_id}"
+        # Get game pages for multiple IDs
+        games = []
         game_headers = {
             "User-Agent": "Mozilla/5.0 (compatible; bot)",
         }
 
-        try:
-            game_response = requests.get(game_url, headers=game_headers, timeout=8)
-            if not game_response.ok:
-                return None
+        for game_id in game_ids:
+            try:
+                game_url = f"https://howlongtobeat.com/game/{game_id}"
+                game_response = requests.get(game_url, headers=game_headers, timeout=8)
+                if not game_response.ok:
+                    continue
 
-            # Try to extract data from JSON
-            game_data = extract_game_data_from_json(game_response.text)
-            if game_data:
-                return [game_data]
+                # Try to extract data from JSON
+                game_data = extract_game_data_from_json(game_response.text)
+                if game_data:
+                    games.append(game_data)
+                    continue
 
-            # Fallback: basic title extraction
-            title_match = re.search(r"<title>([^|]+)\s*\|\s*HowLongToBeat</title>", game_response.text)
-            game_title = (
-                title_match.group(1).replace("How long is ", "").replace("?", "").strip() if title_match else game_name
-            )
-
-            return [
-                Game(
-                    name=game_title,
-                    url=game_url,
-                    main_story="See website",
-                    main_extras="for times",
-                    completionist=f"ID: {game_id}",
+                # Fallback: basic title extraction
+                title_match = re.search(r"<title>([^|]+)\s*\|\s*HowLongToBeat</title>", game_response.text)
+                game_title = (
+                    title_match.group(1).replace("How long is ", "").replace("?", "").strip()
+                    if title_match
+                    else game_name
                 )
-            ]
 
-        except:
-            return None
+                games.append(
+                    Game(
+                        name=game_title,
+                        url=game_url,
+                        main_story="See website",
+                        main_extras="for times",
+                        completionist=f"ID: {game_id}",
+                    )
+                )
 
-    except:
+            except (requests.RequestException, requests.Timeout):
+                continue
+
+        return games if games else None
+
+    except (requests.RequestException, ValueError, AttributeError):
         return None
 
 
@@ -243,14 +252,14 @@ def howlongtobeat(text, nick, chan):
     # Try API search first
     games = try_api_search(text)
     if games:
-        results_queue[chan][nick] = games
-        return hltbn("", nick, chan)
+        results_queue[chan][nick] = games[1:]  # Store all but the first result
+        return str(games[0])  # Return the first result directly
 
     # If API fails, try scraping
     games = scrape_hltb_search(text)
     if games:
-        results_queue[chan][nick] = games
-        return hltbn("", nick, chan)
+        results_queue[chan][nick] = games[1:]  # Store all but the first result
+        return str(games[0])  # Return the first result directly
 
     # If everything fails, provide a direct link
     encoded_search = requests.utils.quote(text)
