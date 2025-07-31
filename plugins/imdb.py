@@ -1,4 +1,5 @@
 import re
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -15,7 +16,7 @@ SEARCH_URL = "https://www.imdb.com/find/"
 BASE_URL = "https://www.imdb.com"
 
 
-def search_imdb(query):
+def search_imdb(query: str) -> str | None:
     """Search IMDB for movies/shows matching the query"""
     params = {"q": query, "s": "tt", "ttype": "ft"}  # Search for titles  # Feature films
 
@@ -32,12 +33,21 @@ def search_imdb(query):
     if result_item:
         result_link = result_item.select_one("a")
         if result_link:
-            return BASE_URL + result_link.get("href")
+            href = result_link.get("href")
+            if href and isinstance(href, str):
+                # Clean the URL by removing unwanted query parameters
+                full_url = BASE_URL + href
+                parsed = urlparse(full_url)
+                query_params = parse_qs(parsed.query)
+                # Remove the ref parameter if it exists
+                query_params.pop("ref", None)
+                clean_query = urlencode(query_params, doseq=True)
+                return f"{parsed.scheme}://{parsed.netloc}{parsed.path}" + (f"?{clean_query}" if clean_query else "")
 
     return None
 
 
-def get_imdb_info(imdb_url):
+def get_imdb_info(imdb_url: str) -> dict[str, str] | None:
     """Extract movie information from IMDB page"""
     try:
         response = requests.get(imdb_url, headers=HEADERS)
@@ -75,7 +85,7 @@ def get_imdb_info(imdb_url):
 
 
 @hook.command("imdb")
-def imdb(text, reply):
+def imdb(text: str) -> str:
     """<query> - Search IMDB for movie/show information including ratings"""
     if not text.strip():
         return "Please provide a movie or show title to search for."
