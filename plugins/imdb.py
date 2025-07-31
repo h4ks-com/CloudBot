@@ -15,11 +15,36 @@ HEADERS = {
 
 SEARCH_URL = "https://www.imdb.com/find/"
 BASE_URL = "https://www.imdb.com"
+REMOVE_REF_PARAMS = ["ref", "ref_"]
 
 results_queue = Queue()
 
 
-def search_imdb(query: str, multiple: bool = False) -> str | list[str] | None:
+def clean_imdb_url(href: str) -> str:
+    """Clean the IMDB URL by removing unwanted query parameters."""
+    full_url = BASE_URL + href
+    parsed = urlparse(full_url)
+    query_params = parse_qs(parsed.query)
+    for param in REMOVE_REF_PARAMS:
+        query_params.pop(param, None)
+    clean_query = urlencode(query_params, doseq=True)
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}" + (f"?{clean_query}" if clean_query else "")
+
+
+def extract_imdb_urls(soup: BeautifulSoup) -> list[str]:
+    """Extract and clean IMDB URLs from the search results."""
+    result_items = soup.select(".find-result-item")
+    urls = []
+    for result_item in result_items:
+        result_link = result_item.select_one("a")
+        if result_link:
+            href = result_link.get("href")
+            if href and isinstance(href, str):
+                urls.append(clean_imdb_url(href))
+    return urls
+
+
+def search_imdb(query: str) -> list[str] | None:
     """Search IMDB for movies/shows matching the query"""
     params = {"q": query, "s": "tt", "ttype": "ft"}  # Search for titles  # Feature films
 
@@ -30,44 +55,12 @@ def search_imdb(query: str, multiple: bool = False) -> str | list[str] | None:
         return None
 
     soup = BeautifulSoup(response.content, "html.parser")
+    urls = extract_imdb_urls(soup)
 
-    # Look for search results with updated selector
-    if multiple:
-        result_items = soup.select(".find-result-item")[:10]  # Get up to 10 results
-        urls = []
-        for result_item in result_items:
-            result_link = result_item.select_one("a")
-            if result_link:
-                href = result_link.get("href")
-                if href and isinstance(href, str):
-                    # Clean the URL by removing unwanted query parameters
-                    full_url = BASE_URL + href
-                    parsed = urlparse(full_url)
-                    query_params = parse_qs(parsed.query)
-                    # Remove the ref parameter if it exists
-                    query_params.pop("ref", None)
-                    clean_query = urlencode(query_params, doseq=True)
-                    clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}" + (f"?{clean_query}" if clean_query else "")
-                    urls.append(clean_url)
-        return urls if urls else None
-    else:
-        # Look for the first search result with updated selector
-        result_item = soup.select_one(".find-result-item")
-        if result_item:
-            result_link = result_item.select_one("a")
-            if result_link:
-                href = result_link.get("href")
-                if href and isinstance(href, str):
-                    # Clean the URL by removing unwanted query parameters
-                    full_url = BASE_URL + href
-                    parsed = urlparse(full_url)
-                    query_params = parse_qs(parsed.query)
-                    # Remove the ref parameter if it exists
-                    query_params.pop("ref", None)
-                    clean_query = urlencode(query_params, doseq=True)
-                    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}" + (f"?{clean_query}" if clean_query else "")
+    if not urls:
+        return None
 
-    return None
+    return urls
 
 
 def get_imdb_info(imdb_url: str) -> dict[str, str] | None:
@@ -80,13 +73,11 @@ def get_imdb_info(imdb_url: str) -> dict[str, str] | None:
 
     soup = BeautifulSoup(response.content, "html.parser")
 
-    # Extract title
     title_elem = soup.select_one(".hero__primary-text")
     if not title_elem:
         title_elem = soup.select_one("h1[data-testid='hero-title-block__title']")
     title = title_elem.text.strip() if title_elem else "Unknown Title"
 
-    # Extract year from page title
     year = ""
     title_tag = soup.select_one("title")
     if title_tag:
@@ -94,11 +85,9 @@ def get_imdb_info(imdb_url: str) -> dict[str, str] | None:
         if year_match:
             year = year_match.group(1)
 
-    # Extract IMDB rating (user score)
     rating_elem = soup.select_one("[data-testid='hero-rating-bar__aggregate-rating__score'] span")
     user_score = rating_elem.text.strip() if rating_elem else "N/A"
 
-    # Extract Metascore (critics score)
     critics_score = "N/A"
     metascore_elem = soup.select_one("span.metacritic-score-box")
     if metascore_elem:
@@ -115,16 +104,13 @@ def imdbn(nick, chan, text):
     if results is None or len(results) == 0:
         return "No [more] results found."
 
-    # Get the next URL and fetch its info
     imdb_url = results.pop()
     info = get_imdb_info(imdb_url)
     if not info:
         return "Error retrieving movie information from IMDB"
 
-    # Shorten the URL
     short_url = web.try_shorten(info["url"])
 
-    # Format the response
     title_year = f"{info['title']}"
     if info["year"]:
         title_year += f" ({info['year']})"
@@ -144,23 +130,18 @@ def imdb(text: str, nick, chan) -> str:
 
     query = text.strip()
 
-    # Search for multiple results to populate the queue
-    imdb_urls = search_imdb(query, multiple=True)
+    imdb_urls = search_imdb(query)
     if not imdb_urls:
         return f"No IMDB results found for '{query}'"
 
-    # Store the results in the queue for this user/channel
     results_queue[chan][nick] = imdb_urls[1:]  # Store all but the first result
 
-    # Get detailed information for the first result
     info = get_imdb_info(imdb_urls[0])
     if not info:
         return "Error retrieving movie information from IMDB"
 
-    # Shorten the URL
     short_url = web.try_shorten(info["url"])
 
-    # Format the response
     title_year = f"{info['title']}"
     if info["year"]:
         title_year += f" ({info['year']})"
