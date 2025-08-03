@@ -103,7 +103,6 @@ dependencies = [
     { name = "requests-oauthlib" },
     { name = "revchatgpt" },
     { name = "rfc3986" },
-    { name = "rotten-tomatoes-scraper" },
     { name = "sgmllib3k" },
     { name = "six" },
     { name = "sniffio" },
@@ -232,7 +231,6 @@ requires-dist = [
     { name = "requests-oauthlib", specifier = "==1.3.0" },
     { name = "revchatgpt", specifier = "==6.8.6" },
     { name = "rfc3986", specifier = "==1.5.0" },
-    { name = "rotten-tomatoes-scraper", specifier = "==1.4.0" },
     { name = "sgmllib3k", specifier = "==1.0.0" },
     { name = "six", specifier = "==1.15.0" },
     { name = "sniffio", specifier = "==1.2.0" },
@@ -2232,20 +2230,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a1/53/830aa4c3066a8ab0ae9a9955976fb770fe9c6102117c8ec4ab3ea62d89e8/rich-14.0.0.tar.gz", hash = "sha256:82f1bc23a6a21ebca4ae0c45af9bdbc492ed20231dcb63f297d6d1021a9d5725", size = 224078, upload-time = "2025-03-30T14:15:14.23Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0d/9b/63f4c7ebc259242c89b3acafdb37b41d1185c07ff0011164674e9076b491/rich-14.0.0-py3-none-any.whl", hash = "sha256:1c9491e1951aac09caffd42f448ee3d04e58923ffe14993f6e83068dc395d7e0", size = 243229, upload-time = "2025-03-30T14:15:12.283Z" },
-]
-
-[[package]]
-name = "rotten-tomatoes-scraper"
-version = "1.4.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "bs4" },
-    { name = "lxml" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/b4/fe3ed279bb91e06f4134162728f7eb39794b5df1d5d4c4cbff499af02703/rotten_tomatoes_scraper-1.4.0.tar.gz", hash = "sha256:934307c42c8dcf9e0bc5766a0299cbf1e9b9cdbe165766d9001946ee4ae05ffb", size = 6731, upload-time = "2021-07-27T22:04:54.215Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/5a/a64d8989a8f122eb423daec79a75444f0cf854fde7d41d2b6de5201c88c3/rotten_tomatoes_scraper-1.4.0-py3-none-any.whl", hash = "sha256:e5a7bad8ceae609ca782e96364be4287e173c0b8fe0e6c4f4cd719cc1a65932f", size = 7571, upload-time = "2021-07-27T22:04:53.17Z" },
 ]
 
 [[package]]
