@@ -134,7 +134,7 @@ def valware(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | st
 
     new = re.sub(
         r"\s+",
-        " \x02but also unrealircd and\x02 ",
+        " \x02but also unrealircd and n8n and\x02 ",
         line,
         flags=re.MULTILINE | re.IGNORECASE,
     )
