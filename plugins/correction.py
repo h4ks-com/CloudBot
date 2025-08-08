@@ -139,3 +139,24 @@ def valware(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | st
         flags=re.MULTILINE | re.IGNORECASE,
     )
     return formatting.truncate(f"\x02{new}", 420)
+
+
+@hook.command("mattf", autohelp=False)
+def mattf(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | str:
+    """<nick> - Alias for s/\\s+/and docker but also/g"""
+    if not text:
+        return "Usage: mattf <nick>"
+
+    nick = text.split()[0]
+
+    line = get_latest_line(None, conn, chan, nick)
+    if line is None:
+        return f"Nothing found in recent history for {nick}"
+
+    new = re.sub(
+        r"\s+",
+        " \x02and docker build also\x02 ",
+        line,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    return formatting.truncate(f"\x02{new}", 420)
