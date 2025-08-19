@@ -158,10 +158,7 @@ def base64_decode(text, notice):
         return None
 
     if repr(decoded)[1:-1] != decoded:
-        return (
-            "Non printable characters detected in output, "
-            "escaped output: {!r}".format(decoded)
-        )
+        return "Non printable characters detected in output, " "escaped output: {!r}".format(decoded)
 
     return decoded
 
@@ -216,8 +213,7 @@ def reverse(text):
 def hash_command(text):
     """<string> - Returns hashes of <string>."""
     return ", ".join(
-        x + ": " + getattr(hashlib, x)(text.encode("utf-8")).hexdigest()
-        for x in ["md5", "sha1", "sha256"]
+        x + ": " + getattr(hashlib, x)(text.encode("utf-8")).hexdigest() for x in ["md5", "sha1", "sha256"]
     )
 
 
@@ -233,10 +229,7 @@ def munge(text):
 @hook.command()
 def leet(text):
     """<text> - Makes <text> more 1337h4x0rz."""
-    output = "".join(
-        random.choice(leet_text[ch]) if ch.isalpha() else ch
-        for ch in text.lower()
-    )
+    output = "".join(random.choice(leet_text[ch]) if ch.isalpha() else ch for ch in text.lower())
     return output
 
 
@@ -248,9 +241,7 @@ def derpify(text):
     pick_the = random.choice(["TEH", "DA"])
     pick_e = random.choice(["E", "3", "A"])
     pick_qt = random.choice(["?!?!??", "???!!!!??", "?!??!?", "?!?!?!???"])
-    pick_ex = random.choice(
-        ["1111!11", "1!11", "!!1!", "1!!!!111", "!1!111!1", "!11!111"]
-    )
+    pick_ex = random.choice(["1111!11", "1!11", "!!1!", "1!!!!111", "!1!111!1", "!11!111"])
     pick_end = random.choice(["", "OMG", "LOL", "WTF", "WTF LOL", "OMG LOL"])
     rules = {
         "YOU'RE": "UR",
@@ -355,3 +346,42 @@ def superscript(text):
         else:
             result.append(char)
     return "".join(result)
+
+
+def levenshtein_distance(s1, s2):
+    """Calculate the Levenshtein distance between two strings."""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+
+    if len(s2) == 0:
+        return len(s1)
+
+    previous_row = list(range(len(s2) + 1))
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+
+    return previous_row[-1]
+
+
+@hook.command("distance", "levenshtein")
+def distance_command(text):
+    """<string1> <string2> - Calculate the Levenshtein distance between two strings. Arguments can be quoted."""
+    import shlex
+
+    try:
+        args = shlex.split(text)
+    except ValueError:
+        return "Invalid arguments. Use quotes around strings with spaces."
+
+    if len(args) != 2:
+        return "Usage: .distance <string1> <string2> - Arguments can be quoted for strings with spaces."
+
+    s1, s2 = args
+    distance = levenshtein_distance(s1, s2)
+    return f"Levenshtein distance between '{s1}' and '{s2}': {distance}"
