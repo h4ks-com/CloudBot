@@ -4,36 +4,42 @@ Provides real-time ISS telemetry data including urine tank levels.
 
 import asyncio
 
+import aiohttp
 from lightstreamer.client import LightstreamerClient, Subscription
 
 from cloudbot import hook
+from cloudbot.util.formatting import IRC_TAGS
 
+
+def bold(text):
+    """Make text bold for IRC."""
+    return f"{IRC_TAGS['b']}{text}{IRC_TAGS['b']}"
 
 # Telemetry configuration mapping
 TELEMETRY_CONFIG = {
     "temp": {
         "node": "USLAB000059",
-        "format": lambda x: f"🌡️ ISS Cabin Temperature: {x:.1f}°C ({(x * 9/5) + 32:.1f}°F)",
+        "format": lambda x: f"🌡️ ISS Cabin Temperature: {bold(f'{x:.1f}°C')} ({bold(f'{(x * 9/5) + 32:.1f}°F')})",
         "error": "❌ Unable to retrieve temperature data"
     },
     "pressure": {
         "node": "USLAB000058",
-        "format": lambda x: f"🔘 ISS Cabin Pressure: {x:.1f} mmHg",
+        "format": lambda x: f"🔘 ISS Cabin Pressure: {bold(f'{x:.1f} mmHg')}",
         "error": "❌ Unable to retrieve pressure data"
     },
     "co2": {
         "node": "NODE3000003",
-        "format": lambda x: f"💨 ISS CO2 Level: {x:.1f} mmHg",
+        "format": lambda x: f"💨 ISS CO2 Level: {bold(f'{x:.1f} mmHg')}",
         "error": "❌ Unable to retrieve CO2 data"
     },
     "oxygen": {
         "node": "NODE3000001",
-        "format": lambda x: f"💨 ISS Oxygen Level: {x:.1f} mmHg",
+        "format": lambda x: f"💨 ISS Oxygen Level: {bold(f'{x:.1f} mmHg')}",
         "error": "❌ Unable to retrieve oxygen data"
     },
     "urine": {
         "node": "NODE3000005",
-        "format": lambda x: f"🚽 ISS Urine Tank Level: {x}%",
+        "format": lambda x: f"🚽 ISS Urine Tank Level: {bold(f'{x}%')}",
         "error": "❌ Unable to retrieve urine tank data"
     }
 }
@@ -142,6 +148,54 @@ class ISSDataManager:
 iss_manager = ISSDataManager()
 
 
+async def get_iss_location():
+    """Get current ISS position, altitude, velocity and location."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Get ISS position data
+            async with session.get("https://api.wheretheiss.at/v1/satellites/25544") as response:
+                if response.status != 200:
+                    return None
+                iss_data = await response.json()
+
+            latitude = iss_data["latitude"]
+            longitude = iss_data["longitude"]
+            altitude = iss_data["altitude"]  # km
+            velocity = iss_data["velocity"]  # km/h
+
+            # Get location name from coordinates
+            location = "Unknown"
+            try:
+                geocode_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={latitude}&longitude={longitude}&localityLanguage=en"
+                async with session.get(geocode_url) as geo_response:
+                    if geo_response.status == 200:
+                        geo_data = await geo_response.json()
+
+                        # Check if over ocean/international waters
+                        if geo_data.get("countryCode") == "":
+                            location = "International Waters"
+                        else:
+                            country = geo_data.get("countryName", "Unknown")
+                            city = geo_data.get("city", "")
+                            if city and city != country:
+                                location = f"{city}, {country}"
+                            else:
+                                location = country
+            except Exception:
+                pass  # Keep "Unknown" as fallback
+
+            return {
+                "latitude": latitude,
+                "longitude": longitude,
+                "altitude": altitude,
+                "velocity": velocity,
+                "location": location
+            }
+
+    except Exception:
+        return None
+
+
 @hook.on_stop()
 def cleanup():
     """Clean up connections when bot shuts down."""
@@ -168,7 +222,7 @@ async def iss_piss_level():
             else:
                 emoji = "✅"  # Very low
 
-            return f"{emoji} ISS Urine Tank Level: {urine_level}% 🚽"
+            return f"{emoji} ISS Urine Tank Level: {bold(f'{urine_level}%')} 🚽"
         else:
             return "❌ Unable to retrieve ISS telemetry data"
 
@@ -176,22 +230,35 @@ async def iss_piss_level():
         return f"🚫 Error accessing ISS telemetry: {type(e).__name__}"
 
 
-@hook.command("iss")
+@hook.command("iss", autohelp=False)
 async def iss_telemetry(text):
     """<subcommand> - ISS telemetry data. Use 'list' to see available commands."""
 
     if not text:
-        return "🛰️ ISS Live Telemetry - Use '.iss list' for available commands"
+        # Show current ISS location and status
+        location_data = await get_iss_location()
+        if location_data:
+            lat = location_data["latitude"]
+            lon = location_data["longitude"]
+            alt = location_data["altitude"]
+            vel = location_data["velocity"]
+            loc = location_data["location"]
+
+            return (f"🛰️ ISS Location: {bold(f'{lat:.2f}°, {lon:.2f}°')} | "
+                   f"Altitude: {bold(f'{alt:.0f}km')} | Speed: {bold(f'{vel:.0f}km/h')} | "
+                   f"Over: {bold(loc)}")
+        else:
+            return "❌ Unable to retrieve ISS location data"
 
     subcommand = text.strip().lower()
 
     match subcommand:
         case "list":
             commands = ", ".join(TELEMETRY_CONFIG.keys())
-            return f"Available commands: {commands}, source"
+            return f"Available commands: {bold(commands)}, {bold('source')}"
 
         case "source":
-            return "🛰️ NASA live telemetry - https://iss-mimic.github.io/Mimic/"
+            return f"🛰️ {bold('NASA live telemetry')} - https://iss-mimic.github.io/Mimic/"
 
         case cmd if cmd in TELEMETRY_CONFIG:
             config = TELEMETRY_CONFIG[cmd]
