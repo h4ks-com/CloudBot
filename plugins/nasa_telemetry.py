@@ -95,8 +95,8 @@ class ISSDataManager:
             except asyncio.TimeoutError:
                 pass
 
-        except Exception:
-            pass
+        except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError):
+            return False
 
         return False
 
@@ -148,52 +148,81 @@ class ISSDataManager:
 iss_manager = ISSDataManager()
 
 
+def get_ocean_name(latitude, longitude):
+    """Determine which ocean/sea based on coordinates."""
+    lat, lon = float(latitude), float(longitude)
+    
+    # Arctic Ocean - highest priority
+    if lat >= 66:
+        return "Arctic Ocean"
+    
+    # Antarctic/Southern Ocean 
+    if lat <= -60:
+        return "Southern Ocean"
+    
+    # Mediterranean Sea
+    if 5 <= lon <= 36 and 30 <= lat <= 46:
+        return "Mediterranean Sea"
+    
+    # Red Sea
+    if 32 <= lon <= 43 and 12 <= lat <= 30:
+        return "Red Sea"
+    
+    # Atlantic Ocean (including western boundary)
+    if -80 <= lon <= 20:
+        return "Atlantic Ocean"
+    
+    # Indian Ocean
+    if 20 <= lon <= 120:
+        return "Indian Ocean"
+    
+    # Pacific Ocean (everything else - largest ocean)
+    if (-180 <= lon <= -80) or (120 <= lon <= 180):
+        return "Pacific Ocean"
+    
+    # Default fallback
+    return "International Waters"
+
+
 async def get_iss_location():
     """Get current ISS position, altitude, velocity and location."""
-    try:
-        async with aiohttp.ClientSession() as session:
-            # Get ISS position data
-            async with session.get("https://api.wheretheiss.at/v1/satellites/25544") as response:
-                if response.status != 200:
-                    return None
-                iss_data = await response.json()
+    async with aiohttp.ClientSession() as session:
+        # Get ISS position data
+        async with session.get("https://api.wheretheiss.at/v1/satellites/25544") as response:
+            if response.status != 200:
+                raise aiohttp.ClientResponseError(response.request_info, response.history, status=response.status)
+            iss_data = await response.json()
 
-            latitude = iss_data["latitude"]
-            longitude = iss_data["longitude"]
-            altitude = iss_data["altitude"]  # km
-            velocity = iss_data["velocity"]  # km/h
+        latitude = iss_data["latitude"]
+        longitude = iss_data["longitude"]
+        altitude = iss_data["altitude"]  # km
+        velocity = iss_data["velocity"]  # km/h
 
-            # Get location name from coordinates
-            location = "Unknown"
-            try:
-                geocode_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={latitude}&longitude={longitude}&localityLanguage=en"
-                async with session.get(geocode_url) as geo_response:
-                    if geo_response.status == 200:
-                        geo_data = await geo_response.json()
+        # Get location name from coordinates
+        location = "Unknown"
+        geocode_url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={latitude}&longitude={longitude}&localityLanguage=en"
+        async with session.get(geocode_url) as geo_response:
+            if geo_response.status == 200:
+                geo_data = await geo_response.json()
 
-                        # Check if over ocean/international waters
-                        if geo_data.get("countryCode") == "":
-                            location = "International Waters"
-                        else:
-                            country = geo_data.get("countryName", "Unknown")
-                            city = geo_data.get("city", "")
-                            if city and city != country:
-                                location = f"{city}, {country}"
-                            else:
-                                location = country
-            except Exception:
-                pass  # Keep "Unknown" as fallback
+                # Check if over ocean/international waters
+                if geo_data.get("countryCode") == "":
+                    location = get_ocean_name(latitude, longitude)
+                else:
+                    country = geo_data.get("countryName", "Unknown")
+                    city = geo_data.get("city", "")
+                    if city and city != country:
+                        location = f"{city}, {country}"
+                    else:
+                        location = country
 
-            return {
-                "latitude": latitude,
-                "longitude": longitude,
-                "altitude": altitude,
-                "velocity": velocity,
-                "location": location
-            }
-
-    except Exception:
-        return None
+        return {
+            "latitude": latitude,
+            "longitude": longitude,
+            "altitude": altitude,
+            "velocity": velocity,
+            "location": location
+        }
 
 
 @hook.on_stop()
@@ -226,7 +255,7 @@ async def iss_piss_level():
         else:
             return "❌ Unable to retrieve ISS telemetry data"
 
-    except Exception as e:
+    except (ConnectionError, asyncio.TimeoutError) as e:
         return f"🚫 Error accessing ISS telemetry: {type(e).__name__}"
 
 
@@ -236,8 +265,8 @@ async def iss_telemetry(text):
 
     if not text:
         # Show current ISS location and status
-        location_data = await get_iss_location()
-        if location_data:
+        try:
+            location_data = await get_iss_location()
             lat = location_data["latitude"]
             lon = location_data["longitude"]
             alt = location_data["altitude"]
@@ -247,8 +276,8 @@ async def iss_telemetry(text):
             return (f"🛰️ ISS Location: {bold(f'{lat:.2f}°, {lon:.2f}°')} | "
                    f"Altitude: {bold(f'{alt:.0f}km')} | Speed: {bold(f'{vel:.0f}km/h')} | "
                    f"Over: {bold(loc)}")
-        else:
-            return "❌ Unable to retrieve ISS location data"
+        except (aiohttp.ClientError, asyncio.TimeoutError, KeyError) as e:
+            return f"❌ Unable to retrieve ISS location data: {type(e).__name__}"
 
     subcommand = text.strip().lower()
 
@@ -268,8 +297,8 @@ async def iss_telemetry(text):
                     return config["format"](value)
                 else:
                     return config["error"]
-            except Exception as e:
-                return f"🚫 Error: {type(e).__name__}"
+            except (ConnectionError, asyncio.TimeoutError) as e:
+                return f"🚫 Connection error: {type(e).__name__}"
 
         case _:
             return "❓ Unknown subcommand. Use '.iss list' for available commands"
