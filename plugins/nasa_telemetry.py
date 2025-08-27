@@ -9,13 +9,43 @@ from lightstreamer.client import LightstreamerClient, Subscription
 from cloudbot import hook
 
 
+# Telemetry configuration mapping
+TELEMETRY_CONFIG = {
+    "temp": {
+        "node": "USLAB000059",
+        "format": lambda x: f"🌡️ ISS Cabin Temperature: {x:.1f}°C ({(x * 9/5) + 32:.1f}°F)",
+        "error": "❌ Unable to retrieve temperature data"
+    },
+    "pressure": {
+        "node": "USLAB000058",
+        "format": lambda x: f"🔘 ISS Cabin Pressure: {x:.1f} mmHg",
+        "error": "❌ Unable to retrieve pressure data"
+    },
+    "co2": {
+        "node": "NODE3000003",
+        "format": lambda x: f"💨 ISS CO2 Level: {x:.1f} mmHg",
+        "error": "❌ Unable to retrieve CO2 data"
+    },
+    "oxygen": {
+        "node": "NODE3000001",
+        "format": lambda x: f"💨 ISS Oxygen Level: {x:.1f} mmHg",
+        "error": "❌ Unable to retrieve oxygen data"
+    },
+    "urine": {
+        "node": "NODE3000005",
+        "format": lambda x: f"🚽 ISS Urine Tank Level: {x}%",
+        "error": "❌ Unable to retrieve urine tank data"
+    }
+}
+
+
 class ISSDataManager:
     """Manages ISS telemetry data connection and caching."""
 
     def __init__(self):
         self.client = None
-        self.urine_subscription = None
-        self.urine_level = None
+        self.subscription = None
+        self.telemetry_data = {}
         self.connected = False
         self._connect_lock = asyncio.Lock()
 
@@ -69,37 +99,40 @@ class ISSDataManager:
         if not self.client:
             return
 
-        # Subscribe to urine tank level (NODE3000005)
-        self.urine_subscription = Subscription("MERGE", ["NODE3000005"], ["Value"])
+        # Subscribe to all configured telemetry points
+        nodes = [config["node"] for config in TELEMETRY_CONFIG.values()]
+
+        self.subscription = Subscription("MERGE", nodes, ["Value"])
 
         class TelemetryListener:
             def __init__(self, manager):
                 self.manager = manager
 
             def onItemUpdate(self, update):
+                item_name = update.getItemName()
                 value = update.getValue("Value")
                 if value is not None:
                     try:
-                        self.manager.urine_level = float(value)
+                        self.manager.telemetry_data[item_name] = float(value)
                     except (ValueError, TypeError):
                         pass
 
-        self.urine_subscription.addListener(TelemetryListener(self))
-        self.client.subscribe(self.urine_subscription)
+        self.subscription.addListener(TelemetryListener(self))
+        self.client.subscribe(self.subscription)
 
-    async def get_urine_level(self):
-        """Get current ISS urine tank level percentage."""
+    async def get_telemetry(self, node_id):
+        """Get current telemetry value for a specific node."""
         if await self.ensure_connected():
             # Wait briefly for data if we just connected
-            if self.urine_level is None:
+            if node_id not in self.telemetry_data:
                 await asyncio.sleep(2)
-            return self.urine_level
+            return self.telemetry_data.get(node_id)
         return None
 
     def disconnect(self):
         """Disconnect from telemetry stream."""
-        if self.urine_subscription and self.client:
-            self.client.unsubscribe(self.urine_subscription)
+        if self.subscription and self.client:
+            self.client.unsubscribe(self.subscription)
         if self.client:
             self.client.disconnect()
         self.connected = False
@@ -120,7 +153,7 @@ async def iss_piss_level():
     """- Returns the current ISS urine tank level percentage"""
 
     try:
-        urine_level = await iss_manager.get_urine_level()
+        urine_level = await iss_manager.get_telemetry("NODE3000005")
 
         if urine_level is not None:
             # Format the response with appropriate emoji based on level
@@ -141,3 +174,35 @@ async def iss_piss_level():
 
     except Exception as e:
         return f"🚫 Error accessing ISS telemetry: {type(e).__name__}"
+
+
+@hook.command("iss")
+async def iss_telemetry(text):
+    """<subcommand> - ISS telemetry data. Use 'list' to see available commands."""
+
+    if not text:
+        return "🛰️ ISS Live Telemetry - Use '.iss list' for available commands"
+
+    subcommand = text.strip().lower()
+
+    match subcommand:
+        case "list":
+            commands = ", ".join(TELEMETRY_CONFIG.keys())
+            return f"Available commands: {commands}, source"
+
+        case "source":
+            return "🛰️ NASA live telemetry - https://iss-mimic.github.io/Mimic/"
+
+        case cmd if cmd in TELEMETRY_CONFIG:
+            config = TELEMETRY_CONFIG[cmd]
+            try:
+                value = await iss_manager.get_telemetry(config["node"])
+                if value is not None:
+                    return config["format"](value)
+                else:
+                    return config["error"]
+            except Exception as e:
+                return f"🚫 Error: {type(e).__name__}"
+
+        case _:
+            return "❓ Unknown subcommand. Use '.iss list' for available commands"
