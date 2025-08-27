@@ -63,6 +63,7 @@ dependencies = [
     { name = "joblib" },
     { name = "koo-api" },
     { name = "lazy-object-proxy" },
+    { name = "lightstreamer-client-lib" },
     { name = "lxml" },
     { name = "markitdown" },
     { name = "mccabe" },
@@ -191,6 +192,7 @@ requires-dist = [
     { name = "joblib", specifier = "==1.0.1" },
     { name = "koo-api", specifier = "==0.0.3" },
     { name = "lazy-object-proxy", specifier = "==1.6.0" },
+    { name = "lightstreamer-client-lib", specifier = ">=2.0.0" },
     { name = "lxml", specifier = "==4.9.1" },
     { name = "markitdown", specifier = ">=0.1.2" },
     { name = "mccabe", specifier = "==0.6.1" },
@@ -1118,6 +1120,27 @@ wheels = [
 ]
 
 [[package]]
+name = "jsonpatch"
+version = "1.33"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonpointer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/78/18813351fe5d63acad16aec57f94ec2b70a09e53ca98145589e185423873/jsonpatch-1.33.tar.gz", hash = "sha256:9fcd4009c41e6d12348b4a0ff2563ba56a2923a7dfee731d004e212e1ee5030c", size = 21699, upload-time = "2023-06-26T12:07:29.144Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/07/02e16ed01e04a374e644b575638ec7987ae846d25ad97bcc9945a3ee4b0e/jsonpatch-1.33-py2.py3-none-any.whl", hash = "sha256:0ae28c0cd062bbd8b8ecc26d7d164fbbea9652a1a3693f3b956c1eae5145dade", size = 12898, upload-time = "2023-06-16T21:01:28.466Z" },
+]
+
+[[package]]
+name = "jsonpointer"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/0a/eebeb1fa92507ea94016a2a790b93c2ae41a7e18778f85471dc54475ed25/jsonpointer-3.0.0.tar.gz", hash = "sha256:2b2d729f2091522d61c3b31f82e11870f60b68f43fbc705cb76bf4b832af59ef", size = 9114, upload-time = "2024-06-10T19:24:42.462Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/92/5e77f98553e9e75130c78900d000368476aed74276eb8ae8796f65f00918/jsonpointer-3.0.0-py2.py3-none-any.whl", hash = "sha256:13e088adc14fca8b6aa8177c044e12701e6ad4b28ff10e65f2267a90109c9942", size = 7595, upload-time = "2024-06-10T19:24:40.698Z" },
+]
+
+[[package]]
 name = "koo-api"
 version = "0.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1135,6 +1158,19 @@ name = "lazy-object-proxy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bb/f5/646893a04dcf10d4acddb61c632fd53abb3e942e791317dcdd57f5800108/lazy-object-proxy-1.6.0.tar.gz", hash = "sha256:489000d368377571c6f982fba6497f2aa13c6d1facc40660963da62f5c379726", size = 44494, upload-time = "2021-03-22T20:53:40.171Z" }
+
+[[package]]
+name = "lightstreamer-client-lib"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "jsonpatch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1d/f6/000ba1ed70bd54df6e3e56c6e34829f88ed9980aa4070f6435bbff4ee2f6/lightstreamer-client-lib-2.0.0.tar.gz", hash = "sha256:6ed7e03dba846129685ef39ffd93042d1b05c05758b76dfe6eeb02ab842a9480", size = 125399, upload-time = "2023-07-11T08:53:13.446Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/92/16e14707796e1348df5543894b907c233f6d8be50c4db7091c5ca8467ba7/lightstreamer_client_lib-2.0.0-py3-none-any.whl", hash = "sha256:2b2fa74d577dbcbc573b723beb60612d6461a0646ab09a3e6ff8d44f472fb9ef", size = 127045, upload-time = "2023-07-11T08:53:11.344Z" },
+]
 
 [[package]]
 name = "lxml"

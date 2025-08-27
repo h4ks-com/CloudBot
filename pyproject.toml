@@ -51,6 +51,7 @@ dependencies = [
     "joblib==1.0.1",
     "koo-api==0.0.3",
     "lazy-object-proxy==1.6.0",
+    "lightstreamer-client-lib>=2.0.0",
     "lxml==4.9.1",
     "markitdown>=0.1.2",
     "mccabe==0.6.1",
