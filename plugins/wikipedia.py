@@ -13,13 +13,18 @@ query_url = api_prefix + "?action=query&format=json"
 search_url = query_url + "&list=search&redirect=1"
 wp_api_url = URL("https://en.wikipedia.org/api/rest_v1/")
 
+# Headers to avoid being blocked by Wikipedia
+headers = {
+    "User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot; cloudbot@example.com)"
+}
+
 
 def make_summary_url(title) -> str:
     return str(wp_api_url / "page/summary" / title.replace(" ", "_"))
 
 
 def get_info(title):
-    with requests.get(make_summary_url(title)) as response:
+    with requests.get(make_summary_url(title), headers=headers) as response:
         return response.json()
 
 
@@ -29,7 +34,7 @@ def wiki(text, reply):
 
     search_params = {"srsearch": text.strip()}
     try:
-        with requests.get(search_url, params=search_params) as response:
+        with requests.get(search_url, params=search_params, headers=headers) as response:
             response.raise_for_status()
             data = response.json()
     except RequestException:
