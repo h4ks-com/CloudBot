@@ -151,35 +151,35 @@ iss_manager = ISSDataManager()
 def get_ocean_name(latitude, longitude):
     """Determine which ocean/sea based on coordinates."""
     lat, lon = float(latitude), float(longitude)
-    
+
     # Arctic Ocean - highest priority
     if lat >= 66:
         return "Arctic Ocean"
-    
-    # Antarctic/Southern Ocean 
+
+    # Antarctic/Southern Ocean
     if lat <= -60:
         return "Southern Ocean"
-    
+
     # Mediterranean Sea
     if 5 <= lon <= 36 and 30 <= lat <= 46:
         return "Mediterranean Sea"
-    
+
     # Red Sea
     if 32 <= lon <= 43 and 12 <= lat <= 30:
         return "Red Sea"
-    
+
     # Atlantic Ocean (including western boundary)
     if -80 <= lon <= 20:
         return "Atlantic Ocean"
-    
+
     # Indian Ocean
     if 20 <= lon <= 120:
         return "Indian Ocean"
-    
+
     # Pacific Ocean (everything else - largest ocean)
     if (-180 <= lon <= -80) or (120 <= lon <= 180):
         return "Pacific Ocean"
-    
+
     # Default fallback
     return "International Waters"
 
@@ -288,6 +288,9 @@ async def iss_telemetry(text):
 
         case "source":
             return f"🛰️ {bold('NASA live telemetry')} - https://iss-mimic.github.io/Mimic/"
+
+        case "pissinfo":
+            return "https://bsky.app/profile/iss-piss-tracker.bsky.social/post/3lxnr3lttrs2k"
 
         case cmd if cmd in TELEMETRY_CONFIG:
             config = TELEMETRY_CONFIG[cmd]
