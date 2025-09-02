@@ -287,7 +287,7 @@ async def iss_telemetry(text):
             return f"Available commands: {bold(commands)}, {bold('source')}"
 
         case "source":
-            return f"🛰️ {bold('NASA live telemetry')} - https://iss-mimic.github.io/Mimic/"
+            return f"🛰️ {bold('NASA live telemetry')} - https://iss-mimic.github.io/Mimic/ - directly from https://push.lightstreamer.com ISSLIVE"
 
         case "pissinfo":
             return "https://bsky.app/profile/iss-piss-tracker.bsky.social/post/3lxnr3lttrs2k"
