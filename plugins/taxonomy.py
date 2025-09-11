@@ -4,6 +4,12 @@ import requests
 from requests import RequestException
 
 from cloudbot import hook
+from cloudbot.util.formatting import IRC_TAGS
+
+
+def bold(text):
+    """Make text bold for IRC."""
+    return f"{IRC_TAGS['b']}{text}{IRC_TAGS['b']}"
 
 
 def is_valid_scientific_name(name: str) -> bool:
@@ -127,7 +133,7 @@ def build_taxonomy_tree(taxonomy_data: dict[str, str | None], show_relatives: bo
         indent = "    " * (i - 1) + "└── " if i > 0 else ""
         if taxon is None:
             taxon = f"(unknown {rank})"
-        tree_lines.append(indent + taxon)
+        tree_lines.append(indent + bold(taxon))
 
         if show_relatives and i < len(hierarchy) - 1:
             genus = taxonomy_data.get("genus")
