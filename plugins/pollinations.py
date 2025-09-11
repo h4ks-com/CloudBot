@@ -290,7 +290,7 @@ def plapp_command(text: str, nick: str, chan: str) -> str:
         return f"Error generating web app: {e}"
 
 
-@hook.command("pollipaste", autohelp=False)
+@hook.command("plpaste", "pollipaste", autohelp=False)
 def plpaste_command(nick: str, chan: str, text: str) -> str:
     """[nick] - Pastes the Pollinations conversation history with nick if specified."""
     global pollinations_messages_cache
