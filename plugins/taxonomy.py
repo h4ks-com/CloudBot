@@ -1,7 +1,5 @@
 """Biological taxonomy plugin for CloudBot"""
 
-from typing import Dict, List, Optional
-
 import requests
 from requests import RequestException
 
@@ -16,11 +14,9 @@ def is_valid_scientific_name(name: str) -> bool:
     return len(genus) >= 3 and len(species) >= 3 and genus[0].isupper() and species.islower()
 
 
-def search_gbif_vernacular(common_name: str) -> Optional[str]:
-    """Search GBIF using vernacular (common) names"""
+def search_gbif_vernacular(common_name: str) -> str | None:
     headers = {"User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"}
 
-    # Try multiple search variations
     search_terms = [common_name.strip(), f"domestic {common_name.strip()}", f"{common_name.strip()} domestic"]
 
     for search_term in search_terms:
@@ -44,12 +40,10 @@ def search_gbif_vernacular(common_name: str) -> Optional[str]:
                 if not all(result.get(k) for k in ["kingdom", "phylum", "class"]):
                     continue
 
-                # Skip obvious non-biological kingdoms like viruses for common names
                 kingdom = result.get("kingdom")
                 if kingdom in ["Viruses", "Bacteria", "Archaea"] and len(common_name.strip().split()) == 1:
                     continue
 
-                # Check if the search term appears in vernacular names as exact match
                 vernacular_names = result.get("vernacularNames", [])
                 search_lower = common_name.lower().strip()
 
@@ -77,9 +71,9 @@ def search_gbif_vernacular(common_name: str) -> Optional[str]:
     return None
 
 
-def get_related_species(genus: str, family: str) -> Dict[str, List[str]]:
+def get_related_species(genus: str, family: str) -> dict[str, list[str]]:
     headers = {"User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"}
-    related: Dict[str, List[str]] = {"genus_siblings": [], "family_siblings": []}
+    related: dict[str, list[str]] = {"genus_siblings": [], "family_siblings": []}
 
     try:
         if genus:
@@ -121,7 +115,7 @@ def get_related_species(genus: str, family: str) -> Dict[str, List[str]]:
     return related
 
 
-def build_taxonomy_tree(taxonomy_data: Dict[str, Optional[str]], show_relatives: bool = True) -> List[str]:
+def build_taxonomy_tree(taxonomy_data: dict[str, str | None], show_relatives: bool = True) -> list[str]:
     ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
     hierarchy = [(rank, taxonomy_data[rank]) for rank in ranks if rank in taxonomy_data and taxonomy_data[rank]]
 
@@ -131,10 +125,14 @@ def build_taxonomy_tree(taxonomy_data: Dict[str, Optional[str]], show_relatives:
     tree_lines = []
     for i, (rank, taxon) in enumerate(hierarchy):
         indent = "    " * (i - 1) + "└── " if i > 0 else ""
+        if taxon is None:
+            taxon = f"(unknown {rank})"
         tree_lines.append(indent + taxon)
 
         if show_relatives and i < len(hierarchy) - 1:
-            related = get_related_species(taxonomy_data.get("genus"), taxonomy_data.get("family"))
+            genus = taxonomy_data.get("genus")
+            family = taxonomy_data.get("family")
+            related = get_related_species(genus or "?", family or "?")
             sibling_indent = "    " * i + "├── "
 
             if rank == "family":
@@ -145,7 +143,7 @@ def build_taxonomy_tree(taxonomy_data: Dict[str, Optional[str]], show_relatives:
     return tree_lines
 
 
-def get_taxonomy_from_gbif(species_name: str) -> Optional[Dict[str, Optional[str]]]:
+def get_taxonomy_from_gbif(species_name: str) -> dict[str, str | None] | None:
     headers = {"User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"}
 
     try:
