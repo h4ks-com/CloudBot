@@ -20,6 +20,26 @@ from sqlalchemy.sql.base import Executable
 from cloudbot import hook
 from cloudbot.event import EventType
 from cloudbot.util import database
+from plugins.core.chan_track import get_users
+
+
+def check_user_authenticated(conn, nick):
+    """
+    Check if a user is authenticated with services.
+    Returns None if authenticated, error message if not.
+    """
+    if not nick or not conn:
+        return "🚫 Unable to verify user authentication status. 🚫"
+
+    try:
+        user = get_users(conn).getuser(nick)
+        if not user.account:
+            return "🚫 This command requires you to be authenticated with services (e.g., NickServ). Please identify and try again. 🚫"
+    except:
+        return "🚫 Unable to verify your authentication status. 🚫"
+
+    return None  # User is authenticated
+
 
 # Regular expressions for bean commands
 bean_add_re = re.compile(r"^\+(\d+)\s+beans?\s+to\s+(\S+)(?:\s+.*)?$", re.IGNORECASE)
@@ -126,8 +146,13 @@ def beans_cmd(text: str, nick: str, db) -> str:
 
 
 @hook.regex(bean_add_re)
-def transfer_beans_cmd(match, nick: str, db, notice, event) -> str | None:
+def transfer_beans_cmd(match, nick: str, db, notice, event, conn) -> str | None:
     """<+amount beans to user> - Transfer beans to another user."""
+    # Check if user is authenticated
+    auth_error = check_user_authenticated(conn, nick)
+    if auth_error:
+        return auth_error
+
     amount = int(match.group(1))
     target = match.group(2)
 
@@ -232,6 +257,11 @@ slot_cooldown_cache = TTLCache(maxsize=1000, ttl=3600 * 24 * 2)  # Cache for slo
 @hook.command("slots", autohelp=False)
 def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
     """[bet] - Play the slot machine! Default bet is 5 beans. Win big or lose it all!"""
+    # Check if user is authenticated
+    auth_error = check_user_authenticated(conn, nick)
+    if auth_error:
+        return auth_error
+
     emojis = ["🍒", "🍋", "🍉", "⭐", "🔔", "🍇", "🍊", "🍓"]
 
     total_beans = get_total_beans(db)
@@ -585,6 +615,11 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
         return "❌ Missing arguments. Use '.trivia help' for usage information."
 
     if subcmd == "add":
+        # Check authentication for bean transfers
+        auth_error = check_user_authenticated(conn, nick)
+        if auth_error:
+            return auth_error
+
         match = re.match(r"(\d+)\s+(.+?)\s+->\s+(\w+)$", parts[1])
         if not match:
             return "❌ Invalid format. Use: .trivia add <prize_amount> <question> -> <answer>"
@@ -660,6 +695,11 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
         return result
 
     elif subcmd == "delete":
+        # Check authentication for bean transfers
+        auth_error = check_user_authenticated(conn, nick)
+        if auth_error:
+            return auth_error
+
         try:
             trivia_id = int(parts[1])
             trivia = get_trivia(trivia_id, db)
@@ -852,6 +892,11 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
     # Now handle placing a bet
     if len(parts) < 7:
         return "❌ Missing arguments. Use '.bet help' for usage information."
+
+    # Check authentication for placing bets (involves bean transfers)
+    auth_error = check_user_authenticated(conn, nick)
+    if auth_error:
+        return auth_error
 
     if (
         parts[2].lower() not in ["place", "add"]
