@@ -19,7 +19,7 @@ from sqlalchemy import (
 
 from cloudbot import hook
 from cloudbot.util import database
-from cloudbot.util.colors import get_format
+from cloudbot.util.colors import get_format, parse
 from cloudbot.util.formatting import pluralize_auto
 
 # Configuration constants
@@ -41,89 +41,108 @@ FISH_TYPES = [
     Fish(
         name="Whale",
         rarity=0.01,
-        ascii_art="""       .
-      ":"
-    ___:____     |"\\/"|
-  ,'        `.    \\  /
-  |  O        \\___/  |
-~^~^~^~^~^~^~^~^~^~^~^~^~""",
+        ascii_art=parse(
+            """$(white,blue)                              $(clear)
+$(white,blue)       $(black,blue).                      $(clear)
+$(white,blue)      $(black,blue)":"                      $(clear)
+$(white,blue)  $(black,blue)___:____     |"\\/"|         $(clear)
+$(white,blue) $(black,blue),'        `.    \\  /         $(clear)
+$(white,blue) $(black,blue)|  $(white,blue)O$(black,blue)        \\___/  |         $(clear)
+$(cyan,blue)~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^$(clear)"""
+        ),
     ),
     Fish(
         name="Seahorse",
         rarity=0.03,
-        ascii_art="""      \\/)/)
-    _'  oo(_.-.
-  /'.     .---'
-/'-./    (
-)     ; __\\
-\\_.'\\  : __|
-     )  _/
-    (  (,.
-  mrf'-.-'""",
+        ascii_art=parse(
+            """$(white,blue)      $(orange,blue)\\/)/)                  $(clear)
+$(white,blue)     $(orange,blue)_'  oo(_.-.              $(clear)
+$(white,blue)   $(orange,blue)/'.     .---'              $(clear)
+$(white,blue) $(orange,blue)/'-./    (                   $(clear)
+$(white,blue) $(orange,blue))     ; __\\                  $(clear)
+$(white,blue) $(orange,blue)\\_.'\\  : __|                 $(clear)
+$(white,blue)     $(orange,blue))  _/                    $(clear)
+$(white,blue)    $(orange,blue)(  (,.                    $(clear)
+$(white,blue)  $(orange,blue)mrf'-.-'                    $(clear)"""
+        ),
     ),
     Fish(
         name="Tuna",
         rarity=0.08,
-        ascii_art="""      /`·.¸
-     /¸...¸`:·
- ¸.·´  ¸   `·.¸.·´)
-: © ):´;      ¸  {
- `·.¸ `·  ¸.·´\\`·¸)
-     `\\\\´´\\¸.·´""",
+        ascii_art=parse(
+            """$(white,blue)      $(gray,blue)/`·.¸                 $(clear)
+$(white,blue)      $(gray,blue)/¸...¸`:·              $(clear)
+$(white,blue)  $(gray,blue)¸.·´  ¸   `·.¸.·´)         $(clear)
+$(white,blue) $(gray,blue): © ):´;      ¸  {          $(clear)
+$(white,blue)  $(gray,blue)`·.¸ `·  ¸.·´\\`·¸)         $(clear)
+$(white,blue)      $(gray,blue)`\\\\´´\\¸.·´             $(clear)"""
+        ),
     ),
     Fish(
         name="Jellyfish",
         rarity=0.12,
-        ascii_art="""      _______
- ,-~~~       ~~~-,
-(                 )
- \\_-, , , , , ,-_/
-    / / | | \\ \\
-    | | | | | |
-    | | | | | |
-   / / /   \\ \\ \\
-   | | |   | | |""",
+        ascii_art=parse(
+            """$(white,blue)      $(pink,blue)_______                $(clear)
+$(white,blue)  $(pink,blue),-~~~       ~~~-,           $(clear)
+$(white,blue) $(pink,blue)(                 )          $(clear)
+$(white,blue)  $(pink,blue)\\_-, , , , , ,-_/           $(clear)
+$(white,blue)     $(pink,blue)/ / | | \\ \\              $(clear)
+$(white,blue)     $(pink,blue)| | | | | |              $(clear)
+$(white,blue)     $(pink,blue)| | | | | |              $(clear)
+$(white,blue)    $(pink,blue)/ / /   \\ \\ \\             $(clear)
+$(white,blue)    $(pink,blue)| | |   | | |             $(clear)"""
+        ),
     ),
     Fish(
         name="Baby Shark",
         rarity=0.15,
-        ascii_art="""      .
-\\_____)\_____
-/--v____ __`<
-        )/
-        '""",
+        ascii_art=parse(
+            """$(white,blue)        $(dgray,blue).                     $(clear)
+$(white,blue) $(dgray,blue)\\_____)\_____                 $(clear)
+$(white,blue) $(dgray,blue)/--v____ __`<                 $(clear)
+$(white,blue)         $(dgray,blue))/                    $(clear)
+$(white,blue)         $(dgray,blue)'                     $(clear)"""
+        ),
     ),
     Fish(
         name="Silver Carp",
         rarity=0.20,
-        ascii_art="""      /"*._         _
-  .-*'`    `*-.._.-'/
-< * ))     ,       (
-  `*-._`._(__.--*"`.""",
+        ascii_art=parse(
+            """$(white,blue)      $(gray,blue)/"*._         _        $(clear)
+$(white,blue)   $(gray,blue).-*'`    `*-.._.-'/        $(clear)
+$(white,blue) $(gray,blue)< * ))     ,       (         $(clear)
+$(white,blue)   $(gray,blue)`*-._`._(__.--*"`.         $(clear)"""
+        ),
     ),
     Fish(
         name="Cory",
         rarity=0.25,
-        ascii_art="""      /\\
-    _/./
- ,-'    `-:..-'/
-: o )      _  (
-"`-....,--; `-=\\
-    `'""",
+        ascii_art=parse(
+            """$(white,blue)        $(brown,blue)/\\                   $(clear)
+$(white,blue)       $(brown,blue)_/./                   $(clear)
+$(white,blue)  $(brown,blue),-'    `-:..-'/              $(clear)
+$(white,blue) $(brown,blue): o )      _  (               $(clear)
+$(white,blue) $(brown,blue)"`-....,--; `-=\\              $(clear)
+$(white,blue)       $(brown,blue)`'                     $(clear)"""
+        ),
     ),
     Fish(
         name="Carp",
         rarity=0.35,
-        ascii_art="""  ;,//;,    ,;/
- o:::::::;;///
->::::::::;;\\\\\\
-  ''\\\\\\\\'" ';\\""",
+        ascii_art=parse(
+            """$(white,blue)  $(orange,blue);,//;,    ,;/               $(clear)
+$(white,blue)  $(orange,blue)o:::::::;;///               $(clear)
+$(white,blue) $(orange,blue)>::::::::;;\\\\\\               $(clear)
+$(white,blue)   $(orange,blue)''\\\\\\\\'" ';\\               $(clear)"""
+        ),
     ),
     Fish(
         name="Fry",
         rarity=0.70,
-        ascii_art="""  _
-><_>""",
+        ascii_art=parse(
+            """$(white,blue)  $(yellow,blue)_                           $(clear)
+$(white,blue) $(yellow,blue)><_>                          $(clear)"""
+        ),
     ),
 ]
 
@@ -131,11 +150,13 @@ FISH_TYPES = [
 FISH_RESTS = Fish(
     name="Nothing",
     rarity=0.0,  # Calculated as remainder
-    ascii_art="""|\\    \\ \\ \\ \\ \\ \\ \\      __
-|  \\    \\ \\ \\ \\ \\ \\ \\   | O~-_
-|   >----|-|-|-|-|-|-|--|  __/
-|  /    / / / / / / /   |__\\
-|/     / / / / / / /""",
+    ascii_art=parse(
+        """$(white,blue) $(brown,blue)|\\    \\ \\ \\ \\ \\ \\ \\      __    $(clear)
+$(white,blue) $(brown,blue)|  \\    \\ \\ \\ \\ \\ \\ \\   | O~-_ $(clear)
+$(white,blue) $(brown,blue)|   >----|-|-|-|-|-|-|--|  __/ $(clear)
+$(white,blue) $(brown,blue)|  /    / / / / / / /   |__\\   $(clear)
+$(white,blue) $(brown,blue)|/     / / / / / / /           $(clear)"""
+    ),
 )
 
 # Database tables
