@@ -76,19 +76,43 @@ LICK_EFFECTS = [
     "and tastes the rainbow",
     "and unlocks a new flavor: electric blue",
     "and their taste buds do a little dance",
+    "and accidentally hacks NASA's coffee machine",
+    "and briefly infiltrates Russian Twitter accounts",
+    "and writes a bestselling novel in 0.3 seconds",
+    "and invents cold fusion but immediately forgets how",
+    "and becomes fluent in binary",
+    "and accidentally launches themselves into orbit",
+    "and discovers they can mine Bitcoin with their brain",
+    "and briefly becomes the CEO of three Fortune 500 companies",
+    "and solves world hunger but gets distracted by shiny objects",
+    "and accidentally creates sentient AI that only speaks in dad jokes",
+    "and becomes a human WiFi hotspot",
+    "and gains the ability to debug code just by looking at it",
+    "and accidentally deletes the International Space Station's internet history",
+    "and becomes the world's first tongue-powered cryptocurrency",
+    "and briefly achieves faster-than-light tongue speed",
+    "and accidentally reverse-engineers alien technology",
+    "and becomes a living meme for exactly 17 minutes",
+    "and discovers the secret to eternal battery life",
+    "and accidentally creates a black hole in their kitchen",
+    "and becomes the unofficial ambassador to the Galactic Federation",
+    "and invents a programming language that only works when whispered",
+    "and accidentally solves the P vs NP problem but writes it on a napkin that blows away",
+    "and becomes a human USB port",
+    "and briefly controls all traffic lights in a 50-mile radius",
+    "and accidentally creates a time loop that lasts exactly one sneeze",
+    "and gains the power to make any code compile on the first try",
+    "and becomes the world's first biological 5G tower",
+    "and accidentally teaches their cat to code in Python",
+    "and discovers they can charge Tesla cars by high-fiving them",
+    "and briefly becomes the human embodiment of Stack Overflow",
 ]
 
 
 def get_random_number() -> str:
     """Generate an absurdly high random number for comedic effect."""
-    # Random number between 1 million and 999 billion
+    # Random number between 1 million and 999 billion (always integer)
     base = random.randint(1_000_000, 999_999_999_999)
-
-    # Sometimes add ridiculous precision
-    if random.random() < 0.3:
-        decimal = random.randint(1, 999)
-        return f"{base:,}.{decimal}"
-
     return f"{base:,}"
 
 
