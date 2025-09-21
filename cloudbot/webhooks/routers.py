@@ -69,11 +69,8 @@ def send_message(
         return SendMessageResponse(status="error", detail="Invalid target")
     if not request.message or not request.message.strip():
         return SendMessageResponse(status="error", detail="Invalid message")
-    try:
-        connection.message(request.target, request.message)
-        return SendMessageResponse(
-            status="sent",
-            detail="Message sent. IRC errors (e.g., invalid target) are logged but not returned here.",
-        )
-    except Exception as e:
-        return SendMessageResponse(status="error", detail=str(e))
+    connection.message(request.target, request.message)
+    return SendMessageResponse(
+        status="sent",
+        detail="Message sent. IRC errors (e.g., invalid target) are logged but not returned here.",
+    )
