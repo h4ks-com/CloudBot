@@ -19,6 +19,8 @@ class VibeSearchResult(TypedDict):
     date_modified: str
     num_opens: int
     html_path: str
+    path_url: str
+    subdomain_url: str | None
     github_url: str
 
 
@@ -55,9 +57,14 @@ class VibeClient:
         if response_json["status"] != "success":
             return {"status": "error", "message": response_json["message"], "response": response.text}
 
+        response_data = response_json
+        preferred_url = response_data.get("subdomain_url") or response_data.get("path_url")
+        if not preferred_url and "html_path" in response_data:
+            preferred_url = f"{self.api_url}{response_data['html_path']}"
+
         return {
             "status": "success",
-            "url": f"{self.api_url}{response_json['html_path']}",
+            "url": preferred_url,
         }
 
     def create(self, name: str, prompt: str) -> VibeResponse | dict:
@@ -110,8 +117,10 @@ def vibegame(text: str, chan: str, nick: str, reply) -> None | str:
         return f"Error: No game found for {name}"
 
     for result in response[:3]:
-        url = f"{client.api_url}{result['html_path']}"
-        reply(f"{result['project']} at {url} ({result['num_opens']} opens) - {result['github_url']}")
+        preferred_url = result.get("subdomain_url") or result.get("path_url")
+        if not preferred_url:
+            preferred_url = f"{client.api_url}{result['html_path']}"
+        reply(f"{result['project']} at {preferred_url} ({result['num_opens']} opens) - {result['github_url']}")
 
 
 @hook.command("vibeadd", "vibecreate", autohelp=False)
