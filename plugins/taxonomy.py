@@ -17,13 +17,24 @@ def is_valid_scientific_name(name: str) -> bool:
     if len(words) != 2:
         return False
     genus, species = words
-    return len(genus) >= 3 and len(species) >= 3 and genus[0].isupper() and species.islower()
+    return (
+        len(genus) >= 3
+        and len(species) >= 3
+        and genus[0].isupper()
+        and species.islower()
+    )
 
 
 def search_gbif_vernacular(common_name: str) -> str | None:
-    headers = {"User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"}
+    headers = {
+        "User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"
+    }
 
-    search_terms = [common_name.strip(), f"domestic {common_name.strip()}", f"{common_name.strip()} domestic"]
+    search_terms = [
+        common_name.strip(),
+        f"domestic {common_name.strip()}",
+        f"{common_name.strip()} domestic",
+    ]
 
     for search_term in search_terms:
         try:
@@ -43,11 +54,16 @@ def search_gbif_vernacular(common_name: str) -> str | None:
             response.raise_for_status()
 
             for result in response.json().get("results", []):
-                if not all(result.get(k) for k in ["kingdom", "phylum", "class"]):
+                if not all(
+                    result.get(k) for k in ["kingdom", "phylum", "class"]
+                ):
                     continue
 
                 kingdom = result.get("kingdom")
-                if kingdom in ["Viruses", "Bacteria", "Archaea"] and len(common_name.strip().split()) == 1:
+                if (
+                    kingdom in ["Viruses", "Bacteria", "Archaea"]
+                    and len(common_name.strip().split()) == 1
+                ):
                     continue
 
                 vernacular_names = result.get("vernacularNames", [])
@@ -60,9 +76,12 @@ def search_gbif_vernacular(common_name: str) -> str | None:
                         vern_name == search_lower
                         or vern_name == f"domestic {search_lower}"
                         or vern_name == f"{search_lower} domestic"
-                        or search_lower == vern_name.replace("domestic ", "").strip()
+                        or search_lower
+                        == vern_name.replace("domestic ", "").strip()
                     ):
-                        scientific_name = result.get("scientificName") or result.get("canonicalName")
+                        scientific_name = result.get(
+                            "scientificName"
+                        ) or result.get("canonicalName")
                         if scientific_name:
                             # Extract just genus species (first two words) to remove author info
                             parts = scientific_name.split()
@@ -78,14 +97,24 @@ def search_gbif_vernacular(common_name: str) -> str | None:
 
 
 def get_related_species(genus: str, family: str) -> dict[str, list[str]]:
-    headers = {"User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"}
-    related: dict[str, list[str]] = {"genus_siblings": [], "family_siblings": []}
+    headers = {
+        "User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"
+    }
+    related: dict[str, list[str]] = {
+        "genus_siblings": [],
+        "family_siblings": [],
+    }
 
     try:
         if genus:
             response = requests.get(
                 "https://api.gbif.org/v1/species/search",
-                params={"q": genus, "rank": "SPECIES", "limit": 4, "kingdom": "Animalia"},
+                params={
+                    "q": genus,
+                    "rank": "SPECIES",
+                    "limit": 4,
+                    "kingdom": "Animalia",
+                },
                 headers=headers,
                 timeout=5,
             )
@@ -93,13 +122,22 @@ def get_related_species(genus: str, family: str) -> dict[str, list[str]]:
 
             for result in response.json().get("results", []):
                 name = result.get("scientificName", "")
-                if name.startswith(genus + " ") and result.get("genus") == genus and len(related["genus_siblings"]) < 2:
+                if (
+                    name.startswith(genus + " ")
+                    and result.get("genus") == genus
+                    and len(related["genus_siblings"]) < 2
+                ):
                     related["genus_siblings"].append(name)
 
         if family:
             response = requests.get(
                 "https://api.gbif.org/v1/species/search",
-                params={"q": family, "rank": "GENUS", "limit": 4, "kingdom": "Animalia"},
+                params={
+                    "q": family,
+                    "rank": "GENUS",
+                    "limit": 4,
+                    "kingdom": "Animalia",
+                },
                 headers=headers,
                 timeout=5,
             )
@@ -121,9 +159,23 @@ def get_related_species(genus: str, family: str) -> dict[str, list[str]]:
     return related
 
 
-def build_taxonomy_tree(taxonomy_data: dict[str, str | None], show_relatives: bool = True) -> list[str]:
-    ranks = ["kingdom", "phylum", "class", "order", "family", "genus", "species"]
-    hierarchy = [(rank, taxonomy_data[rank]) for rank in ranks if rank in taxonomy_data and taxonomy_data[rank]]
+def build_taxonomy_tree(
+    taxonomy_data: dict[str, str | None], show_relatives: bool = True
+) -> list[str]:
+    ranks = [
+        "kingdom",
+        "phylum",
+        "class",
+        "order",
+        "family",
+        "genus",
+        "species",
+    ]
+    hierarchy = [
+        (rank, taxonomy_data[rank])
+        for rank in ranks
+        if rank in taxonomy_data and taxonomy_data[rank]
+    ]
 
     if not hierarchy:
         return ["No taxonomic data available"]
@@ -142,25 +194,46 @@ def build_taxonomy_tree(taxonomy_data: dict[str, str | None], show_relatives: bo
             sibling_indent = "    " * i + "├── "
 
             if rank == "family":
-                tree_lines.extend(sibling_indent + genus for genus in related["family_siblings"][:2])
+                tree_lines.extend(
+                    sibling_indent + genus
+                    for genus in related["family_siblings"][:2]
+                )
             elif rank == "genus":
-                tree_lines.extend(sibling_indent + species for species in related["genus_siblings"][:2])
+                tree_lines.extend(
+                    sibling_indent + species
+                    for species in related["genus_siblings"][:2]
+                )
 
     return tree_lines
 
 
 def get_taxonomy_from_gbif(species_name: str) -> dict[str, str | None] | None:
-    headers = {"User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"}
+    headers = {
+        "User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"
+    }
 
     try:
         response = requests.get(
-            "https://api.gbif.org/v1/species/match", params={"name": species_name.strip()}, headers=headers, timeout=5
+            "https://api.gbif.org/v1/species/match",
+            params={"name": species_name.strip()},
+            headers=headers,
+            timeout=5,
         )
         response.raise_for_status()
         data = response.json()
 
         if data.get("matchType") != "NONE" and data.get("scientificName"):
-            taxonomy = {rank: data.get(rank) for rank in ["kingdom", "phylum", "class", "order", "family", "genus"]}
+            taxonomy = {
+                rank: data.get(rank)
+                for rank in [
+                    "kingdom",
+                    "phylum",
+                    "class",
+                    "order",
+                    "family",
+                    "genus",
+                ]
+            }
             taxonomy["species"] = data.get("scientificName")
             return taxonomy
 
@@ -177,8 +250,20 @@ def get_taxonomy_from_gbif(species_name: str) -> dict[str, str | None] | None:
                 continue
 
             # Accept any kingdom that has proper taxonomic structure
-            taxonomy = {rank: result.get(rank) for rank in ["kingdom", "phylum", "class", "order", "family", "genus"]}
-            taxonomy["species"] = result.get("scientificName") or result.get("canonicalName")
+            taxonomy = {
+                rank: result.get(rank)
+                for rank in [
+                    "kingdom",
+                    "phylum",
+                    "class",
+                    "order",
+                    "family",
+                    "genus",
+                ]
+            }
+            taxonomy["species"] = result.get("scientificName") or result.get(
+                "canonicalName"
+            )
             return taxonomy
 
     except RequestException:
@@ -219,7 +304,9 @@ def taxonomy(text: str, reply) -> None:
             reply(f"No taxonomic data found for '{species_name}'")
             return
 
-        for line in build_taxonomy_tree(taxonomy_data, show_relatives=not simple_mode):
+        for line in build_taxonomy_tree(
+            taxonomy_data, show_relatives=not simple_mode
+        ):
             reply(line)
 
     except Exception:

@@ -60,7 +60,9 @@ def add_alias(text: str, nick: str, db, reply, notice) -> None:
 
     # Check if alias already exists
     res = db.execute(
-        aliases_table.select().where(aliases_table.c.nick == nick_lower).where(aliases_table.c.name == name)
+        aliases_table.select()
+        .where(aliases_table.c.nick == nick_lower)
+        .where(aliases_table.c.name == name)
     ).fetchone()
 
     if res:
@@ -98,10 +100,16 @@ def delete_alias(text: str, nick: str, db, reply, notice) -> None:
     nick_lower = nick.lower()
 
     if nick_lower not in aliases_cache or name not in aliases_cache[nick_lower]:
-        reply(f"You do not have an alias named '{name}' or you are trying to delete an alias for another user?")
+        reply(
+            f"You do not have an alias named '{name}' or you are trying to delete an alias for another user?"
+        )
         return
 
-    db.execute(aliases_table.delete().where(aliases_table.c.nick == nick_lower).where(aliases_table.c.name == name))
+    db.execute(
+        aliases_table.delete()
+        .where(aliases_table.c.nick == nick_lower)
+        .where(aliases_table.c.name == name)
+    )
 
     db.commit()
     del aliases_cache[nick_lower][name]
@@ -148,14 +156,21 @@ def copy_alias(text: str, nick: str, db, reply, notice) -> None:
     source_nick_lower = source_nick.lower()
     alias_name_lower = alias_name.lower()
 
-    if source_nick_lower not in aliases_cache or alias_name_lower not in aliases_cache[source_nick_lower]:
+    if (
+        source_nick_lower not in aliases_cache
+        or alias_name_lower not in aliases_cache[source_nick_lower]
+    ):
         reply(f"Alias '{alias_name}' not found for user '{source_nick}'.")
         return
 
     cmdline = aliases_cache[source_nick_lower][alias_name_lower]
 
     # Add the alias to the current user's aliases
-    db.execute(aliases_table.insert().values(nick=nick.lower(), name=alias_name_lower, cmdline=cmdline))
+    db.execute(
+        aliases_table.insert().values(
+            nick=nick.lower(), name=alias_name_lower, cmdline=cmdline
+        )
+    )
     db.commit()
 
     aliases_cache.setdefault(nick.lower(), {})[alias_name_lower] = cmdline

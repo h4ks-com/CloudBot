@@ -23,4 +23,3 @@ def today(reply) -> str:
     except Exception:
         reply("There was an error getting today's historical facts.")
         raise
-

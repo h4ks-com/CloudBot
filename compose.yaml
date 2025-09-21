@@ -3,4 +3,4 @@ services:
     build: .
     restart: always
     volumes:
-      - ./config.json:/app/config.json
+    - ./config.json:/app/config.json

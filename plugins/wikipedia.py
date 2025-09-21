@@ -34,7 +34,9 @@ def wiki(text, reply):
 
     search_params = {"srsearch": text.strip()}
     try:
-        with requests.get(search_url, params=search_params, headers=headers) as response:
+        with requests.get(
+            search_url, params=search_params, headers=headers
+        ) as response:
             response.raise_for_status()
             data = response.json()
     except RequestException:

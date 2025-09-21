@@ -48,7 +48,9 @@ class UnknownFiatCurrencyError(APIError):
 
 
 class APIResponse:
-    def __init__(self, api, data: "UntypedResponse", response: Response) -> None:
+    def __init__(
+        self, api, data: "UntypedResponse", response: Response
+    ) -> None:
         self.api = api
         self.data = data
         self.response = response
@@ -86,7 +88,9 @@ class SchemaMeta(type):
         if members.setdefault("_abstract", False):
             super_fields = ()
             for base in bases:
-                if not getattr(base, "_abstract", False) and isinstance(base, cls):
+                if not getattr(base, "_abstract", False) and isinstance(
+                    base, cls
+                ):
                     super_fields = getattr(base, "_fields")
                     break
 
@@ -144,7 +148,9 @@ class UntypedResponse(APIRequestResponse):
 
 
 class Platform(Schema):
-    def __init__(self, id: int, name: str, symbol: str, slug: str, token_address: str):
+    def __init__(
+        self, id: int, name: str, symbol: str, slug: str, token_address: str
+    ):
         super().__init__()
         self.id = id
         self.name = name
@@ -241,7 +247,9 @@ class FiatCurrencyMap(APIRequestResponse):
         super().__init__(status)
         self.data = data
 
-        self.symbols = {currency.symbol: currency.sign for currency in self.data}
+        self.symbols = {
+            currency.symbol: currency.sign for currency in self.data
+        }
 
 
 class CryptoCurrencyEntry(Schema):
@@ -277,7 +285,9 @@ class CryptoCurrencyMap(APIRequestResponse):
         self.names = {currency.symbol for currency in self.data}
 
 
-BAD_FIELD_TYPE_MSG = "field {field!r} expected type {exp_type!r}, got type {act_type!r}"
+BAD_FIELD_TYPE_MSG = (
+    "field {field!r} expected type {exp_type!r}, got type {act_type!r}"
+)
 
 
 def sentinel(name: str):
@@ -325,7 +335,11 @@ def _hydrate_object(_value, _cls):
         return _value
 
     # Cast digits to str if possible
-    if isinstance(_value, (int, float, Decimal)) and _cls is str and str(_value).replace(".", "", 1).isdigit():
+    if (
+        isinstance(_value, (int, float, Decimal))
+        and _cls is str
+        and str(_value).replace(".", "", 1).isdigit()
+    ):
         return str(_value)
 
     # Cast str to int or float if possible
@@ -356,7 +370,12 @@ def _hydrate_object(_value, _cls):
         if issubclass(typing_cls, dict):
             _assert_type(_value, dict, _cls)
 
-            return {_hydrate_object(k, type_args[0]): _hydrate_object(v, type_args[1]) for k, v in _value.items()}
+            return {
+                _hydrate_object(k, type_args[0]): _hydrate_object(
+                    v, type_args[1]
+                )
+                for k, v in _value.items()
+            }
 
         # pragma: no cover
         raise TypeError(f"Can't match typing alias {typing_cls!r}")
@@ -392,17 +411,27 @@ def read_data(data: Dict, schema_cls: Type[T]) -> T:
             try:
                 out[name] = _hydrate_object(value, param_type)
             except TypeAssertError as e:
-                raise TypeError(BAD_FIELD_TYPE_MSG.format(field=name, exp_type=e.cls, act_type=type(e.obj))) from e
+                raise TypeError(
+                    BAD_FIELD_TYPE_MSG.format(
+                        field=name, exp_type=e.cls, act_type=type(e.obj)
+                    )
+                ) from e
         except (MissingSchemaField, TypeAssertError, ParseError) as e:
-            raise ParseError(f"Unable to parse schema {schema_cls.__name__!r}") from e
+            raise ParseError(
+                f"Unable to parse schema {schema_cls.__name__!r}"
+            ) from e
 
     obj = schema_cls(**out)
 
-    obj.unknown_fields.update({key: data[key] for key in data if key not in field_names})
+    obj.unknown_fields.update(
+        {key: data[key] for key in data if key not in field_names}
+    )
 
     if obj.unknown_fields:
         warnings.warn(
-            "Unknown fields: {} while parsing schema {!r}".format(list(obj.unknown_fields.keys()), schema_cls.__name__)
+            "Unknown fields: {} while parsing schema {!r}".format(
+                list(obj.unknown_fields.keys()), schema_cls.__name__
+            )
         )
 
     return obj
@@ -505,7 +534,9 @@ class CoinMarketCapAPI:
         return out
 
     def get_fiat_currency_map(self) -> FiatCurrencyMap:
-        return self._request_cache("fiat_currency_map", "fiat/map", FiatCurrencyMap, 86400)
+        return self._request_cache(
+            "fiat_currency_map", "fiat/map", FiatCurrencyMap, 86400
+        )
 
     def get_crypto_currency_map(self) -> CryptoCurrencyMap:
         return self._request_cache(
@@ -515,7 +546,9 @@ class CoinMarketCapAPI:
             86400,
         )
 
-    def _request_cache(self, name: str, endpoint: str, fmt: Type[T], ttl: int) -> T:
+    def _request_cache(
+        self, name: str, endpoint: str, fmt: Type[T], ttl: int
+    ) -> T:
         out = self.cache.get(name)
         if out is None:
             currencies = self.request(endpoint).data.cast_to(fmt)
@@ -525,7 +558,9 @@ class CoinMarketCapAPI:
 
     def request(self, endpoint: str, **params) -> APIResponse:
         url = str(self.api_url / endpoint)
-        with requests.get(url, headers=self.request_headers, params=params) as response:
+        with requests.get(
+            url, headers=self.request_headers, params=params
+        ) as response:
             api_response = APIResponse.from_response(self, response)
             self.check(api_response)
 
@@ -625,7 +660,9 @@ def crypto_command(text, event):
 
     num_format = format_price(quote.price)
 
-    return colors.parse("{} ({}) // $(orange){}{}$(clear) {} " + btc + "// {} change").format(
+    return colors.parse(
+        "{} ({}) // $(orange){}{}$(clear) {} " + btc + "// {} change"
+    ).format(
         data.symbol,
         data.slug,
         currency_sign,

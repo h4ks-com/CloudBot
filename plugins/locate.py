@@ -67,13 +67,19 @@ class GoogleLocation:
         location_name = result["formatted_address"]
         location = result["geometry"]["location"]
         formatted_location = "{lat},{lng},16z".format(**location)
-        countries = [x["long_name"] for x in result["address_components"] if "country" in x["types"]]
+        countries = [
+            x["long_name"]
+            for x in result["address_components"]
+            if "country" in x["types"]
+        ]
         if not countries:
             country = ""
         else:
             country = countries[0]
 
-        url = "https://google.com/maps/@" + formatted_location + "/data=!3m1!1e3"
+        url = (
+            "https://google.com/maps/@" + formatted_location + "/data=!3m1!1e3"
+        )
         tags = result["types"]
 
         # if 'political' is not the only tag, remove it.
@@ -81,7 +87,9 @@ class GoogleLocation:
             tags = [x for x in result["types"] if x != "political"]
 
         tags = ", ".join(tags).replace("_", " ")
-        return GoogleLocation(location["lat"], location["lng"], url, tags, location_name, country)
+        return GoogleLocation(
+            location["lat"], location["lng"], url, tags, location_name, country
+        )
 
     @staticmethod
     def from_address(text: str, dev_key: str) -> "GoogleLocation":
@@ -90,7 +98,9 @@ class GoogleLocation:
         if bias:
             params["region"] = bias
 
-        return GoogleLocation._from_api_response(requests.get(geocode_api, params=params))
+        return GoogleLocation._from_api_response(
+            requests.get(geocode_api, params=params)
+        )
 
     @staticmethod
     def from_lat_lng(lat: float, lng: float, dev_key: str) -> "GoogleLocation":
@@ -99,7 +109,9 @@ class GoogleLocation:
         if bias:
             params["region"] = bias
 
-        return GoogleLocation._from_api_response(requests.get(geocode_api, params=params))
+        return GoogleLocation._from_api_response(
+            requests.get(geocode_api, params=params)
+        )
 
 
 @hook.command("locate", "maps")

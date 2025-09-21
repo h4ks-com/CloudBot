@@ -115,7 +115,9 @@ def directions(text, event, reply, bot, nick, chan):
     if len(points) != 2:
         return usage_msg
 
-    reply(f"🔍 Searching directions from '{points[0]}' to '{points[1]}' using '{mode or 'all'}'")
+    reply(
+        f"🔍 Searching directions from '{points[0]}' to '{points[1]}' using '{mode or 'all'}'"
+    )
     now = datetime.now(pytz.timezone("UTC"))
     last_hour_usages.append(now)
 
@@ -154,7 +156,11 @@ def directions(text, event, reply, bot, nick, chan):
             distance = step.get("distance", {}).get("text", "")
             msg = f"    {emoji} {distance}: {html_to_irc(step['html_instructions'])}"
             if mode == "transit":
-                arrival_time = step.get("transit_details", {}).get("arrival_time", {}).get("text", "")
+                arrival_time = (
+                    step.get("transit_details", {})
+                    .get("arrival_time", {})
+                    .get("text", "")
+                )
                 headsign = step.get("transit_details", {}).get("headsign", "")
                 num_stops = step.get("transit_details", {}).get("num_stops", "")
                 msg += f" - {headsign} ({arrival_time}) - {num_stops} stops"
@@ -191,7 +197,15 @@ def streetview(text, reply, bot):
     params: dict[str, int] = {}
     for param in re.findall(r"\b(\w+):(-?\d+\.?\d*)\b", text):
         key, value = param
-        if key in ["fov", "heading", "pitch", "width", "height", "move", "move_heading"]:
+        if key in [
+            "fov",
+            "heading",
+            "pitch",
+            "width",
+            "height",
+            "move",
+            "move_heading",
+        ]:
             text = text.replace(f"{key}:{value}", "")
             try:
                 params[key] = int(value)
@@ -260,7 +274,9 @@ def new_guess_game(bot, chan) -> str:
         return "Too many requests. Please try again later."
 
     def get_random_land_location() -> GoogleLocation:
-        countries: "dict[str, str]" = json.loads(open("plugins/ISO3166-1.alpha2.json").read())
+        countries: "dict[str, str]" = json.loads(
+            open("plugins/ISO3166-1.alpha2.json").read()
+        )
         country_code = random.choice(list(countries.keys()))
         country_name = countries[country_code]
 
@@ -297,7 +313,9 @@ def new_guess_game(bot, chan) -> str:
 
     image_url = upload_image(streetview)
 
-    guess_games[chan] = GuessGame(location, datetime.now(pytz.timezone("UTC")), image_url)
+    guess_games[chan] = GuessGame(
+        location, datetime.now(pytz.timezone("UTC")), image_url
+    )
     return f"🌎 Try to guess what country is: {image_url}"
 
 
@@ -326,9 +344,9 @@ def geo_guess(text, chan, nick, reply, bot):
         else:
             return f"🔍 Incorrect guess. Try again!"
 
-    if chan in guess_games and guess_games[chan].start_time + timedelta(seconds=MIN_GUESS_GAME_DURATION) > datetime.now(
-        pytz.timezone("UTC")
-    ):
+    if chan in guess_games and guess_games[chan].start_time + timedelta(
+        seconds=MIN_GUESS_GAME_DURATION
+    ) > datetime.now(pytz.timezone("UTC")):
         return f"There is already an active GeoGuess game in this channel {guess_games[chan].image_url} - Try to guess the country with '.geoguess <country>'."
 
     reply("🔍 Starting a new GeoGuess game...")

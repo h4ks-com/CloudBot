@@ -47,18 +47,30 @@ class VibeClient:
             self._instance = VibeClient()
         return self._instance
 
-    def _handle_response(self, response: requests.Response) -> VibeResponse | dict:
+    def _handle_response(
+        self, response: requests.Response
+    ) -> VibeResponse | dict:
         try:
             response.raise_for_status()
         except requests.HTTPError as e:
-            return {"status": "error", "message": str(e), "response": response.text}
+            return {
+                "status": "error",
+                "message": str(e),
+                "response": response.text,
+            }
 
         response_json = response.json()
         if response_json["status"] != "success":
-            return {"status": "error", "message": response_json["message"], "response": response.text}
+            return {
+                "status": "error",
+                "message": response_json["message"],
+                "response": response.text,
+            }
 
         response_data = response_json
-        preferred_url = response_data.get("subdomain_url") or response_data.get("path_url")
+        preferred_url = response_data.get("subdomain_url") or response_data.get(
+            "path_url"
+        )
         if not preferred_url and "html_path" in response_data:
             preferred_url = f"{self.api_url}{response_data['html_path']}"
 
@@ -69,19 +81,26 @@ class VibeClient:
 
     def create(self, name: str, prompt: str) -> VibeResponse | dict:
         """Create a new game"""
-        response = self.session.post(f"{self.api_url}/api/ai/{name}", json={"content": prompt})
+        response = self.session.post(
+            f"{self.api_url}/api/ai/{name}", json={"content": prompt}
+        )
         return self._handle_response(response)
 
     def update(self, name: str, prompt: str) -> VibeResponse | dict:
         """Update an existing game"""
-        response = self.session.put(f"{self.api_url}/api/ai/{name}", json={"content": prompt})
+        response = self.session.put(
+            f"{self.api_url}/api/ai/{name}", json={"content": prompt}
+        )
         return self._handle_response(response)
 
-    def add(self, name: str, content: bytes, path: str = "index.html") -> VibeResponse | dict:
+    def add(
+        self, name: str, content: bytes, path: str = "index.html"
+    ) -> VibeResponse | dict:
         """Import a game"""
         text = base64.b64encode(content).decode("utf-8")
         response = self.session.put(
-            f"{self.api_url}/api/project/{name}/{path}", json={"content": text, "encoding": "base64"}
+            f"{self.api_url}/api/project/{name}/{path}",
+            json={"content": text, "encoding": "base64"},
         )
         return self._handle_response(response)
 
@@ -92,7 +111,10 @@ class VibeClient:
 
     def search(self, name: str) -> list[VibeSearchResult]:
         """Search for a game"""
-        response = self.session.get(f"{self.api_url}/api/games", params={"search_query": name, "sort_by": "hottest"})
+        response = self.session.get(
+            f"{self.api_url}/api/games",
+            params={"search_query": name, "sort_by": "hottest"},
+        )
         if response.status_code != 200:
             return []
         response_json = response.json()
@@ -120,7 +142,9 @@ def vibegame(text: str, chan: str, nick: str, reply) -> None | str:
         preferred_url = result.get("subdomain_url") or result.get("path_url")
         if not preferred_url:
             preferred_url = f"{client.api_url}{result['html_path']}"
-        reply(f"{result['project']} at {preferred_url} ({result['num_opens']} opens) - {result['github_url']}")
+        reply(
+            f"{result['project']} at {preferred_url} ({result['num_opens']} opens) - {result['github_url']}"
+        )
 
 
 @hook.command("vibeadd", "vibecreate", autohelp=False)

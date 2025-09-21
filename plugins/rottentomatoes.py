@@ -16,7 +16,12 @@ def scrape_rotten_tomatoes(movie_title: str) -> dict[str, Any] | None:
     }
 
     try:
-        response = requests.get(search_url, params={"search": movie_title}, headers=headers, timeout=10)
+        response = requests.get(
+            search_url,
+            params={"search": movie_title},
+            headers=headers,
+            timeout=10,
+        )
         response.raise_for_status()
 
         soup = BeautifulSoup(response.content, "html.parser")
@@ -48,22 +53,35 @@ def _find_best_movie_match(movie_links: list, movie_title: str):
     # Try exact title match first
     for link in movie_links:
         link_text = link.get_text().strip().lower()
-        parent_text = link.parent.get_text().strip().lower() if link.parent else ""
+        parent_text = (
+            link.parent.get_text().strip().lower() if link.parent else ""
+        )
 
         if movie_title_lower in link_text or movie_title_lower in parent_text:
             return link
 
     # Fallback to word matching for complex titles
-    significant_words = [word for word in movie_title_lower.split() if len(word) > 3]
+    significant_words = [
+        word for word in movie_title_lower.split() if len(word) > 3
+    ]
     if len(significant_words) >= 2:
         for link in movie_links:
             link_text = link.get_text().strip().lower()
-            parent_text = link.parent.get_text().strip().lower() if link.parent else ""
+            parent_text = (
+                link.parent.get_text().strip().lower() if link.parent else ""
+            )
 
-            link_matches = sum(1 for word in significant_words if word in link_text)
-            parent_matches = sum(1 for word in significant_words if word in parent_text)
+            link_matches = sum(
+                1 for word in significant_words if word in link_text
+            )
+            parent_matches = sum(
+                1 for word in significant_words if word in parent_text
+            )
 
-            if link_matches >= len(significant_words) // 2 or parent_matches >= len(significant_words) // 2:
+            if (
+                link_matches >= len(significant_words) // 2
+                or parent_matches >= len(significant_words) // 2
+            ):
                 return link
 
     return movie_links[0]
@@ -75,7 +93,9 @@ def _construct_movie_url(href: str) -> str:
     return "https://www.rottentomatoes.com" + href
 
 
-def _extract_movie_data(movie_soup: BeautifulSoup, fallback_title: str) -> dict[str, Any]:
+def _extract_movie_data(
+    movie_soup: BeautifulSoup, fallback_title: str
+) -> dict[str, Any]:
     movie_data = {}
 
     # Extract title and year from JSON-LD script tags
@@ -86,7 +106,9 @@ def _extract_movie_data(movie_soup: BeautifulSoup, fallback_title: str) -> dict[
             if "aggregateRating" in json_data:
                 movie_data["title"] = json_data.get("name", fallback_title)
                 date_published = json_data.get("datePublished", "")
-                movie_data["year"] = date_published[:4] if date_published else ""
+                movie_data["year"] = (
+                    date_published[:4] if date_published else ""
+                )
                 break
         except (json.JSONDecodeError, AttributeError):
             continue
@@ -110,7 +132,9 @@ def _extract_movie_data(movie_soup: BeautifulSoup, fallback_title: str) -> dict[
     if "title" not in movie_data:
         title_element = movie_soup.find("h1") or movie_soup.find("title")
         if title_element:
-            movie_data["title"] = title_element.get_text().strip().split(" - ")[0]
+            movie_data["title"] = (
+                title_element.get_text().strip().split(" - ")[0]
+            )
 
     return movie_data
 

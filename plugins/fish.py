@@ -98,7 +98,7 @@ $(white,blue)    $(pink,blue)| | |   | | |             $(clear)"""
         rarity=0.15,
         ascii_art=parse(
             """$(white,blue)        $(dgray,blue).                     $(clear)
-$(white,blue) $(dgray,blue)\\_____)\_____                 $(clear)
+$(white,blue) $(dgray,blue)\\_____)\\_____                 $(clear)
 $(white,blue) $(dgray,blue)/--v____ __`<                 $(clear)
 $(white,blue)         $(dgray,blue))/                    $(clear)
 $(white,blue)         $(dgray,blue)'                     $(clear)"""
@@ -194,12 +194,20 @@ def get_bait_status(username: str, db: Any) -> tuple[int, bool]:
     current_time = int(time.time())
 
     result = db.execute(
-        select([fish_baits_table.c.baits, fish_baits_table.c.last_reset]).where(fish_baits_table.c.username == username)
+        select([fish_baits_table.c.baits, fish_baits_table.c.last_reset]).where(
+            fish_baits_table.c.username == username
+        )
     ).fetchone()
 
     if not result:
         # New user - add them with full baits
-        db.execute(fish_baits_table.insert().values(username=username, baits=BAITS_PER_RESET, last_reset=current_time))
+        db.execute(
+            fish_baits_table.insert().values(
+                username=username,
+                baits=BAITS_PER_RESET,
+                last_reset=current_time,
+            )
+        )
         db.commit()
         return BAITS_PER_RESET, False
 
@@ -223,12 +231,20 @@ def use_bait(username: str, db: Any) -> bool:
     """Use one bait if available. Returns True if successful."""
     username = username.lower()
 
-    result = db.execute(select([fish_baits_table.c.baits]).where(fish_baits_table.c.username == username)).fetchone()
+    result = db.execute(
+        select([fish_baits_table.c.baits]).where(
+            fish_baits_table.c.username == username
+        )
+    ).fetchone()
 
     if not result or result[0] <= 0:
         return False
 
-    db.execute(fish_baits_table.update().where(fish_baits_table.c.username == username).values(baits=result[0] - 1))
+    db.execute(
+        fish_baits_table.update()
+        .where(fish_baits_table.c.username == username)
+        .values(baits=result[0] - 1)
+    )
     db.commit()
     return True
 
@@ -239,7 +255,9 @@ def get_time_until_reset(username: str, db: Any) -> int:
     current_time = int(time.time())
 
     result = db.execute(
-        select([fish_baits_table.c.last_reset]).where(fish_baits_table.c.username == username)
+        select([fish_baits_table.c.last_reset]).where(
+            fish_baits_table.c.username == username
+        )
     ).fetchone()
 
     if not result:
@@ -259,7 +277,9 @@ def catch_fish() -> Fish | None:
     # The "Nothing" result represents something that hooked but got away
 
     # Calculate total probability including the "Nothing" result
-    total_hook_prob = sum(fish.rarity for fish in FISH_TYPES) + 0.3  # Add Nothing probability
+    total_hook_prob = (
+        sum(fish.rarity for fish in FISH_TYPES) + 0.3
+    )  # Add Nothing probability
 
     roll = random.random() * total_hook_prob
 
@@ -304,7 +324,11 @@ def record_catch(username: str, fish: Fish, db: Any) -> int:
         )
     else:
         new_count = 1
-        db.execute(fish_catches_table.insert().values(username=username, fish_type=fish.name, count=new_count))
+        db.execute(
+            fish_catches_table.insert().values(
+                username=username, fish_type=fish.name, count=new_count
+            )
+        )
 
     db.commit()
     return new_count
@@ -336,16 +360,27 @@ def fish_command(nick: str, db: Any) -> str | list[str]:
 
     if caught_fish is None:
         # Bait was wasted - no fish selection occurred
-        response.extend(["Your bait drifts away unused... 🌊💔", f"Bait remaining: {bold(str(baits - 1))}"])
+        response.extend(
+            [
+                "Your bait drifts away unused... 🌊💔",
+                f"Bait remaining: {bold(str(baits - 1))}",
+            ]
+        )
     elif caught_fish.name == "Nothing":
         response.append("Nothing bites this time! 🌊")
         response.extend(caught_fish.ascii_art.split("\n"))
         response.append(f"Bait remaining: {bold(str(baits - 1))}")
     else:
         count = record_catch(nick, caught_fish, db)
-        rarity_desc = "legendary" if caught_fish.rarity <= 0.05 else "rare" if caught_fish.rarity <= 0.15 else "common"
+        rarity_desc = (
+            "legendary"
+            if caught_fish.rarity <= 0.05
+            else "rare" if caught_fish.rarity <= 0.15 else "common"
+        )
 
-        response.append(f"🎉 You caught a {italic(rarity_desc)} {bold(caught_fish.name)}! (#{count})")
+        response.append(
+            f"🎉 You caught a {italic(rarity_desc)} {bold(caught_fish.name)}! (#{count})"
+        )
         response.extend(caught_fish.ascii_art.split("\n"))
         response.append(f"Bait remaining: {bold(str(baits - 1))}")
 
@@ -363,16 +398,18 @@ def fishes_command(text: str, nick: str, db: Any) -> str:
         display_name = nick
 
     results = db.execute(
-        select([fish_catches_table.c.fish_type, fish_catches_table.c.count]).where(
-            fish_catches_table.c.username == target
-        )
+        select(
+            [fish_catches_table.c.fish_type, fish_catches_table.c.count]
+        ).where(fish_catches_table.c.username == target)
     ).fetchall()
 
     if not results:
         return f"🐟 {bold(display_name)} hasn't caught any fish yet!"
 
     total_fish = sum(count for _, count in results)
-    fish_summary = ", ".join(f"{fish_type}: {count}" for fish_type, count in sorted(results))
+    fish_summary = ", ".join(
+        f"{fish_type}: {count}" for fish_type, count in sorted(results)
+    )
 
     return f"🐟 {bold(display_name)}'s collection ({bold(str(total_fish))} total): {fish_summary}"
 
@@ -381,7 +418,9 @@ def fishes_command(text: str, nick: str, db: Any) -> str:
 def fishstats_command(db: Any) -> str:
     """- Show top fishers across all channels"""
     # Get total catches per user
-    results = db.execute(select([fish_catches_table.c.username, fish_catches_table.c.count])).fetchall()
+    results = db.execute(
+        select([fish_catches_table.c.username, fish_catches_table.c.count])
+    ).fetchall()
 
     if not results:
         return "🐟 No fish have been caught yet!"
@@ -392,7 +431,9 @@ def fishstats_command(db: Any) -> str:
         user_totals[username] = user_totals.get(username, 0) + count
 
     # Get top 5 fishers
-    top_fishers = sorted(user_totals.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_fishers = sorted(user_totals.items(), key=lambda x: x[1], reverse=True)[
+        :5
+    ]
 
     if not top_fishers:
         return "🐟 No fish have been caught yet!"
@@ -400,7 +441,9 @@ def fishstats_command(db: Any) -> str:
     rankings = []
     for i, (username, total) in enumerate(top_fishers, 1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🐟"
-        rankings.append(f"{medal} {bold(username)}: {pluralize_auto(total, 'fish')}")
+        rankings.append(
+            f"{medal} {bold(username)}: {pluralize_auto(total, 'fish')}"
+        )
 
     return f"🎣 Top Fishers: {' • '.join(rankings)}"
 
@@ -436,7 +479,9 @@ def fishreset_command(text: str, db: Any) -> str:
 
     # Check if user exists in bait table
     result = db.execute(
-        select([fish_baits_table.c.username]).where(fish_baits_table.c.username == target_user)
+        select([fish_baits_table.c.username]).where(
+            fish_baits_table.c.username == target_user
+        )
     ).fetchone()
 
     if result:
@@ -451,7 +496,11 @@ def fishreset_command(text: str, db: Any) -> str:
     else:
         # Create new user entry
         db.execute(
-            fish_baits_table.insert().values(username=target_user, baits=BAITS_PER_RESET, last_reset=current_time)
+            fish_baits_table.insert().values(
+                username=target_user,
+                baits=BAITS_PER_RESET,
+                last_reset=current_time,
+            )
         )
         db.commit()
         return f"🎣 Created new bait entry for {bold(text.strip())} with {BAITS_PER_RESET} baits"

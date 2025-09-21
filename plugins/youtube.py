@@ -120,18 +120,28 @@ def vtt2plantext(text: str) -> str:
     return " ".join(lines)
 
 
-def get_video_info(client: Client, video_url: str | None = None, video_id: str | None = None) -> "dict[str, str]":
+def get_video_info(
+    client: Client, video_url: str | None = None, video_id: str | None = None
+) -> "dict[str, str]":
     if not video_id and not video_url:
         raise ValueError("Must provide either video URL or video ID")
 
     if video_url:
         video_id = get_video_id(video_url)
         if not video_id:
-            return {"title": "Invalid URL", "duration": "PT0S", "transcript": ""}
+            return {
+                "title": "Invalid URL",
+                "duration": "PT0S",
+                "transcript": "",
+            }
 
     videos = client.videos.list(video_id=video_id)
     if videos is None or not videos.items:
-        return {"title": "Title not available", "duration": "Duration not available", "transcript": ""}
+        return {
+            "title": "Title not available",
+            "duration": "Duration not available",
+            "transcript": "",
+        }
 
     video = videos.items[0]
     video_info = {
@@ -159,7 +169,9 @@ def get_video_info(client: Client, video_url: str | None = None, video_id: str |
     except TranscriptsDisabled:
         subtitles = None
     except Exception as e:
-        logging.exception("Error fetching YouTube transcript for %s: %s", video_id, e)
+        logging.exception(
+            "Error fetching YouTube transcript for %s: %s", video_id, e
+        )
         subtitles = None
 
     if subtitles:
@@ -169,14 +181,18 @@ def get_video_info(client: Client, video_url: str | None = None, video_id: str |
     return video_info
 
 
-def search_youtube_videos(client: Client, query: str, max_results: int = 10) -> "list[str]":
+def search_youtube_videos(
+    client: Client, query: str, max_results: int = 10
+) -> "list[str]":
     video_urls = []
     search = client.search.list(q=query, max_results=max_results)
     if search is None or not search.items:
         return []
     for item in search.items:
         if item.id.kind == "youtube#video":
-            video_urls.append(f"https://www.youtube.com/watch?v={item.id.videoId}")
+            video_urls.append(
+                f"https://www.youtube.com/watch?v={item.id.videoId}"
+            )
 
     return video_urls
 
@@ -252,7 +268,9 @@ def get_video(video_id: str, parts: Parts) -> requests.Response:
 
 
 def get_playlist(playlist_id: str, parts: Parts) -> requests.Response:
-    return do_request("playlists", parts, params={"maxResults": 1, "id": playlist_id})
+    return do_request(
+        "playlists", parts, params={"maxResults": 1, "id": playlist_id}
+    )
 
 
 def do_search(term: str, result_type: str = "video") -> requests.Response:
@@ -285,9 +303,13 @@ def get_video_description(video_id: str) -> str:
         return out
 
     length = isodate.parse_duration(content_details["duration"])
-    out += " - length \x02{}\x02".format(timeformat.format_time(int(length.total_seconds()), simple=True))
+    out += " - length \x02{}\x02".format(
+        timeformat.format_time(int(length.total_seconds()), simple=True)
+    )
     try:
-        total_votes = float(statistics["likeCount"]) + float(statistics["dislikeCount"])
+        total_votes = float(statistics["likeCount"]) + float(
+            statistics["dislikeCount"]
+        )
     except (LookupError, ValueError):
         total_votes = 0
 
@@ -306,7 +328,9 @@ def get_video_description(video_id: str) -> str:
     uploader = snippet["channelTitle"]
 
     upload_time = isodate.parse_datetime(snippet["publishedAt"])
-    out += " - \x02{}\x02 on \x02{}\x02".format(uploader, upload_time.strftime("%Y.%m.%d"))
+    out += " - \x02{}\x02 on \x02{}\x02".format(
+        uploader, upload_time.strftime("%Y.%m.%d")
+    )
 
     try:
         yt_rating = content_details["contentRating"]["ytRating"]
@@ -349,7 +373,10 @@ def get_video_id(url: str) -> str | None:
 def youtube_url(match: Match[str]) -> str:
     client = get_client()
     result = get_video_info(client, video_id=match.group(1))
-    time = timeformat.format_time(int(isodate.parse_duration(result["duration"]).total_seconds()), simple=True)
+    time = timeformat.format_time(
+        int(isodate.parse_duration(result["duration"]).total_seconds()),
+        simple=True,
+    )
     return truncate(
         f"\x02{result['title']}\x02, \x02duration:\x02 {time} - {result['transcript']}",
         400,
@@ -365,7 +392,10 @@ def youtube_next(text: str, nick: str, reply) -> str:
     client = get_client()
     url = user_results[nick].pop(0)
     result = get_video_info(client, video_url=url)
-    time = timeformat.format_time(int(isodate.parse_duration(result["duration"]).total_seconds()), simple=True)
+    time = timeformat.format_time(
+        int(isodate.parse_duration(result["duration"]).total_seconds()),
+        simple=True,
+    )
     return truncate(
         f"{url}  -  \x02{result['title']}\x02, \x02duration:\x02 {time} - {result['transcript']}",
         400,
@@ -423,7 +453,9 @@ def youtime(text: str, reply) -> str:
 
     return (
         "The video \x02{}\x02 has a length of {} and has been viewed {:,} times for "
-        "a total run time of {}!".format(snippet["title"], length_text, views, total_text)
+        "a total run time of {}!".format(
+            snippet["title"], length_text, views, total_text
+        )
     )
 
 
@@ -446,5 +478,7 @@ def ytplaylist_url(match: Match[str]) -> str:
     title = snippet["title"]
     author = snippet["channelTitle"]
     num_videos = int(content_details["itemCount"])
-    count_videos = " - \x02{:,}\x02 video{}".format(num_videos, "s"[num_videos == 1 :])
+    count_videos = " - \x02{:,}\x02 video{}".format(
+        num_videos, "s"[num_videos == 1 :]
+    )
     return f"\x02{title}\x02 {count_videos} - \x02{author}\x02"

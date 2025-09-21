@@ -21,7 +21,10 @@ def lichess(text: str) -> list[str] | str:
         response = requests.post(
             "https://lichess.org/api/challenge/open",
             data=data,
-            headers={"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"},
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
         )
     except requests.HTTPError as e:
         return f"Error: {e}"

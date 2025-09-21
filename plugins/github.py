@@ -13,7 +13,9 @@ from cloudbot import hook
 from cloudbot.util import colors, formatting, web
 
 shortcuts = {}
-url_re = re.compile(r"(?:https?://github\.com/)?(?P<owner>[^/]+)/(?P<repo>[^/]+)")
+url_re = re.compile(
+    r"(?:https?://github\.com/)?(?P<owner>[^/]+)/(?P<repo>[^/]+)"
+)
 
 
 def parse_url(url):
@@ -49,7 +51,11 @@ def issue_cmd(text, event):
     issue = args[1] if len(args) > 1 else None
 
     if issue:
-        r = requests.get("https://api.github.com/repos/{}/{}/issues/{}".format(owner, repo, issue))
+        r = requests.get(
+            "https://api.github.com/repos/{}/{}/issues/{}".format(
+                owner, repo, issue
+            )
+        )
 
         try:
             r.raise_for_status()
@@ -69,9 +75,13 @@ def issue_cmd(text, event):
         if j["state"] == "open":
             state = "\x033\x02Opened\x02\x0f by {}".format(j["user"]["login"])
         else:
-            state = "\x034\x02Closed\x02\x0f by {}".format(j["closed_by"]["login"])
+            state = "\x034\x02Closed\x02\x0f by {}".format(
+                j["closed_by"]["login"]
+            )
 
-        return "Issue #{} ({}): {} | {}: {}".format(number, state, url, title, summary)
+        return "Issue #{} ({}): {} | {}: {}".format(
+            number, state, url, title, summary
+        )
 
     r = requests.get(f"https://api.github.com/repos/{owner}/{repo}/issues")
 
@@ -92,8 +102,15 @@ class Result:
     bottom: str | None = None
 
     def as_list(self):
-        summary = [formatting.truncate(line, 420) for line in (self.summary or "").split("\n")][:6]
-        return [formatting.truncate(f"\x02{self.header}\x02", 420)] + summary + [self.bottom] * bool(self.bottom)
+        summary = [
+            formatting.truncate(line, 420)
+            for line in (self.summary or "").split("\n")
+        ][:6]
+        return (
+            [formatting.truncate(f"\x02{self.header}\x02", 420)]
+            + summary
+            + [self.bottom] * bool(self.bottom)
+        )
 
 
 def format_date(date: datetime) -> str:
@@ -136,7 +153,9 @@ def search_code(g: Github, query: str) -> Generator[Result, None, None]:
         yield Result(
             f"{result.repository.full_name} - {result.path}",
             "\n".join(content[i - 4 : i + 4]),
-            result.html_url + f"#L{i}" * (i > 0) + f"    \x02\x1d{result.repository.language}\x1d",
+            result.html_url
+            + f"#L{i}" * (i > 0)
+            + f"    \x02\x1d{result.repository.language}\x1d",
         )
 
 

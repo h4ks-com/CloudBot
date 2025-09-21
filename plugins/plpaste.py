@@ -7,7 +7,9 @@ from cloudbot import hook
 @hook.command("ghsource", "ghpaste", "plugin", "commandsource", "cmdsrc")
 def ghpaste(text, bot):
     """<command> - links to the GitHub file that contains <command>"""
-    repo_link = bot.config.get("repo_link", "https://github.com/h4ks-com/CloudBot")
+    repo_link = bot.config.get(
+        "repo_link", "https://github.com/h4ks-com/CloudBot"
+    )
 
     if text in bot.plugin_manager.commands:
         file_path = bot.plugin_manager.commands[text].plugin.file_path

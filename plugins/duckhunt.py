@@ -115,7 +115,9 @@ T = TypeVar("T")
 ConnMap = Dict[str, Dict[str, T]]
 scripters: Dict[str, float] = defaultdict(float)
 chan_locks: ConnMap[Lock] = defaultdict(lambda: defaultdict(Lock))
-game_status: ConnMap[ChannelState] = defaultdict(lambda: defaultdict(ChannelState))
+game_status: ConnMap[ChannelState] = defaultdict(
+    lambda: defaultdict(ChannelState)
+)
 opt_out: Dict[str, List[str]] = defaultdict(list)
 
 
@@ -179,11 +181,17 @@ def save_channel_state(db, network, chan, status=None):
     duck_kick = status.no_duck_kick
     res = db.execute(
         status_table.update()
-        .where(and_(status_table.c.network == network, status_table.c.chan == chan))
+        .where(
+            and_(status_table.c.network == network, status_table.c.chan == chan)
+        )
         .values(active=active, duck_kick=duck_kick)
     )
     if not res.rowcount:
-        db.execute(status_table.insert().values(network=network, chan=chan, active=active, duck_kick=duck_kick))
+        db.execute(
+            status_table.insert().values(
+                network=network, chan=chan, active=active, duck_kick=duck_kick
+            )
+        )
 
     db.commit()
 
@@ -230,7 +238,9 @@ def increment_msg_counter(event, conn):
     get_state_table(conn.name, event.chan).handle_message(event)
 
 
-@hook.command("starthunt", autohelp=False, permissions=["chanop", "op", "botcontrol"])
+@hook.command(
+    "starthunt", autohelp=False, permissions=["chanop", "op", "botcontrol"]
+)
 def start_hunt(db, chan, message, conn):
     """- This command starts a duckhunt in your channel, to stop the hunt use .stophunt"""
     if is_opt_out(conn.name, chan):
@@ -257,14 +267,18 @@ def start_hunt(db, chan, message, conn):
 
 def set_ducktime(chan, conn):
     status = get_state_table(conn, chan)  # type: ChannelState
-    status.next_duck_time = random.randint(int(time()) + 480, int(time()) + 3600)
+    status.next_duck_time = random.randint(
+        int(time()) + 480, int(time()) + 3600
+    )
     # status.flyaway = status.next_duck_time + 600
     status.duck_status = 0
     # let's also reset the number of messages said and the list of masks that have spoken.
     status.clear_messages()
 
 
-@hook.command("stophunt", autohelp=False, permissions=["chanop", "op", "botcontrol"])
+@hook.command(
+    "stophunt", autohelp=False, permissions=["chanop", "op", "botcontrol"]
+)
 def stop_hunt(db, chan, conn):
     """- This command stops the duck hunt in your channel. Scores will be preserved"""
     if is_opt_out(conn.name, chan):
@@ -438,7 +452,9 @@ def attack(event, nick, chan, db, conn, attack_type):
             "The duck said no, maybe bribe it with some pizza? Ducks love pizza don't they?",
             "Who knew ducks could be so picky?",
         ]
-        no_duck = "You tried befriending a non-existent duck. That's freaking creepy."
+        no_duck = (
+            "You tried befriending a non-existent duck. That's freaking creepy."
+        )
         msg = "{} you befriended a duck in {}! You have made friends with {} in {}."
         scripter_msg = (
             "You tried friending that duck in {:.3f} seconds, that's mighty fast. "
@@ -490,7 +506,9 @@ def attack(event, nick, chan, db, conn, attack_type):
         raise
     delta = shoot - deploy
     pretty_timedelta = format_timespan(delta)
-    event.message(msg.format(nick, pretty_timedelta, pluralize_auto(score, "duck"), chan))
+    event.message(
+        msg.format(nick, pretty_timedelta, pluralize_auto(score, "duck"), chan)
+    )
     set_ducktime(chan, conn.name)
     return None
 
@@ -521,7 +539,11 @@ def top_list(prefix, data, join_char=" • "):
     """
     sorted_data = sorted(data, key=operator.itemgetter(1), reverse=True)
     return truncate(
-        prefix + join_char.join("\x02{}\x02: {:,}".format(k[:1] + "\u200b" + k[1:], v) for k, v in sorted_data),
+        prefix
+        + join_char.join(
+            "\x02{}\x02: {:,}".format(k[:1] + "\u200b" + k[1:], v)
+            for k, v in sorted_data
+        ),
         sep=join_char,
         length=320,
     )
@@ -532,7 +554,9 @@ def get_scores(db, score_type, network, chan=None):
     if chan is not None:
         clause = and_(clause, table.c.chan == chan.lower())
 
-    query = select([table.c.name, table.c[score_type]], clause).order_by(desc(table.c[score_type]))
+    query = select([table.c.name, table.c[score_type]], clause).order_by(
+        desc(table.c[score_type])
+    )
 
     scores = db.execute(query).fetchall()
     return scores
@@ -609,8 +633,12 @@ def display_scores(score_type: ScoreType, event, text, chan, conn, db):
     if is_opt_out(conn.name, chan):
         return None
 
-    global_pfx = "Duck {noun} scores across the network: ".format(noun=score_type.noun)
-    chan_pfx = "Duck {noun} scores in {chan}: ".format(noun=score_type.noun, chan=chan)
+    global_pfx = "Duck {noun} scores across the network: ".format(
+        noun=score_type.noun
+    )
+    chan_pfx = "Duck {noun} scores in {chan}: ".format(
+        noun=score_type.noun, chan=chan
+    )
     no_ducks = "It appears no one has {verb} any ducks yet."
 
     out = global_pfx if text else chan_pfx
@@ -660,7 +688,9 @@ def duckforgive(text):
     """<nick> - Allows people to be removed from the mandatory cooldown period."""
     if text.lower() in scripters and scripters[text.lower()] > time():
         scripters[text.lower()] = 0
-        return "{} has been removed from the mandatory cooldown period.".format(text)
+        return "{} has been removed from the mandatory cooldown period.".format(
+            text
+        )
 
     return "I couldn't find anyone banned from the hunt by that nick"
 
@@ -673,9 +703,13 @@ def hunt_opt_out(text, chan, db, conn):
     """
     if not text:
         if is_opt_out(conn.name, chan):
-            return "Duck hunt is disabled in {}. To re-enable it run .hunt_opt_out remove #channel".format(chan)
+            return "Duck hunt is disabled in {}. To re-enable it run .hunt_opt_out remove #channel".format(
+                chan
+            )
 
-        return "Duck hunt is enabled in {}. To disable it run .hunt_opt_out add #channel".format(chan)
+        return "Duck hunt is enabled in {}. To disable it run .hunt_opt_out add #channel".format(
+            chan
+        )
 
     if text == "list":
         return ", ".join(opt_out)
@@ -696,7 +730,9 @@ def hunt_opt_out(text, chan, db, conn):
         db.execute(query)
         db.commit()
         load_optout(db)
-        return "The duckhunt has been successfully disabled in {}.".format(channel)
+        return "The duckhunt has been successfully disabled in {}.".format(
+            channel
+        )
 
     if command.lower() == "remove":
         if not is_opt_out(conn.name, channel):
@@ -780,7 +816,9 @@ def duck_merge(text, conn, db, message):
             duckmerge[channel]["befriend"],
         )
 
-    query = table.delete().where(and_(table.c.network == conn.name, table.c.name == oldnick))
+    query = table.delete().where(
+        and_(table.c.network == conn.name, table.c.name == oldnick)
+    )
 
     db.execute(query)
     db.commit()
@@ -894,7 +932,9 @@ def duck_stats(chan, conn, db, message):
             killed += row["shot"]
             friends += row["befriend"]
 
-        killerchan, killscore = sorted(kill_chan.items(), key=operator.itemgetter(1), reverse=True)[0]
+        killerchan, killscore = sorted(
+            kill_chan.items(), key=operator.itemgetter(1), reverse=True
+        )[0]
         friendchan, friendscore = sorted(
             friend_chan.items(),
             key=operator.itemgetter(1),

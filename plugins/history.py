@@ -39,7 +39,9 @@ def track_seen(event, db):
     """
     # keep private messages private
     now = time.time()
-    if event.chan[:1] == "#" and not re.findall("^s/.*/.*/$", event.content.lower()):
+    if event.chan[:1] == "#" and not re.findall(
+        "^s/.*/.*/$", event.content.lower()
+    ):
         res = db.execute(
             seen_table.update()
             .values(time=now, quote=event.content, host=str(event.mask))
@@ -68,7 +70,7 @@ def chat_tracker(event, db, conn):
     :type conn: cloudbot.client.Client
     """
     if event.type is EventType.action:
-        event.content = "\x01ACTION {}\x01".format(event.content)
+        event.content = f"\x01ACTION {event.content}\x01"
 
     track_seen(event, db)
 
@@ -123,7 +125,9 @@ def lastlink(text, chan, conn):
         if nick == text or not text:
             match = re.match(RE_URL, message)
             if match:
-                date = datetime.fromtimestamp(message_time).strftime("%Y-%m-%d %H:%M:%S")
+                date = datetime.fromtimestamp(message_time).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
                 return f"{date} {nick}: {message}"
 
     return "No links found" if not text else f"No links found for nick: {text}"
@@ -155,9 +159,13 @@ def userlinks(text, chan, conn):
             break
 
     if not links:
-        return "No links found" if not text else f"No links found for nick: {text}"
+        return (
+            "No links found" if not text else f"No links found for nick: {text}"
+        )
     if text:
-        return f"All links posted by {text}: " + formatting.truncate(" - ".join(links), 400)
+        return f"All links posted by {text}: " + formatting.truncate(
+            " - ".join(links), 400
+        )
     return formatting.truncate(" - ".join(links), 400)
 
 
@@ -186,8 +194,12 @@ def searchword(text, chan, conn):
         i += 1
         if nick == search_nick or not text or search_nick == "*":
             if text in message:
-                date = datetime.fromtimestamp(message_time).strftime("%Y-%m-%d %H:%M:%S")
-                message = message.replace("\x01ACTION ", "* ").replace("\x01", "")
+                date = datetime.fromtimestamp(message_time).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                message = message.replace("\x01ACTION ", "* ").replace(
+                    "\x01", ""
+                )
                 message = message.replace(text, f"\x02{text}\x02")
                 return f"{date} {nick}: {message}"
 

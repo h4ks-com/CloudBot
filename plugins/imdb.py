@@ -28,7 +28,9 @@ def clean_imdb_url(href: str) -> str:
     for param in REMOVE_REF_PARAMS:
         query_params.pop(param, None)
     clean_query = urlencode(query_params, doseq=True)
-    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}" + (f"?{clean_query}" if clean_query else "")
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path}" + (
+        f"?{clean_query}" if clean_query else ""
+    )
 
 
 def extract_imdb_urls(soup: BeautifulSoup) -> list[str]:
@@ -46,7 +48,11 @@ def extract_imdb_urls(soup: BeautifulSoup) -> list[str]:
 
 def search_imdb(query: str) -> list[str] | None:
     """Search IMDB for movies/shows matching the query"""
-    params = {"q": query, "s": "tt", "ttype": "ft"}  # Search for titles  # Feature films
+    params = {
+        "q": query,
+        "s": "tt",
+        "ttype": "ft",
+    }  # Search for titles  # Feature films
 
     try:
         response = requests.get(SEARCH_URL, params=params, headers=HEADERS)
@@ -75,7 +81,9 @@ def get_imdb_info(imdb_url: str) -> dict[str, str] | None:
 
     title_elem = soup.select_one(".hero__primary-text")
     if not title_elem:
-        title_elem = soup.select_one("h1[data-testid='hero-title-block__title']")
+        title_elem = soup.select_one(
+            "h1[data-testid='hero-title-block__title']"
+        )
     title = title_elem.text.strip() if title_elem else "Unknown Title"
 
     year = ""
@@ -85,7 +93,9 @@ def get_imdb_info(imdb_url: str) -> dict[str, str] | None:
         if year_match:
             year = year_match.group(1)
 
-    rating_elem = soup.select_one("[data-testid='hero-rating-bar__aggregate-rating__score'] span")
+    rating_elem = soup.select_one(
+        "[data-testid='hero-rating-bar__aggregate-rating__score'] span"
+    )
     user_score = rating_elem.text.strip() if rating_elem else "N/A"
 
     critics_score = "N/A"
@@ -93,7 +103,13 @@ def get_imdb_info(imdb_url: str) -> dict[str, str] | None:
     if metascore_elem:
         critics_score = metascore_elem.text.strip()
 
-    return {"title": title, "year": year, "user_score": user_score, "critics_score": critics_score, "url": imdb_url}
+    return {
+        "title": title,
+        "year": year,
+        "user_score": user_score,
+        "critics_score": critics_score,
+        "url": imdb_url,
+    }
 
 
 @hook.command("imdbn", "imdb_next", autohelp=False)
@@ -115,8 +131,16 @@ def imdbn(nick, chan, text):
     if info["year"]:
         title_year += f" ({info['year']})"
 
-    user_score_text = f"User: {info['user_score']}/10" if info["user_score"] != "N/A" else "User: N/A"
-    critics_score_text = f"Critics: {info['critics_score']}/100" if info["critics_score"] != "N/A" else "Critics: N/A"
+    user_score_text = (
+        f"User: {info['user_score']}/10"
+        if info["user_score"] != "N/A"
+        else "User: N/A"
+    )
+    critics_score_text = (
+        f"Critics: {info['critics_score']}/100"
+        if info["critics_score"] != "N/A"
+        else "Critics: N/A"
+    )
 
     return f"\x02{title_year}\x02 - {user_score_text}, {critics_score_text} - {short_url}"
 
@@ -146,7 +170,15 @@ def imdb(text: str, nick, chan) -> str:
     if info["year"]:
         title_year += f" ({info['year']})"
 
-    user_score_text = f"User: {info['user_score']}/10" if info["user_score"] != "N/A" else "User: N/A"
-    critics_score_text = f"Critics: {info['critics_score']}/100" if info["critics_score"] != "N/A" else "Critics: N/A"
+    user_score_text = (
+        f"User: {info['user_score']}/10"
+        if info["user_score"] != "N/A"
+        else "User: N/A"
+    )
+    critics_score_text = (
+        f"Critics: {info['critics_score']}/100"
+        if info["critics_score"] != "N/A"
+        else "Critics: N/A"
+    )
 
     return f"\x02{title_year}\x02 - {user_score_text}, {critics_score_text} - {short_url}"

@@ -70,7 +70,9 @@ def parse_arxiv_xml(xml_text: str) -> List[SearchResult]:
     return results
 
 
-def search_arxiv(page: UserPage, max_results=10, sort_by_date: bool = False) -> List[SearchResult]:
+def search_arxiv(
+    page: UserPage, max_results=10, sort_by_date: bool = False
+) -> List[SearchResult]:
     query = page.query
     start = page.start
     params = {
@@ -91,10 +93,14 @@ def format_response(start: int, results: List[SearchResult]) -> List[str]:
     response = []
     for i, result in enumerate(results):
         parts = ""
-        parts += formatting.truncate(f"\x02{start + i + 1})\x02 {result.title}", 120)
+        parts += formatting.truncate(
+            f"\x02{start + i + 1})\x02 {result.title}", 120
+        )
         if result.published:
             parts += f" {result.published}"
-        parts += formatting.truncate(f" \x02Authors:\x02 {', '.join(result.authors)}.", 80)
+        parts += formatting.truncate(
+            f" \x02Authors:\x02 {', '.join(result.authors)}.", 80
+        )
         parts += formatting.truncate(f" {result.summary}", 240)
         parts = formatting.truncate(parts, 400)
         parts += f" :: {result.link}"
@@ -121,7 +127,9 @@ def arxiv(text: str, nick: str):
         query = query[2:].strip()
 
     user_pages[nick] = UserPage(query=query, start=0)
-    results = search_arxiv(user_pages[nick], max_results=MAX_RESULTS, sort_by_date=sort_by_date)
+    results = search_arxiv(
+        user_pages[nick], max_results=MAX_RESULTS, sort_by_date=sort_by_date
+    )
     displayed_results[nick] = results
     return format_response(0, results)
 
@@ -138,13 +146,17 @@ def arxiv_next(text: str, nick: str):
         return f"No active search for {nick}"
 
     page.start += MAX_RESULTS
-    results = search_arxiv(page, max_results=MAX_RESULTS, sort_by_date=page.sort_by_date)
+    results = search_arxiv(
+        page, max_results=MAX_RESULTS, sort_by_date=page.sort_by_date
+    )
     displayed_results[nick] = results
     return format_response(page.start, results)
 
 
 @hook.command("axsummarize", "axsummary", "axs", autohelp=False)
-def summarize_command(bot, reply, text: str, chan: str, nick: str, conn) -> str | List[str] | None:
+def summarize_command(
+    bot, reply, text: str, chan: str, nick: str, conn
+) -> str | List[str] | None:
     """Summarizes the contents of the article"""
     global displayed_results
     api_key = bot.config.get_api_key("huggingface")
@@ -212,4 +224,12 @@ def summarize_command(bot, reply, text: str, chan: str, nick: str, conn) -> str 
 
     # Get all as text but clamp at 10000 characters
     article_text = formatting.truncate(article_text, PDF_MAX_CONTENT_LENGTH)
-    return summarize([article_text], text.strip() == "image", nick, chan, bot, reply, "article")
+    return summarize(
+        [article_text],
+        text.strip() == "image",
+        nick,
+        chan,
+        bot,
+        reply,
+        "article",
+    )

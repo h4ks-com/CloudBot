@@ -56,7 +56,9 @@ class MarsTime:
     """
 
     # Constants for Mars time calculations
-    MARS_EPOCH_JD = 2405522.0028779  # Julian date of Mars epoch (Dec 29, 1873 12:00 TT)
+    MARS_EPOCH_JD = (
+        2405522.0028779  # Julian date of Mars epoch (Dec 29, 1873 12:00 TT)
+    )
     SECONDS_PER_SOL = 88775.244147  # Seconds in a Mars solar day
 
     def __init__(self, earth_time: datetime | None = None) -> None:
@@ -80,7 +82,13 @@ class MarsTime:
         a = int(year / 100)
         b = 2 - a + int(a / 4)
 
-        jd = int(365.25 * (year + 4716)) + int(30.6001 * (month + 1)) + day + b - 1524.5
+        jd = (
+            int(365.25 * (year + 4716))
+            + int(30.6001 * (month + 1))
+            + day
+            + b
+            - 1524.5
+        )
         jd += (hour + minute / 60.0 + second / 3600.0) / 24.0
 
         return jd
@@ -118,11 +126,15 @@ class MarsTime:
         time_offset = longitude / 15.0
 
         # Calculate local time
-        local_decimal_hours = (hour + minute / 60.0 + second / 3600.0 - time_offset) % 24
+        local_decimal_hours = (
+            hour + minute / 60.0 + second / 3600.0 - time_offset
+        ) % 24
 
         local_hour = int(local_decimal_hours)
         local_minute = int((local_decimal_hours - local_hour) * 60)
-        local_second = ((local_decimal_hours - local_hour) * 60 - local_minute) * 60
+        local_second = (
+            (local_decimal_hours - local_hour) * 60 - local_minute
+        ) * 60
 
         return local_hour, local_minute, local_second
 

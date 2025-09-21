@@ -74,13 +74,17 @@ def sha224sum(text):
     return "SHA224: " + compute_hash(text, sha224)
 
 
-@hook.command("sha1", "sha1sum", "sha1s", "sha1sums", "sha1sumss", "sha1sums", "sha1sumss")
+@hook.command(
+    "sha1", "sha1sum", "sha1s", "sha1sums", "sha1sumss", "sha1sums", "sha1sumss"
+)
 def sha1sum(text):
     """<text> - Computes the SHA1 hash of <text>."""
     return "SHA1: " + compute_hash(text, sha1)
 
 
-@hook.command("md5", "md5sum", "md5s", "md5sums", "md5sumss", "md5sums", "md5sumss")
+@hook.command(
+    "md5", "md5sum", "md5s", "md5sums", "md5sumss", "md5sums", "md5sumss"
+)
 def md5sum(text):
     """<text> - Computes the MD5 hash of <text>."""
     return "MD5: " + compute_hash(text, md5)
@@ -237,7 +241,7 @@ def base16decode(text):
 @hook.command("bin")
 def mybin(text):
     """<text> - Converts <text> to binary."""
-    return "Binary: " + " ".join("{:08b}".format(byte) for byte in text.encode())
+    return "Binary: " + " ".join(f"{byte:08b}" for byte in text.encode())
 
 
 @hook.command("bindecode")

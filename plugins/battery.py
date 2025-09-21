@@ -201,4 +201,3 @@ def battery_info() -> str:
     ]
 
     return random.choice(safety_tips)
-

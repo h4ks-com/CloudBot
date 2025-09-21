@@ -46,6 +46,8 @@ def hookup(db, chan):
         "user2": person2,
     }
 
-    generator = TextGenerator(hookups["templates"], hookups["parts"], variables=variables)
+    generator = TextGenerator(
+        hookups["templates"], hookups["parts"], variables=variables
+    )
 
     return generator.generate_string()

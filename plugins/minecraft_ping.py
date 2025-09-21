@@ -67,9 +67,9 @@ def mcping(text):
         "{}$(clear) - $(bold){}$(clear) - $(bold){:.1f}ms$(clear) - $(bold){}/{}$(clear) players"
     )
 
-    return output_format.format(description, s.version.name, s.latency, s.players.online, s.players.max).replace(
-        "\n", colors.parse("$(clear) - ")
-    )
+    return output_format.format(
+        description, s.version.name, s.latency, s.players.online, s.players.max
+    ).replace("\n", colors.parse("$(clear) - "))
 
 
 @hook.command("mc", autohelp=False)

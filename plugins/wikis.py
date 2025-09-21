@@ -193,7 +193,9 @@ def make_next_hook(commands):
 @hook.command("wikilist", autohelp=False)
 def wikilist(text, bot, chan, nick):
     """List all wikisi and their commands"""
-    return "Available wikis: " + " - ".join([": ".join(w) for w in WIKI_APIS.keys()])
+    return "Available wikis: " + " - ".join(
+        [": ".join(w) for w in WIKI_APIS.keys()]
+    )
 
 
 # Store as a dict to avoid repetition and so that the cloudbot hook.command call atually works

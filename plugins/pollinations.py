@@ -70,7 +70,9 @@ class PollinationsClient:
         response.raise_for_status()
         return [Model(**m) for m in response.json()]
 
-    def generate_image(self, prompt: str, model: str | None = None) -> requests.Response:
+    def generate_image(
+        self, prompt: str, model: str | None = None
+    ) -> requests.Response:
         url = f"{IMAGE_API}/prompt/{prompt}"
         if model:
             url = f"{url}?model={model}"
@@ -78,7 +80,9 @@ class PollinationsClient:
         response.raise_for_status()
         return response
 
-    def generate_audio(self, request: str, voice: str | None = None) -> requests.Response:
+    def generate_audio(
+        self, request: str, voice: str | None = None
+    ) -> requests.Response:
         url = f"{TEXT_API}/{request}"
         params = {
             "model": "openai-audio",
@@ -90,9 +94,15 @@ class PollinationsClient:
         response = self.session.get(url, params=params)
         return response
 
-    def generate_text_openai(self, messages: list[dict], model: str | None = None) -> dict:
+    def generate_text_openai(
+        self, messages: list[dict], model: str | None = None
+    ) -> dict:
         url = f"{TEXT_API}/openai"
-        data = {"messages": messages, "model": model or "openai", "private": True}
+        data = {
+            "messages": messages,
+            "model": model or "openai",
+            "private": True,
+        }
         response = self.session.post(url, json=data)
         response.raise_for_status()
         return response.json()
@@ -114,7 +124,8 @@ def upload_responses(nick: str, messages: list[Message], header: str) -> str:
         header
         + "\n" * 4
         + f"{lb}{bar}{lb*2}".join(
-            f"{nick if message.role == 'user' else 'bot'}: {message.content}" for message in messages
+            f"{nick if message.role == 'user' else 'bot'}: {message.content}"
+            for message in messages
         )
     )
     with tempfile.NamedTemporaryFile(suffix=".txt") as f:
@@ -124,13 +135,19 @@ def upload_responses(nick: str, messages: list[Message], header: str) -> str:
     return file_url
 
 
-def parse_args(text: str, available_options: list[str] | None = None) -> tuple[str | None, str]:
+def parse_args(
+    text: str, available_options: list[str] | None = None
+) -> tuple[str | None, str]:
     """Parse first argument as option if it matches available_options, otherwise treat everything as prompt"""
     parts = text.strip().split(maxsplit=1)
     option = None
     prompt = text.strip()
 
-    if len(parts) > 1 and available_options and parts[0].lower() in available_options:
+    if (
+        len(parts) > 1
+        and available_options
+        and parts[0].lower() in available_options
+    ):
         option = parts[0].lower()
         prompt = parts[1]
 
@@ -202,7 +219,9 @@ def plaudio_command(text: str, nick: str, chan: str) -> str:
     return f"Audio for '{prompt}': {audio_url}"
 
 
-def process_text_response(response_text: str, nick: str, chan: str, messages: Deque[Message]) -> str:
+def process_text_response(
+    response_text: str, nick: str, chan: str, messages: Deque[Message]
+) -> str:
     """Process and format text response from API"""
     truncated = formatting.truncate_str(response_text, 350)
     if len(truncated) < len(response_text):
@@ -238,15 +257,23 @@ def pltext_command(text: str, nick: str, chan: str) -> str:
     if channick not in pollinations_messages_cache:
         pollinations_messages_cache[channick] = deque(maxlen=MAX_HISTORY_LENGTH)
 
-    pollinations_messages_cache[channick].append(Message(role="user", content=prompt))
+    pollinations_messages_cache[channick].append(
+        Message(role="user", content=prompt)
+    )
 
     try:
-        messages = [msg.as_dict() for msg in pollinations_messages_cache[channick]]
+        messages = [
+            msg.as_dict() for msg in pollinations_messages_cache[channick]
+        ]
         response = client.generate_text_openai(messages, model)
         response_text = response["choices"][0]["message"]["content"]
-        pollinations_messages_cache[channick].append(Message(role="assistant", content=response_text))
+        pollinations_messages_cache[channick].append(
+            Message(role="assistant", content=response_text)
+        )
 
-        return process_text_response(response_text, nick, chan, pollinations_messages_cache[channick])
+        return process_text_response(
+            response_text, nick, chan, pollinations_messages_cache[channick]
+        )
     except Exception as e:
         return f"Error generating text: {e}"
 
@@ -266,13 +293,19 @@ def plapp_command(text: str, nick: str, chan: str) -> str:
         + "\nMake sure to put everything in a single html file so it can be a single code block meant to be directly used in a browser as it is. Do not explain, just show the code."
     )
 
-    pollinations_messages_cache[channick].append(Message(role="user", content=app_prompt))
+    pollinations_messages_cache[channick].append(
+        Message(role="user", content=app_prompt)
+    )
 
     try:
-        messages = [msg.as_dict() for msg in pollinations_messages_cache[channick]]
+        messages = [
+            msg.as_dict() for msg in pollinations_messages_cache[channick]
+        ]
         response = client.generate_text_openai(messages)
         response_text = response["choices"][0]["message"]["content"]
-        pollinations_messages_cache[channick].append(Message(role="assistant", content=response_text))
+        pollinations_messages_cache[channick].append(
+            Message(role="assistant", content=response_text)
+        )
 
         # Extract code blocks
         code_blocks = detect_code_blocks(response_text)

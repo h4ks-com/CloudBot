@@ -92,7 +92,9 @@ def try_api_search(game_name):
 
     for endpoint in endpoints:
         try:
-            response = requests.post(endpoint, headers=headers, json=search_payload, timeout=10)
+            response = requests.post(
+                endpoint, headers=headers, json=search_payload, timeout=10
+            )
             if response.ok and response.content:
                 data = response.json()
                 if data and "data" in data:
@@ -111,9 +113,21 @@ def parse_api_response(data):
             game = Game(
                 name=item.get("game_name", "Unknown"),
                 url=f"https://howlongtobeat.com/game/{item.get('game_id', '')}",
-                main_story=f"{float(item.get('comp_main', 0)) / 3600:.1f} Hours" if item.get("comp_main") else "N/A",
-                main_extras=f"{float(item.get('comp_plus', 0)) / 3600:.1f} Hours" if item.get("comp_plus") else "N/A",
-                completionist=f"{float(item.get('comp_100', 0)) / 3600:.1f} Hours" if item.get("comp_100") else "N/A",
+                main_story=(
+                    f"{float(item.get('comp_main', 0)) / 3600:.1f} Hours"
+                    if item.get("comp_main")
+                    else "N/A"
+                ),
+                main_extras=(
+                    f"{float(item.get('comp_plus', 0)) / 3600:.1f} Hours"
+                    if item.get("comp_plus")
+                    else "N/A"
+                ),
+                completionist=(
+                    f"{float(item.get('comp_100', 0)) / 3600:.1f} Hours"
+                    if item.get("comp_100")
+                    else "N/A"
+                ),
             )
             games.append(game)
         except (KeyError, TypeError, ValueError):
@@ -125,12 +139,22 @@ def extract_game_data_from_json(html):
     """Extract game data from the __NEXT_DATA__ JSON embedded in the page"""
     try:
         # Find the __NEXT_DATA__ script tag
-        json_match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>', html, re.DOTALL)
+        json_match = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
+            html,
+            re.DOTALL,
+        )
         if not json_match:
             return None
 
         data = json.loads(json_match.group(1))
-        game_data = data.get("props", {}).get("pageProps", {}).get("game", {}).get("data", {}).get("game", [])
+        game_data = (
+            data.get("props", {})
+            .get("pageProps", {})
+            .get("game", {})
+            .get("data", {})
+            .get("game", [])
+        )
 
         if not game_data:
             return None
@@ -180,10 +204,14 @@ def scrape_hltb_search(game_name):
 
         for search_url in search_urls:
             try:
-                response = requests.get(search_url, headers=search_headers, timeout=5)
+                response = requests.get(
+                    search_url, headers=search_headers, timeout=5
+                )
                 if response.ok:
                     # Look for HowLongToBeat game URLs in the response
-                    game_id_matches = re.findall(r"howlongtobeat\.com/game/(\d+)", response.text)
+                    game_id_matches = re.findall(
+                        r"howlongtobeat\.com/game/(\d+)", response.text
+                    )
                     if game_id_matches:
                         # Get up to 5 unique game IDs
                         unique_ids = list(dict.fromkeys(game_id_matches))[:5]
@@ -204,7 +232,9 @@ def scrape_hltb_search(game_name):
         for game_id in game_ids:
             try:
                 game_url = f"https://howlongtobeat.com/game/{game_id}"
-                game_response = requests.get(game_url, headers=game_headers, timeout=8)
+                game_response = requests.get(
+                    game_url, headers=game_headers, timeout=8
+                )
                 if not game_response.ok:
                     continue
 
@@ -215,9 +245,15 @@ def scrape_hltb_search(game_name):
                     continue
 
                 # Fallback: basic title extraction
-                title_match = re.search(r"<title>([^|]+)\s*\|\s*HowLongToBeat</title>", game_response.text)
+                title_match = re.search(
+                    r"<title>([^|]+)\s*\|\s*HowLongToBeat</title>",
+                    game_response.text,
+                )
                 game_title = (
-                    title_match.group(1).replace("How long is ", "").replace("?", "").strip()
+                    title_match.group(1)
+                    .replace("How long is ", "")
+                    .replace("?", "")
+                    .strip()
                     if title_match
                     else game_name
                 )

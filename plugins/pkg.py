@@ -67,7 +67,9 @@ class Package:
         return f"\x02{self.name}\x02 {self.link} - {self.version} - {self.description} - {self.released_date or self.updated or ''}"
 
 
-def pypi_search(query: str, opts: Union[dict, Namespace] = {}) -> Generator[Package, None, None]:
+def pypi_search(
+    query: str, opts: Union[dict, Namespace] = {}
+) -> Generator[Package, None, None]:
     """Search for packages matching the query.
 
     Yields:
@@ -81,7 +83,11 @@ def pypi_search(query: str, opts: Union[dict, Namespace] = {}) -> Generator[Pack
     response = s.get("https://pypi.org/simple/", headers=headers)
     response.raise_for_status()
     data = response.json()
-    matches = [p["name"] for p in data["projects"] if query.casefold() in p["name"].casefold()]
+    matches = [
+        p["name"]
+        for p in data["projects"]
+        if query.casefold() in p["name"].casefold()
+    ]
     if not matches:
         return
     # Sort by proximity to query
@@ -121,7 +127,10 @@ def aur_search(query: str) -> Generator[Package, None, None]:
         for package in soup.select("tbody tr"):
             columns = package.select("td")
             name = columns[0].select_one("a").text.strip()
-            link = "https://aur.archlinux.org" + columns[0].select_one("a").get("href").strip()
+            link = (
+                "https://aur.archlinux.org"
+                + columns[0].select_one("a").get("href").strip()
+            )
             version = columns[1].text.strip()
             released = ""
             description = columns[4].text.strip()
@@ -140,7 +149,10 @@ def arch_search(query: str) -> Generator[Package, None, None]:
         for package in soup.select("tbody tr"):
             columns = package.select("td")
             name = columns[2].select_one("a").text.strip()
-            link = "https://archlinux.org" + columns[2].select_one("a").get("href").strip()
+            link = (
+                "https://archlinux.org"
+                + columns[2].select_one("a").get("href").strip()
+            )
             version = columns[3].text.strip()
             released = ""
             description = columns[4].text.strip()
@@ -186,7 +198,9 @@ def pubdev_search(query: str) -> Generator[Package, None, None]:
         link = package.select_one("h3 a").get("href").strip()
         if link.startswith("/"):
             link = "https://pub.dev" + link
-        version = package.select_one("span.packages-metadata-block").text.strip()
+        version = package.select_one(
+            "span.packages-metadata-block"
+        ).text.strip()
 
         # Remove release date from version
         version = re.sub(r"\(.+\)", "", version).strip()
@@ -226,7 +240,10 @@ def ubuntu_search(query: str) -> Generator[Package, None, None]:
         ubuntus = []
         for li in package.select("li"):
             ver = li.select_one("a.resultlink").text.strip()
-            link = "https://packages.ubuntu.com" + li.select_one("a.resultlink").get("href").strip()
+            link = (
+                "https://packages.ubuntu.com"
+                + li.select_one("a.resultlink").get("href").strip()
+            )
             ubuntus.append(ver)
 
         rows = li.text.strip().split("\n")
@@ -239,7 +256,9 @@ def ubuntu_search(query: str) -> Generator[Package, None, None]:
 
 def search_npmjs(query: str) -> Generator[Package, None, None]:
     url = "https://www.npmjs.com/search"
-    response = requests.get(url, params={"q": query}, headers={"x-spiferack": "1"})
+    response = requests.get(
+        url, params={"q": query}, headers={"x-spiferack": "1"}
+    )
     if response.status_code != 200:
         return
     data = response.json()
@@ -279,16 +298,27 @@ def search_nuget(query: str) -> Generator[Package, None, None]:
     for package in results[0].select("li.package"):
         title = package.select_one("h2.package-title")
         name = title.text.strip()
-        link = "https://www.nuget.org" + title.select_one("a").get("href").strip()
-        version = package.select_one("ul.package-list").select("li")[3].text.strip().lstrip("Latest version ")
-        released = package.select_one("ul.package-list").select("li")[2].text.strip()
+        link = (
+            "https://www.nuget.org" + title.select_one("a").get("href").strip()
+        )
+        version = (
+            package.select_one("ul.package-list")
+            .select("li")[3]
+            .text.strip()
+            .lstrip("Latest version ")
+        )
+        released = (
+            package.select_one("ul.package-list").select("li")[2].text.strip()
+        )
         description = package.select_one("div.package-details").text.strip()
         yield Package(name, version, released, description, link)
 
 
 def search_dockerhub(query: str) -> Generator[Package, None, None]:
     url = "https://hub.docker.com/api/search/v3/catalog/search"
-    response = requests.get(url, params={"query": quote(query), "from": 0, "type": "image"})
+    response = requests.get(
+        url, params={"query": quote(query), "from": 0, "type": "image"}
+    )
     if response.status_code != 200:
         return
     data = response.json()
@@ -385,9 +415,13 @@ def pkg(text, bot, chan, nick, reply):
 
     repo = text.strip().split()[0]
     if repo not in REPOS:
-        return f"Repo '{repo}' not found. Use .'pkglist' to see available repos."
+        return (
+            f"Repo '{repo}' not found. Use .'pkglist' to see available repos."
+        )
 
-    results_queue[(chan, nick)] = REPOS[repo](" ".join(text.strip().split()[1:]))
+    results_queue[(chan, nick)] = REPOS[repo](
+        " ".join(text.strip().split()[1:])
+    )
     results = results_queue[(chan, nick)]
     if results is None or not results:
         return "No [more] results found."

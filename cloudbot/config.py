@@ -44,10 +44,14 @@ class Config(OrderedDict):
         try:
             return self._api_keys[name]
         except LookupError:
-            self._api_keys[name] = value = self.get("api_keys", {}).get(name, default)
+            self._api_keys[name] = value = self.get("api_keys", {}).get(
+                name, default
+            )
             return value
 
-    def get_proxy(self, plugin_name: Optional[str] = None) -> Optional[ProxyOptions]:
+    def get_proxy(
+        self, plugin_name: Optional[str] = None
+    ) -> Optional[ProxyOptions]:
         if plugin_name is None:
             proxy = "default"
         else:
@@ -75,7 +79,10 @@ class Config(OrderedDict):
             )
             print("No config file found! Bot shutting down in five seconds.")
             print("Copy 'config.default.json' to 'config.json' for defaults.")
-            print("For help, see htps://github.com/TotallyNotRobots/CloudBot. " "Thank you for using CloudBot!")
+            print(
+                "For help, see htps://github.com/TotallyNotRobots/CloudBot. "
+                "Thank you for using CloudBot!"
+            )
             time.sleep(5)
             sys.exit()
 
