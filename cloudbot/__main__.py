@@ -6,8 +6,11 @@ import sys
 import time
 from pathlib import Path
 
+from uvicorn import Config, Server
+
 from cloudbot.bot import CloudBot
 from cloudbot.util import async_util
+from cloudbot.webhooks.app import app, get_port, is_enabled, setup_app
 
 
 async def async_main():
@@ -28,6 +31,9 @@ async def async_main():
         _bot = CloudBot(config_dir=Path(run_path))
     else:
         _bot = CloudBot()
+
+    # setup webhooks app
+    setup_app()
 
     # whether we are killed while restarting
     stopped_while_restarting = False
@@ -57,10 +63,20 @@ async def async_main():
 
     signal.signal(signal.SIGINT, exit_gracefully)
 
-    # start the bot
+    # start the web server if enabled
+    server_task = None
+    if is_enabled():
+        port = get_port()
+        config = Config(app=app, host="0.0.0.0", port=port)
+        server = Server(config)
+        server_task = server.serve()
+    else:
+        # Create a dummy task that never completes
+        server_task = asyncio.create_task(asyncio.sleep(float("inf")))
 
+    # start the bot and web server concurrently
     # CloudBot.run() will return True if it should restart, False otherwise
-    restart = await _bot.run()
+    restart, _ = await asyncio.gather(_bot.run(), server_task)
 
     # the bot has stopped, do we want to restart?
     if restart:

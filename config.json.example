@@ -156,6 +156,13 @@
         "config_reloading": true,
         "plugin_reloading": false
     },
+    "webhooks": {
+        "enabled": false,
+        "port": 8081,
+        "tokens": {
+            "default": "your_api_token_here"
+        }
+    },
     "repo_link": "https://github.com/TotallyNotRobots/CloudBot/",
     "logging": {
         "console_debug": false,
