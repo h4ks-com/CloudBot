@@ -15,6 +15,7 @@ License:
 
 import json
 import logging
+import os
 import time
 from operator import attrgetter
 from typing import Dict, Optional, Union
@@ -32,9 +33,10 @@ from cloudbot.bot import bot
 
 # Constants
 DEFAULT_SHORTENER = "is.gd"
-DEFAULT_PASTEBIN = "hastebin"
+DEFAULT_PASTEBIN = "girafiles"
 
 HASTEBIN_SERVER = "https://hastebin.com"
+DEFAULT_FILEBIN = "https://s.h4ks.com"
 
 logger = logging.getLogger("cloudbot")
 
@@ -379,7 +381,39 @@ class Hastebin(Pastebin):
             raise ServiceHTTPError(j["message"], r)
 
 
-pastebins.register("hastebin", Hastebin(HASTEBIN_SERVER))
+class Girafiles(Pastebin):
+    def __init__(self, base_url: str):
+        super().__init__()
+        self.url = base_url
+
+    def paste(self, data, ext):
+        if isinstance(data, str):
+            encoded = data.encode()
+        else:
+            encoded = data
+
+        try:
+            # Prepare file for upload - girafiles expects form data with 'file' field
+            files = {"file": ("paste." + ext, encoded, "text/plain")}
+
+            r = requests.post(self.url, files=files)
+            r.raise_for_status()
+        except HTTPError as e:
+            r = e.response
+            raise ServiceHTTPError(r.reason, r) from e
+        except RequestException as e:
+            raise ServiceError(e.request, "Connection error occurred") from e
+
+        # Girafiles returns the URL directly in the response text
+        if r.status_code == requests.codes.ok:
+            return r.text.strip()
+
+        raise ServiceHTTPError("Upload failed", r)
+
+
+# Register pastebins - girafiles first (new default), hastebin disabled
+pastebins.register("girafiles", Girafiles(os.environ.get("FILEBIN_URL", DEFAULT_FILEBIN)))
+# pastebins.register("hastebin", Hastebin(HASTEBIN_SERVER))  # Disabled
 
 shorteners.register("git.io", Gitio())
 shorteners.register("goo.gl", Googl())
