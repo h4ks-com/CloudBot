@@ -1,16 +1,25 @@
 import logging
+import os
 import secrets
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from cloudbot.bot import bot
+from cloudbot.webhooks.plugin_parser import PluginParser
 
 logger = logging.getLogger("cloudbot.webhooks")
 
 router = APIRouter()
 security = HTTPBearer()
+
+# Setup Jinja2 templates
+templates_dir = Path(__file__).parent / "templates"
+templates = Jinja2Templates(directory=str(templates_dir))
 
 
 class HealthResponse(BaseModel):
@@ -42,6 +51,143 @@ def authenticate(
             return token_name
 
     raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def get_repo_link() -> str:
+    """Get repository link from bot config."""
+    bot_instance = bot.get()
+    if bot_instance:
+        return bot_instance.config.get(
+            "repo_link", "https://github.com/h4ks-com/CloudBot"
+        )
+    return "https://github.com/h4ks-com/CloudBot"
+
+
+def get_command_prefix() -> str:
+    """Get command prefix from bot config."""
+    bot_instance = bot.get()
+    if bot_instance:
+        connections = bot_instance.config.get("connections", [])
+        if connections:
+            # Get command_prefix from first connection
+            return connections[0].get("command_prefix", ".")
+    return "."
+
+
+def get_plugins_directory() -> str:
+    """Get the plugins directory path."""
+    bot_instance = bot.get()
+    if bot_instance:
+        bot_dir = Path(bot_instance.base_dir)
+        return str(bot_dir / "plugins")
+    # Fallback to relative path
+    current_dir = Path(__file__).parent.parent.parent
+    return str(current_dir / "plugins")
+
+
+def get_all_commands_data() -> list[dict]:
+    """Generate the complete commands data structure."""
+    plugins_dir = get_plugins_directory()
+
+    # Define blacklisted commands and broken plugins
+    command_blacklist = {
+        "admin",
+        "permissions",
+        "factoids",
+        "ignore",
+        "chan_track",
+        "history",
+        "logs",
+        "help",
+        "reload",
+        "eval",
+        "raw",
+        "quit",
+        "restart",
+        "part",
+        "join",
+        "nick",
+        "mode",
+        "kick",
+        "ban",
+    }
+
+    broken_plugins = {
+        "spellcheck",
+        "tvdb",
+        "yandex_translate",
+        "core",
+    }
+
+    # Parse plugins
+    parser = PluginParser(
+        plugins_dir=plugins_dir,
+        blacklist=command_blacklist,
+        broken_plugins=broken_plugins,
+    )
+
+    plugins = parser.parse_all_plugins()
+
+    # Flatten commands from all plugins
+    all_commands = []
+    for plugin in plugins:
+        for command in plugin.commands:
+            # Convert file path to relative path for GitHub linking
+            relative_path = os.path.relpath(command.file_path, plugins_dir)
+            command_dict = {
+                "name": command.name,
+                "aliases": command.aliases,
+                "function_name": command.function_name,
+                "docstring": command.docstring,
+                "file_path": f"plugins/{relative_path}",
+                "line_number": command.line_number,
+                "plugin_name": command.plugin_name,
+                "status": command.status,
+            }
+            all_commands.append(command_dict)
+
+    # Sort commands alphabetically
+    all_commands.sort(key=lambda x: x["name"])
+    return all_commands
+
+
+@router.get("/", response_class=HTMLResponse)
+def documentation_page(request: Request) -> HTMLResponse:
+    """Serve the main documentation page with all CloudBot commands."""
+    all_commands = get_all_commands_data()
+
+    return templates.TemplateResponse(
+        "documentation.html",
+        {
+            "request": request,
+            "commands": all_commands,
+            "repo_link": get_repo_link(),
+            "plugins_dir": get_plugins_directory(),
+            "command_prefix": get_command_prefix(),
+        },
+    )
+
+
+@router.get("/plugins.json", response_class=JSONResponse)
+def plugins_json() -> JSONResponse:
+    """Return all plugin commands data as JSON."""
+    all_commands = get_all_commands_data()
+
+    response_data = {
+        "commands": all_commands,
+        "total_commands": len(all_commands),
+        "functional_commands": len(
+            [cmd for cmd in all_commands if cmd["status"] == "functional"]
+        ),
+        "broken_commands": len(
+            [cmd for cmd in all_commands if cmd["status"] == "broken"]
+        ),
+        "repo_link": get_repo_link(),
+        "command_prefix": get_command_prefix(),
+        "plugins": list({cmd["plugin_name"] for cmd in all_commands}),
+    }
+
+    return JSONResponse(content=response_data)
 
 
 @router.get("/health", response_model=HealthResponse)
