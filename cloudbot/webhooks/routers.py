@@ -21,6 +21,36 @@ security = HTTPBearer()
 templates_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 
+# Plugin parsing configuration
+COMMAND_BLACKLIST = {
+    "admin",
+    "permissions",
+    "factoids",
+    "ignore",
+    "chan_track",
+    "history",
+    "logs",
+    "help",
+    "reload",
+    "eval",
+    "raw",
+    "quit",
+    "restart",
+    "part",
+    "join",
+    "nick",
+    "mode",
+    "kick",
+    "ban",
+}
+
+BROKEN_PLUGINS = {
+    "spellcheck",
+    "tvdb",
+    "yandex_translate",
+    "core",
+}
+
 
 class HealthResponse(BaseModel):
     status: str
@@ -85,48 +115,21 @@ def get_plugins_directory() -> str:
     return str(current_dir / "plugins")
 
 
-def get_all_commands_data() -> list[dict]:
-    """Generate the complete commands data structure."""
+def _parse_plugins():
+    """Parse all plugins using shared configuration."""
     plugins_dir = get_plugins_directory()
-
-    # Define blacklisted commands and broken plugins
-    command_blacklist = {
-        "admin",
-        "permissions",
-        "factoids",
-        "ignore",
-        "chan_track",
-        "history",
-        "logs",
-        "help",
-        "reload",
-        "eval",
-        "raw",
-        "quit",
-        "restart",
-        "part",
-        "join",
-        "nick",
-        "mode",
-        "kick",
-        "ban",
-    }
-
-    broken_plugins = {
-        "spellcheck",
-        "tvdb",
-        "yandex_translate",
-        "core",
-    }
-
-    # Parse plugins
     parser = PluginParser(
         plugins_dir=plugins_dir,
-        blacklist=command_blacklist,
-        broken_plugins=broken_plugins,
+        blacklist=COMMAND_BLACKLIST,
+        broken_plugins=BROKEN_PLUGINS,
     )
+    return parser.parse_all_plugins(), plugins_dir
 
-    plugins = parser.parse_all_plugins()
+
+def get_all_commands_data_for_json() -> list[dict]:
+    """Generate commands data for JSON API with GitHub URLs."""
+    plugins, plugins_dir = _parse_plugins()
+    repo_link = get_repo_link()
 
     # Flatten commands from all plugins
     all_commands = []
@@ -134,6 +137,39 @@ def get_all_commands_data() -> list[dict]:
         for command in plugin.commands:
             # Convert file path to relative path for GitHub linking
             relative_path = os.path.relpath(command.file_path, plugins_dir)
+
+            # Generate GitHub URL
+            github_url = f"{repo_link}/blob/master/plugins/{relative_path}"
+            if command.line_number:
+                github_url += f"#L{command.line_number}"
+
+            command_dict = {
+                "name": command.name,
+                "aliases": command.aliases,
+                "function_name": command.function_name,
+                "docstring": command.docstring,
+                "plugin_name": command.plugin_name,
+                "status": command.status,
+                "github_url": github_url,
+            }
+            all_commands.append(command_dict)
+
+    # Sort commands alphabetically
+    all_commands.sort(key=lambda x: x["name"])
+    return all_commands
+
+
+def get_all_commands_data() -> list[dict]:
+    """Generate commands data for web interface with separate file_path and line_number."""
+    plugins, plugins_dir = _parse_plugins()
+
+    # Flatten commands from all plugins
+    all_commands = []
+    for plugin in plugins:
+        for command in plugin.commands:
+            # Convert file path to relative path for GitHub linking
+            relative_path = os.path.relpath(command.file_path, plugins_dir)
+
             command_dict = {
                 "name": command.name,
                 "aliases": command.aliases,
@@ -171,7 +207,7 @@ def documentation_page(request: Request) -> HTMLResponse:
 @router.get("/plugins.json", response_class=JSONResponse)
 def plugins_json() -> JSONResponse:
     """Return all plugin commands data as JSON."""
-    all_commands = get_all_commands_data()
+    all_commands = get_all_commands_data_for_json()
 
     response_data = {
         "commands": all_commands,
