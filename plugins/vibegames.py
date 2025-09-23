@@ -150,8 +150,7 @@ def vibe(text: str, chan: str, nick: str) -> str:
     if response["status"] != "success":
         return f"Error: {response['message']} - {response['response']}"
 
-    preferred_url = response.get("subdomain_url") or response.get("url")
-    return f"Created {name} at {preferred_url}"
+    return f"Created {name} at {response['url']}"
 
 
 @hook.command("vibeedit", autohelp=False)
