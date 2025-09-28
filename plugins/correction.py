@@ -1,4 +1,5 @@
 import re
+from itertools import cycle
 
 from cloudbot import hook
 from cloudbot.util import formatting
@@ -7,9 +8,7 @@ from plugins.mock import get_latest_line
 correction_re = re.compile(
     r"^(?:[sS]/(?:((?:\\/|[^/])*?)(?<!\\)/((?:\\/|[^/])*?)(?:(?<!\\)/([igx]{,4}))?)\s*?;*?)(?:;\s*?[sS]/(?:((?:\\/|[^/])*?)(?<!\\)/((?:\\/|[^/])*?)(?:(?<!\\)/([igx]{,4}))?)\s*?;*?)*?$"
 )
-exp_re = re.compile(
-    r"(?:[sS]/(?:((?:\\/|[^/])*)(?<!\\)/((?:\\/|[^/])*)(?:(?<!\\)/([igx]{,4}))?))"
-)
+exp_re = re.compile(r"(?:[sS]/(?:((?:\\/|[^/])*)(?<!\\)/((?:\\/|[^/])*)(?:(?<!\\)/([igx]{,4}))?))")
 unescape_re = re.compile(r"\\(.)")
 
 LAMESIZE = 15
@@ -20,16 +19,41 @@ REFLAGS = {
     "x": re.VERBOSE,
 }
 
+# Config-based replacement commands
+REPLACEMENT_COMMANDS = {
+    "valware": {
+        "pattern": r"\s+",
+        "replacements": [
+            " \x02but also unrealircd and\x02 ",
+            " \x02and some n8n and\x02 ",
+        ],
+        "flags": re.MULTILINE | re.IGNORECASE,
+    },
+    "mattf": {
+        "pattern": r"\s+",
+        "replacements": [
+            " \x02and docker build also\x02 ",
+            " \x02but containers though\x02 ",
+            " \x02with some kubernetes and\x02 ",
+        ],
+        "flags": re.MULTILINE | re.IGNORECASE,
+    },
+    "handyc": {
+        "pattern": r"\s+",
+        "replacements": [
+            "\x02, but in China and\x02 ",
+            " \x02and Buddhism and\x02 ",
+        ],
+        "flags": re.MULTILINE | re.IGNORECASE,
+    },
+}
+
 
 def get_flags(flags, message):
     re_flags = []
     for flag in flags:
         if flag not in "igx":
-            message(
-                "Invalid regex flag `{}`. Valid are: [{}]".format(
-                    flag, ", ".join(REFLAGS.keys())
-                )
-            )
+            message("Invalid regex flag `{}`. Valid are: [{}]".format(flag, ", ".join(REFLAGS.keys())))
         re_flags.append(REFLAGS[flag])
     return re_flags
 
@@ -39,6 +63,42 @@ def paser_sed_exp(groups, message):
     replace = groups[1] if groups[1] else ""
     flags = str(groups[2]) if groups[2] else ""
     return find, replace, get_flags(flags, message)
+
+
+def create_replacement_command(command_name: str):
+    """Factory function to create replacement commands from config."""
+    config = REPLACEMENT_COMMANDS[command_name]
+
+    def replacement_func(bot, reply, text: str, chan: str, nick: str, conn) -> str:
+        if not text:
+            return f"Usage: {command_name} <nick>"
+
+        target_nick = text.split()[0]
+        line = get_latest_line(None, conn, chan, target_nick)
+
+        if line is None:
+            return f"Nothing found in recent history for {target_nick}"
+
+        replacements = config["replacements"]
+        replacement_cycle = cycle(replacements)
+
+        def cyclic_replace(match):
+            """Replace function that cycles through replacements for each match."""
+            return next(replacement_cycle)
+
+        # Apply the replacement with cycling
+        new = re.sub(
+            config["pattern"],
+            cyclic_replace,
+            line,
+            flags=config["flags"],
+        )
+
+        return formatting.truncate(f"\x02{new}", 420)
+
+    # Set the docstring
+    replacement_func.__doc__ = f"<nick> - make the last sentence from <nick> as if {command_name} had said it"
+    return replacement_func
 
 
 @hook.regex(correction_re)
@@ -126,45 +186,14 @@ def sed(bot, reply, text: str) -> str:
     return formatting.truncate(new, 420)
 
 
-@hook.command("valware", autohelp=False)
-def valware(
-    bot, reply, text: str, chan: str, nick: str, conn
-) -> list[str] | str:
-    """<nick> - Alias for s/\\s+/but also unrealircd and/g"""
-    if not text:
-        return "Usage: valware <nick>"
+# Dynamically create and register replacement commands
+for cmd_name in REPLACEMENT_COMMANDS.keys():
+    # Create the function
+    func = create_replacement_command(cmd_name)
 
-    nick = text.split()[0]
+    # Register it as a command
+    hook_decorator = hook.command(cmd_name, autohelp=False)
+    registered_func = hook_decorator(func)
 
-    line = get_latest_line(None, conn, chan, nick)
-    if line is None:
-        return f"Nothing found in recent history for {nick}"
-
-    new = re.sub(
-        r"\s+",
-        " \x02but also unrealircd and n8n and\x02 ",
-        line,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    return formatting.truncate(f"\x02{new}", 420)
-
-
-@hook.command("mattf", autohelp=False)
-def mattf(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | str:
-    """<nick> - Alias for s/\\s+/and docker but also/g"""
-    if not text:
-        return "Usage: mattf <nick>"
-
-    nick = text.split()[0]
-
-    line = get_latest_line(None, conn, chan, nick)
-    if line is None:
-        return f"Nothing found in recent history for {nick}"
-
-    new = re.sub(
-        r"\s+",
-        " \x02and docker build also\x02 ",
-        line,
-        flags=re.MULTILINE | re.IGNORECASE,
-    )
-    return formatting.truncate(f"\x02{new}", 420)
+    # Add to global namespace so CloudBot can find it
+    globals()[cmd_name] = registered_func
