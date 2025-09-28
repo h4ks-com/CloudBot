@@ -32,7 +32,8 @@ GETS = {
     },
     ("yomama", "ym"): {"url": "http://api.yomomma.info/", "key": "joke"},
     ("xkcd", "x"): {"url": "https://xkcd.com/info.0.json", "key": "img"},
-    ("quote", "q"): {"url": "https://api.quotable.io/random", "key": "content"},
+    # ("quote", "q"): {"url": "https://api.quotable.io/random", "key": "content"},
+    ("quote", "q"): {"url": "https://quoteslate.vercel.app/api/quotes/random", "key": "quote"},
     ("catpic", "c"): {
         "url": "https://api.thecatapi.com/v1/images/search",
         "key": "url",
@@ -42,23 +43,23 @@ GETS = {
         "key": "message",
     },
     ("birdpic", "b"): {
-        "url": "https://some-random-api.ml/img/bird",
+        "url": "https://some-random-api.com/img/bird",
         "key": "link",
     },
     ("foxpic", "f"): {
-        "url": "https://some-random-api.ml/img/fox",
+        "url": "https://some-random-api.com/img/fox",
         "key": "link",
     },
     ("koalapic", "k"): {
-        "url": "https://some-random-api.ml/img/koala",
+        "url": "https://some-random-api.com/img/koala",
         "key": "link",
     },
     ("pandapic", "p"): {
-        "url": "https://some-random-api.ml/img/panda",
+        "url": "https://some-random-api.com/img/panda",
         "key": "link",
     },
     ("redpanda", "rp"): {
-        "url": "https://some-random-api.ml/img/red_panda",
+        "url": "https://some-random-api.com/img/red_panda",
         "key": "link",
     },
 }
