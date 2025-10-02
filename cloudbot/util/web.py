@@ -412,7 +412,9 @@ class Girafiles(Pastebin):
 
 
 # Register pastebins - girafiles first (new default), hastebin disabled
-pastebins.register("girafiles", Girafiles(os.environ.get("FILEBIN_URL", DEFAULT_FILEBIN)))
+pastebins.register(
+    "girafiles", Girafiles(os.environ.get("FILEBIN_URL", DEFAULT_FILEBIN))
+)
 # pastebins.register("hastebin", Hastebin(HASTEBIN_SERVER))  # Disabled
 
 shorteners.register("git.io", Gitio())

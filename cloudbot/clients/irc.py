@@ -29,8 +29,9 @@ irc_bad_chars = "".join(
 irc_clean_re = re.compile(f"[{re.escape(irc_bad_chars)}]")
 
 
-def irc_clean(dirty: str) -> str:
-    return irc_clean_re.sub("", dirty)
+def irc_clean_colors(dirty: str) -> str:
+    stripped = colors.strip_irc(dirty)
+    return irc_clean_re.sub("", stripped)
 
 
 irc_command_to_event_type = {
@@ -537,7 +538,7 @@ class _IrcProtocol(asyncio.Protocol):
         # Content
         content_raw = _get_param(message, content_params)
         if content_raw is not None:
-            content = irc_clean(content_raw)
+            content = irc_clean_colors(content_raw)
         else:
             content = None
 
@@ -564,7 +565,7 @@ class _IrcProtocol(asyncio.Protocol):
                 if ctcp_text_split[0] == "ACTION":
                     # this is a CTCP ACTION, set event_type and content accordingly
                     event_type = EventType.action
-                    content = irc_clean(ctcp_text_split[1])
+                    content = irc_clean_colors(ctcp_text_split[1])
                 else:
                     # this shouldn't be considered a regular message
                     event_type = EventType.other

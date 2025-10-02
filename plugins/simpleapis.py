@@ -33,7 +33,10 @@ GETS = {
     ("yomama", "ym"): {"url": "http://api.yomomma.info/", "key": "joke"},
     ("xkcd", "x"): {"url": "https://xkcd.com/info.0.json", "key": "img"},
     # ("quote", "q"): {"url": "https://api.quotable.io/random", "key": "content"},
-    ("quote", "q"): {"url": "https://quoteslate.vercel.app/api/quotes/random", "key": "quote"},
+    ("quote", "q"): {
+        "url": "https://quoteslate.vercel.app/api/quotes/random",
+        "key": "quote",
+    },
     ("catpic", "c"): {
         "url": "https://api.thecatapi.com/v1/images/search",
         "key": "url",

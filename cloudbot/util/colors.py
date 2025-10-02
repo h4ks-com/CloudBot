@@ -85,7 +85,7 @@ IRC_FORMATTING_DICT = {
 }
 
 COLOR_RE = re.compile(r"\$\(.*?\)", re.I)
-IRC_COLOR_RE = re.compile(r"(\x03(\d+,\d+|\d)|[\x0f\x02\x16\x1f])", re.I)
+IRC_COLOR_RE = re.compile(r"(\x03(\d+,\d+|\d+)?|[\x0f\x02\x16\x1f\x1d])", re.I)
 
 
 def get_color(colour, return_formatted=True):

@@ -8,7 +8,9 @@ from plugins.mock import get_latest_line
 correction_re = re.compile(
     r"^(?:[sS]/(?:((?:\\/|[^/])*?)(?<!\\)/((?:\\/|[^/])*?)(?:(?<!\\)/([igx]{,4}))?)\s*?;*?)(?:;\s*?[sS]/(?:((?:\\/|[^/])*?)(?<!\\)/((?:\\/|[^/])*?)(?:(?<!\\)/([igx]{,4}))?)\s*?;*?)*?$"
 )
-exp_re = re.compile(r"(?:[sS]/(?:((?:\\/|[^/])*)(?<!\\)/((?:\\/|[^/])*)(?:(?<!\\)/([igx]{,4}))?))")
+exp_re = re.compile(
+    r"(?:[sS]/(?:((?:\\/|[^/])*)(?<!\\)/((?:\\/|[^/])*)(?:(?<!\\)/([igx]{,4}))?))"
+)
 unescape_re = re.compile(r"\\(.)")
 
 LAMESIZE = 15
@@ -53,7 +55,11 @@ def get_flags(flags, message):
     re_flags = []
     for flag in flags:
         if flag not in "igx":
-            message("Invalid regex flag `{}`. Valid are: [{}]".format(flag, ", ".join(REFLAGS.keys())))
+            message(
+                "Invalid regex flag `{}`. Valid are: [{}]".format(
+                    flag, ", ".join(REFLAGS.keys())
+                )
+            )
         re_flags.append(REFLAGS[flag])
     return re_flags
 
@@ -69,7 +75,9 @@ def create_replacement_command(command_name: str):
     """Factory function to create replacement commands from config."""
     config = REPLACEMENT_COMMANDS[command_name]
 
-    def replacement_func(bot, reply, text: str, chan: str, nick: str, conn) -> str:
+    def replacement_func(
+        bot, reply, text: str, chan: str, nick: str, conn
+    ) -> str:
         if not text:
             return f"Usage: {command_name} <nick>"
 

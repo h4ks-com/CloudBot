@@ -232,7 +232,9 @@ def summarize(
             " keywords separated by comma: \n```"
         )
     else:
-        question_header = f"Please summarize briefly the following {what}: \n```"
+        question_header = (
+            f"Please summarize briefly the following {what}: \n```"
+        )
 
     summarize_body = question_header + "\n".join(messages) + "\n```"
 
