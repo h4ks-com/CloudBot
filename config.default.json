@@ -101,7 +101,13 @@
         },
         "speech": {
             "api": "http://localhost:5000"
+        },
+        "worldguess": {
+            "api_url": "http://localhost:8000"
         }
+    },
+    "webhooks": {
+        "base_url": "http://localhost:8080"
     },
     "api_keys": {
         "openweathermap": "",

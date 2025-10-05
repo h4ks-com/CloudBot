@@ -10,7 +10,9 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from cloudbot.bot import bot
+from cloudbot.util import database
 from cloudbot.webhooks.plugin_parser import PluginParser
+from plugins.core.webhook_tokens import cleanup_expired_tokens, is_token_valid
 
 logger = logging.getLogger("cloudbot.webhooks")
 
@@ -70,7 +72,20 @@ def authenticate(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> str:
     token = credentials.credentials
-    webhooks_config = bot.get().config.get("webhooks", {})
+    bot_instance = bot.get()
+
+    # Check temporary webhook tokens first
+    db = database.Session()
+    try:
+        cleanup_expired_tokens(db)
+        if is_token_valid(db, token):
+            logger.info("Webhook authentication successful with temporary token")
+            return "temporary"
+    finally:
+        db.close()
+
+    # Check configured static tokens
+    webhooks_config = bot_instance.config.get("webhooks", {})
     tokens = webhooks_config.get("tokens", {})
 
     for token_name, expected_token in tokens.items():
