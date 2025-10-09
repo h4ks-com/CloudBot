@@ -2,6 +2,7 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
 
 base_url = "https://www.googleapis.com/books/v1/"
@@ -15,7 +16,7 @@ def books(text, reply, bot):
     if not dev_key:
         return "This command requires a Google Developers Console API key."
 
-    with requests.get(
+    with get_session().get(
         book_search_api, params={"q": text, "key": dev_key, "country": "US"}
     ) as response:
         try:

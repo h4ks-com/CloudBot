@@ -10,6 +10,7 @@ from github import Auth, Github, GithubException
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import colors, formatting, web
 
 shortcuts = {}
@@ -51,7 +52,7 @@ def issue_cmd(text, event):
     issue = args[1] if len(args) > 1 else None
 
     if issue:
-        r = requests.get(
+        r = get_session().get(
             "https://api.github.com/repos/{}/{}/issues/{}".format(
                 owner, repo, issue
             )
@@ -83,7 +84,7 @@ def issue_cmd(text, event):
             number, state, url, title, summary
         )
 
-    r = requests.get(f"https://api.github.com/repos/{owner}/{repo}/issues")
+    r = get_session().get(f"https://api.github.com/repos/{owner}/{repo}/issues")
 
     r.raise_for_status()
     j = r.json()

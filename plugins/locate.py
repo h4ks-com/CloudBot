@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 
 # Define some constants
@@ -99,7 +100,7 @@ class GoogleLocation:
             params["region"] = bias
 
         return GoogleLocation._from_api_response(
-            requests.get(geocode_api, params=params)
+            get_session().get(geocode_api, params=params)
         )
 
     @staticmethod
@@ -110,7 +111,7 @@ class GoogleLocation:
             params["region"] = bias
 
         return GoogleLocation._from_api_response(
-            requests.get(geocode_api, params=params)
+            get_session().get(geocode_api, params=params)
         )
 
 

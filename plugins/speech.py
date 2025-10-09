@@ -11,6 +11,7 @@ import requests
 import validators
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 
 API = bot.config["plugins"]["speech"]["api"]
@@ -20,33 +21,33 @@ headers = {"Authorization": "Bearer " + bot.config.get_api_key("speech", "")}
 def stt_file(file, language):
     url = f"{API}stt/{language}"
     payload = {"file": open(file, "rb")}
-    response = requests.request("POST", url, files=payload, headers=headers)
+    response = get_session().request("POST", url, files=payload, headers=headers)
     return response.json()
 
 
 def stt_url(url, language):
     url = f"{API}stt/{language}?url=" + urllib.parse.quote(url)
-    response = requests.request("POST", url, headers=headers)
+    response = get_session().request("POST", url, headers=headers)
     return response.json()
 
 
 def langs():
     url = f"{API}stt/languages"
-    response = requests.request("GET", url, headers=headers)
+    response = get_session().request("GET", url, headers=headers)
     return response.json()
 
 
 def pastebin(text):
     url = "http://ix.io"
     payload = {"f:1=<-": text}
-    response = requests.request("POST", url, data=payload)
+    response = get_session().request("POST", url, data=payload)
     return response.text
 
 
 def upload_file(file):
     url = "https://ttm.sh"
     payload = {"file": open(file, "rb")}
-    response = requests.request("POST", url, files=payload)
+    response = get_session().request("POST", url, files=payload)
     return response.text.strip()
 
 
@@ -98,7 +99,7 @@ def stt_json(text, bot, nick):
 
 def langs2():
     url = f"{API}tts/languages"
-    response = requests.request("GET", url, headers=headers)
+    response = get_session().request("GET", url, headers=headers)
     return response.json()
 
 
@@ -125,7 +126,7 @@ def speak(text, bot, nick):
     url = f"{API}tts/{language}"
     payload = {"text": sentence}
 
-    with requests.request(
+    with get_session().request(
         "POST", url, data=payload, headers=headers, stream=True
     ) as r:
         r.raise_for_status()

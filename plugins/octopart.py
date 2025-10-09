@@ -16,6 +16,7 @@ License:
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 
 API_URL = "http://octopart.com/api/v3/parts/search"
@@ -31,7 +32,7 @@ def octopart(text, reply):
     params = {"apikey": api_key, "q": text, "start": 0, "limit": 1}
 
     try:
-        request = requests.get(API_URL, params=params)
+        request = get_session().get(API_URL, params=params)
         request.raise_for_status()
     except (
         requests.exceptions.HTTPError,

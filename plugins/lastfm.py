@@ -8,6 +8,7 @@ import requests
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 from cloudbot.util import database, timeformat, web
 
@@ -92,7 +93,7 @@ def get_account(nick, text=None):
 def api_request(method, **params):
     api_key = bot.config.get_api_key("lastfm")
     params.update({"method": method, "api_key": api_key})
-    request = requests.get(api_url, params=params)
+    request = get_session().get(api_url, params=params)
 
     try:
         data = request.json()

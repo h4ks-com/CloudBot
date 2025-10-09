@@ -3,12 +3,13 @@ import re
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 
 @hook.command(autohelp=False)
 def kernel(reply):
     """- gets a list of linux kernel versions"""
-    r = requests.get("https://www.kernel.org/finger_banner")
+    r = get_session().get("https://www.kernel.org/finger_banner")
     r.raise_for_status()
     contents = r.text
     contents = re.sub(r"The latest(\s*)", "", contents)

@@ -6,6 +6,7 @@ from lxml import html
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 
 api_url = "http://encyclopediadramatica.se/api.php"
@@ -16,7 +17,7 @@ ed_url = "http://encyclopediadramatica.se/"
 def drama(text, reply):
     """<phrase> - gets the first paragraph of the Encyclopedia Dramatica article on <phrase>"""
 
-    search_response = requests.get(
+    search_response = get_session().get(
         api_url, params={"action": "opensearch", "search": text}
     )
 
@@ -37,7 +38,7 @@ def drama(text, reply):
 
     url = ed_url + parse.quote(article_name, "")
 
-    page_response = requests.get(url)
+    page_response = get_session().get(url)
 
     try:
         page_response.raise_for_status()

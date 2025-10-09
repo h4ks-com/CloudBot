@@ -3,6 +3,7 @@ import re
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import web
 from cloudbot.util.http import parse_soup
 
@@ -44,7 +45,7 @@ def get_data(user, currency="us"):
                 "like Gecko) Chrome/41.0.2228.0 Safari/537.36",
                 "Referer": "https://steamdb.info/",
             }
-            request = requests.get(CALC_URL, params=params, headers=headers)
+            request = get_session().get(CALC_URL, params=params, headers=headers)
 
         request.raise_for_status()
     except (

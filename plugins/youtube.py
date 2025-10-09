@@ -14,6 +14,7 @@ from youtube_transcript_api import (
 )
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 from cloudbot.util import colors, timeformat
 from cloudbot.util.formatting import pluralize_suffix, truncate
@@ -260,7 +261,7 @@ def do_request(
 
     kwargs["part"] = ",".join(parts)
     kwargs["key"] = api_key
-    return requests.get(base_url + method, kwargs)
+    return get_session().get(base_url + method, kwargs)
 
 
 def get_video(video_id: str, parts: Parts) -> requests.Response:

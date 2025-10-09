@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.queue import Queue
 
 
@@ -92,7 +93,7 @@ def try_api_search(game_name):
 
     for endpoint in endpoints:
         try:
-            response = requests.post(
+            response = get_session().post(
                 endpoint, headers=headers, json=search_payload, timeout=10
             )
             if response.ok and response.content:
@@ -204,7 +205,7 @@ def scrape_hltb_search(game_name):
 
         for search_url in search_urls:
             try:
-                response = requests.get(
+                response = get_session().get(
                     search_url, headers=search_headers, timeout=5
                 )
                 if response.ok:
@@ -232,7 +233,7 @@ def scrape_hltb_search(game_name):
         for game_id in game_ids:
             try:
                 game_url = f"https://howlongtobeat.com/game/{game_id}"
-                game_response = requests.get(
+                game_response = get_session().get(
                     game_url, headers=game_headers, timeout=8
                 )
                 if not game_response.ok:

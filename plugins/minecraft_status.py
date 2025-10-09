@@ -3,6 +3,7 @@ import json
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 
 @hook.command(autohelp=False)
@@ -10,7 +11,7 @@ def mcstatus(reply):
     """- gets the status of various Mojang (Minecraft) servers"""
 
     try:
-        request = requests.get("http://status.mojang.com/check")
+        request = get_session().get("http://status.mojang.com/check")
         request.raise_for_status()
     except (
         requests.exceptions.HTTPError,

@@ -3,6 +3,7 @@ from typing import Dict
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 from cloudbot.util.http import parse_xml
 
@@ -54,7 +55,7 @@ def get_data(user):
 
     # get the page
     try:
-        request = requests.get(
+        request = get_session().get(
             API_URL.format(user), params=params, headers=headers
         )
         request.raise_for_status()

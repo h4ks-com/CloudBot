@@ -10,6 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import queue
 
 BASE_URL = "https://store.playstation.com/"
@@ -52,7 +53,7 @@ class Game:
 
 def search_game(query: str, lang: str) -> List[Game]:
     url = SEARCH_URL.format(lang, quote(query))
-    r = requests.get(url, headers=HEADERS)
+    r = get_session().get(url, headers=HEADERS)
     soup = BeautifulSoup(r.text, "html.parser")
     grid = soup.find("ul", class_="psw-grid-list psw-l-grid")
     if not grid:

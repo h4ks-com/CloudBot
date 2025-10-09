@@ -16,6 +16,7 @@ import re
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
 
 # CONSTANTS
@@ -97,7 +98,7 @@ def newegg_url(match):
         "Referer": "http://www.newegg.com/",
     }
 
-    request = requests.get(API_PRODUCT.format(item_id), headers=headers)
+    request = get_session().get(API_PRODUCT.format(item_id), headers=headers)
     request.raise_for_status()
     item = request.json()
     return format_item(item["Basic"], show_url=False)
@@ -119,7 +120,7 @@ def newegg(text, admin_log, reply):
 
     # submit the search request
     try:
-        request = requests.post(
+        request = get_session().post(
             "http://www.ows.newegg.com/Search.egg/Advanced",
             data=json.dumps(request).encode("utf-8"),
             headers=headers,

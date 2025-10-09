@@ -3,13 +3,14 @@ import re
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
 
 fml_cache = []
 
 
 def get_soup(url):
-    with requests.get(url, timeout=6) as response:
+    with get_session().get(url, timeout=6) as response:
         text = response.text
 
     return parse_soup(text)

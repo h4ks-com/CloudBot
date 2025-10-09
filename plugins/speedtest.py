@@ -4,6 +4,7 @@ import requests
 from lxml import html
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 speedtest_re = re.compile(r".*://www.speedtest.net/my-result/([0-9]+)?.*", re.I)
 base_url = "http://www.speedtest.net/my-result/{}"
@@ -14,7 +15,7 @@ def speedtest_url(match):
     test_id = match.group(1)
     url = base_url.format(test_id)
 
-    request = requests.get(url)
+    request = get_session().get(url)
     request.raise_for_status()
     data = html.fromstring(request.text)
 

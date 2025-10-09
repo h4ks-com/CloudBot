@@ -2,11 +2,12 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 
 def get_data(url, reply, bot, params=None):
     try:
-        with requests.get(
+        with get_session().get(
             url, headers={"User-Agent": bot.user_agent}, params=params
         ) as r:
             r.raise_for_status()

@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.queue import Queue
 
 HEADERS = {
@@ -28,7 +29,7 @@ class SearchResult:
 
     @classmethod
     def from_url(cls, url: str) -> "SearchResult":
-        response = requests.get(url, headers=HEADERS)
+        response = get_session().get(url, headers=HEADERS)
         soup = BeautifulSoup(response.content, "html.parser")
 
         def get_item(selector, body):
@@ -65,7 +66,7 @@ def search_metacritic(query, category=None) -> List[str]:
     if category:
         url += f"?category={category}"
 
-    response = requests.get(url, headers=HEADERS)
+    response = get_session().get(url, headers=HEADERS)
     soup = BeautifulSoup(response.content, "html.parser")
 
     results = soup.select("div.c-pageSiteSearch-results a[href]")

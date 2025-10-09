@@ -9,6 +9,7 @@ from requests import HTTPError
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import colors, formatting, timeformat
 from cloudbot.util.formatting import pluralize_auto
 from cloudbot.util.pager import CommandPager, paginated_list
@@ -57,13 +58,13 @@ def get_sub(text):
 
 def api_request(url):
     url = url.with_query("").with_scheme("https") / ".json"
-    r = requests.get(str(url), headers=agent)
+    r = get_session().get(str(url), headers=agent)
     r.raise_for_status()
     return r.json()
 
 
 def get_post(post_id):
-    with requests.get(post_url.format(post_id), headers=agent) as response:
+    with get_session().get(post_url.format(post_id), headers=agent) as response:
         response.raise_for_status()
         return response.json()
 
@@ -194,7 +195,7 @@ def moderates(text, chan, conn, reply):
     """<username> - This plugin prints the list of subreddits a user moderates listed in a reddit users profile.
     Private subreddits will not be listed."""
     user = get_user(text)
-    r = requests.get(
+    r = get_session().get(
         user_url.format(user) + "moderated_subreddits.json", headers=agent
     )
     try:
@@ -218,7 +219,7 @@ def moderates(text, chan, conn, reply):
 
 def get_user_data(page, user, reply):
     url = user_url + page
-    r = requests.get(url.format(user), headers=agent)
+    r = get_session().get(url.format(user), headers=agent)
     try:
         r.raise_for_status()
     except HTTPError as e:
@@ -303,7 +304,7 @@ def time_format(numdays):
 
 
 def get_sub_data(url, sub, reply):
-    r = requests.get(url.format(sub), headers=agent)
+    r = get_session().get(url.format(sub), headers=agent)
 
     try:
         r.raise_for_status()

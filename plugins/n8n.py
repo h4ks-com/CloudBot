@@ -2,6 +2,7 @@
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 
 base_url = "https://n8n.h4ks.com/webhook"
@@ -10,7 +11,7 @@ base_url = "https://n8n.h4ks.com/webhook"
 def request_webhook(
     endpoint: str, json_data: dict | None = None
 ) -> requests.Response:
-    return requests.post(f"{base_url}/{endpoint}", json=json_data)
+    return get_session().post(f"{base_url}/{endpoint}", json=json_data)
 
 
 @hook.command("meme")

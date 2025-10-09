@@ -3,6 +3,7 @@ import re
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.hook import Action, Priority
 from cloudbot.util.http import parse_soup
 
@@ -106,7 +107,7 @@ def parse_content(content, encoding=None):
 )
 def print_url_title(message, match, logger):
     try:
-        with requests.get(
+        with get_session().get(
             match.group(), headers=HEADERS, stream=True, timeout=3
         ) as r:
             if not r.encoding or not r.ok:

@@ -10,6 +10,7 @@ import validators
 from pypdf import PdfReader
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 from cloudbot.util.http import ua_firefox
 from plugins.huggingface import FileIrcResponseWrapper
@@ -82,7 +83,7 @@ def search_arxiv(
         "max_results": max_results,
         "SortOrder": "descending",
     }
-    response = requests.get(API_URL, params=params)
+    response = get_session().get(API_URL, params=params)
     if response.status_code == 200:
         data = response.text
         return parse_arxiv_xml(data)
@@ -185,7 +186,7 @@ def summarize_command(
     article_pdf_url = f"{PDF_VIEW_URL}{article_id}"
 
     try:
-        response = requests.get(
+        response = get_session().get(
             article_pdf_url,
             headers={"User-Agent": ua_firefox},
             timeout=PDF_REQUEST_TIMEOUT,

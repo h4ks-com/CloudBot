@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import web
 
 
@@ -16,7 +17,7 @@ def scrape_rotten_tomatoes(movie_title: str) -> dict[str, Any] | None:
     }
 
     try:
-        response = requests.get(
+        response = get_session().get(
             search_url,
             params={"search": movie_title},
             headers=headers,
@@ -33,7 +34,7 @@ def scrape_rotten_tomatoes(movie_title: str) -> dict[str, Any] | None:
         best_match = _find_best_movie_match(movie_links, movie_title)
         movie_url = _construct_movie_url(best_match["href"])
 
-        movie_response = requests.get(movie_url, headers=headers, timeout=10)
+        movie_response = get_session().get(movie_url, headers=headers, timeout=10)
         movie_response.raise_for_status()
 
         movie_soup = BeautifulSoup(movie_response.content, "html.parser")

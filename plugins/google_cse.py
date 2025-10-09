@@ -14,6 +14,7 @@ License:
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 from cloudbot.util import filesize, formatting
 
@@ -30,7 +31,7 @@ def gse(text):
     if not cx:
         return "This command requires a custom Google Search Engine ID."
 
-    parsed = requests.get(
+    parsed = get_session().get(
         API_CS, params={"cx": cx, "q": text, "key": dev_key}
     ).json()
 
@@ -62,7 +63,7 @@ def gse_gis(text):
     if not cx:
         return "This command requires a custom Google Search Engine ID."
 
-    parsed = requests.get(
+    parsed = get_session().get(
         API_CS,
         params={"cx": cx, "q": text, "searchType": "image", "key": dev_key},
     ).json()

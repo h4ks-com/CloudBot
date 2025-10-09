@@ -5,6 +5,7 @@ from typing import Dict, List
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 BASE_URL = "http://www.foaas.com/{fuck}/{target}"
 
@@ -26,7 +27,7 @@ def format_url(fucker, fuckee=None):
 
 def get_fuck_off(fucker, fuckee):
     url = format_url(fucker, fuckee)
-    r = requests.get(url, headers=headers)
+    r = get_session().get(url, headers=headers)
     r.raise_for_status()
     return r.text
 

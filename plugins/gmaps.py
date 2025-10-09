@@ -15,6 +15,7 @@ from pyproj import Geod
 from streetview import get_streetview, search_panoramas
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import timeformat
 from cloudbot.util.formatting import html_to_irc
 from plugins.huggingface import FileIrcResponseWrapper
@@ -281,7 +282,7 @@ def new_guess_game(bot, chan) -> str:
         country_name = countries[country_code]
 
         api_url = f"https://api.3geonames.org/randomland.{country_code}.json"
-        r = requests.get(api_url)
+        r = get_session().get(api_url)
         r.raise_for_status()
         try:
             response_json = r.json()

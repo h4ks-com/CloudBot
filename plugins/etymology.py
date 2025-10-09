@@ -14,6 +14,7 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
 from cloudbot.util.http import parse_soup
 
@@ -32,7 +33,7 @@ def etymology(text, reply):
 
     url = "http://www.etymonline.com/index.php"
 
-    response = requests.get(url, params={"term": text})
+    response = get_session().get(url, params={"term": text})
 
     try:
         response.raise_for_status()

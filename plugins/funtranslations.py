@@ -5,6 +5,7 @@ from base64 import b64decode
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 
 
@@ -77,7 +78,7 @@ def tor_check_code(s: socket, failmsg: str):
 def upload_file(file):
     url = "https://ttm.sh"
     payload = {"file": file}
-    response = requests.request("POST", url, files=payload)
+    response = get_session().request("POST", url, files=payload)
     return response.text.strip()
 
 
@@ -97,7 +98,7 @@ def tor_refresh():
 
 
 def tor_request_get(*args, **kwargs):
-    return requests.get(
+    return get_session().get(
         *args,
         proxies=dict(
             http=f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
@@ -108,7 +109,7 @@ def tor_request_get(*args, **kwargs):
 
 
 def tor_request_post(*args, **kwargs):
-    return requests.post(
+    return get_session().post(
         *args,
         proxies=dict(
             http=f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
@@ -119,7 +120,7 @@ def tor_request_post(*args, **kwargs):
 
 
 def proxy_request_post(proxies, *args, **kwargs):
-    return requests.post(*args, proxies=proxies, **kwargs)
+    return get_session().post(*args, proxies=proxies, **kwargs)
 
 
 def torip():
@@ -153,7 +154,7 @@ def funtranslate(text, reply):
 
     data = f"text={text}"
 
-    response = requests.post(LANGS[lang], headers=headers, data=data)
+    response = get_session().post(LANGS[lang], headers=headers, data=data)
 
     def process_response(response):
         resp = response.json()
@@ -198,7 +199,7 @@ def funtranslate(text, reply):
             password = proxy["password"]
             return f"http://{username}:{password}@{addr}:{port}"
 
-        response = requests.get(
+        response = get_session().get(
             "https://proxy.webshare.io/api/proxy/list/?page=1",
             headers={"Authorization": "Token " + webshare_key},
         )

@@ -258,11 +258,11 @@ def irc_response_builder(response: requests.Response) -> IrcResponseWrapper:
 class HuggingFaceClient:
     def __init__(self, api_tokens: "list[str]"):
         self.api_tokens = iter(api_tokens)
-        self.session = requests.Session()
+        self.headers = {}
         self.refresh_headers()
 
     def refresh_headers(self) -> None:
-        self.session.headers.update(
+        self.headers.update(
             {
                 "Authorization": f"Bearer {self.next_token()}",
                 "Content-Type": "application/json",
@@ -273,9 +273,10 @@ class HuggingFaceClient:
         return next(self.api_tokens)
 
     def _send(self, payload: dict, model: str) -> requests.Response:
+        from cloudbot.util.web import get_session
         data = json.dumps(payload)
-        response = self.session.request(
-            "POST", INFERENCE_API.format(model=model), data=data
+        response = get_session().request(
+            "POST", INFERENCE_API.format(model=model), data=data, headers=self.headers
         )
         return response
 
@@ -287,8 +288,9 @@ class HuggingFaceClient:
         return self._send(inputs, preset_model.model if preset_model else model)
 
     def search_model(self, query: str) -> List[ModelInfo]:
+        from cloudbot.util.web import get_session
         query = quote(query)
-        response = self.session.get(BASE_API + f"models?search={query}")
+        response = get_session().get(BASE_API + f"models?search={query}", headers=self.headers)
         response.raise_for_status()
         return [ModelInfo(**model) for model in response.json()]
 

@@ -6,6 +6,7 @@ import socket
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 URL = "https://json.geoiplookup.io/{}"
 
@@ -23,7 +24,7 @@ def geoip(text, loop, reply):
         except socket.gaierror:
             return "Invalid input."
 
-    response = requests.get(URL.format(ip))
+    response = get_session().get(URL.format(ip))
     if not response.ok:
         return f"Error: {response.status_code}"
 

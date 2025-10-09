@@ -4,13 +4,14 @@ import urllib.parse
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 API = "https://api.datamuse.com/words?"
 MAX_DISPLAY_WORDS = 20
 
 
 def get(**params):
-    r = requests.get(
+    r = get_session().get(
         API
         + "&".join(
             [

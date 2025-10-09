@@ -2,13 +2,14 @@
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 API = "https://api.pi.delivery/v1/pi"
 MAX_DIGITS = 400
 
 
 def pi_range(start: int, size: int) -> str:
-    response = requests.get(
+    response = get_session().get(
         API, params={"start": start, "numberOfDigits": size, "radix": 10}
     )
     if response.status_code == 200:

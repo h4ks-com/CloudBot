@@ -3,6 +3,7 @@
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 API_URL = "https://api.waifu.im/"
 tags = []
@@ -11,7 +12,7 @@ tags = []
 def refresh_tags():
     global tags
     tags = []
-    response = requests.get(API_URL + "tags")
+    response = get_session().get(API_URL + "tags")
     if response.status_code == 200:
         obj = response.json()
         tags.extend(obj["versatile"])
@@ -38,7 +39,7 @@ def waifu(text):
         "included_tags": request_tags,
     }
 
-    response = requests.get(API_URL + "search", params=params)
+    response = get_session().get(API_URL + "search", params=params)
 
     if response.status_code == 200:
         data = response.json()

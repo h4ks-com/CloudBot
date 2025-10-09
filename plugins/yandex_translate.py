@@ -2,6 +2,7 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import web
 
 api_url = "https://translate.yandex.net/api/v1.5/tr.json/"
@@ -13,7 +14,7 @@ def load_key(bot):
     api_key = bot.config.get("api_keys", {}).get("yandex_translate", None)
     url = api_url + "getLangs"
     params = {"key": api_key, "ui": "en"}
-    r = requests.get(url, params=params)
+    r = get_session().get(url, params=params)
     r.raise_for_status()
     data = r.json()
     lang_dict = {v: k for k, v in data["langs"].items()}
@@ -43,7 +44,7 @@ def list_langs():
     """- List the languages/codes that can be used to translate. Translation is powered by Yandex https://translate.yandex.com"""
     url = api_url + "getLangs"
     params = {"key": api_key, "ui": "en"}
-    r = requests.get(url, params=params)
+    r = get_session().get(url, params=params)
     r.raise_for_status()
     data = r.json()
     langs = data["langs"]
@@ -74,7 +75,7 @@ def trans(text, reply):
     params = {"key": api_key, "lang": lang, "text": text, "options": 1}
 
     try:
-        r = requests.get(url, params=params)
+        r = get_session().get(url, params=params)
         r.raise_for_status()
     except HTTPError as e:
         reply(check_code(e.response.status_code))

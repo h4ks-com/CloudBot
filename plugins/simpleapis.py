@@ -7,6 +7,7 @@ from time import time
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 GETS = {
     ("uselessfact", "uf"): {
@@ -69,7 +70,7 @@ GETS = {
 
 
 def get_json(key, url):
-    r = requests.get(url)
+    r = get_session().get(url)
     r = r.json()
     if isinstance(r, list):
         r = r[0]
@@ -98,7 +99,7 @@ for cmds in GETS:
 @hook.command("pop", autohelp=False)
 def pop(text, bot, chan, nick):
     """- returns a estimative of the current world population"""
-    r = requests.get(
+    r = get_session().get(
         f"https://www.census.gov/popclock/data/population.php/world?_={int(time())}"
     )
     r = r.json()
@@ -108,7 +109,7 @@ def pop(text, bot, chan, nick):
 @hook.command("fake", autohelp=False)
 def fake(text, bot, chan, nick):
     """- returns a fake user"""
-    r = requests.get("https://randomuser.me/api/")
+    r = get_session().get("https://randomuser.me/api/")
     r = r.json()["results"][0]
     return f"name: {r['name']['first']} {r['name']['last']}, {r['email']}, phone: {r['phone']}, location: {r['location']['city']}, {r['location']['state']}, {r['location']['country']}"
 
@@ -116,5 +117,5 @@ def fake(text, bot, chan, nick):
 @hook.command("commit", autohelp=False)
 def commit(text, bot, chan, nick):
     """- returns a random commit message"""
-    r = requests.get("http://whatthecommit.com/index.txt")
+    r = get_session().get("http://whatthecommit.com/index.txt")
     return r.text

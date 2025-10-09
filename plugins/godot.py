@@ -9,6 +9,7 @@ from gazpacho import Soup, get
 from PIL import Image
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 
 @hook.command(autohelp=False)
@@ -113,7 +114,7 @@ class WildJamCardPaser:
         return txt.strip().lower().replace("\n", " ")
 
     def get_cards(self):
-        img = Image.open(requests.get(self.cards_url, stream=True).raw)
+        img = Image.open(get_session().get(self.cards_url, stream=True).raw)
 
         # Split img horizontally into 3 parts
         width, height = img.size
@@ -127,7 +128,7 @@ class WildJamCardPaser:
         ]
 
     def get_theme(self):
-        img = Image.open(requests.get(self.theme_url, stream=True).raw)
+        img = Image.open(get_session().get(self.theme_url, stream=True).raw)
         text = self.orc_image(img).split()
         if text:
             return capitalize(text[-1])

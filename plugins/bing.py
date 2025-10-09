@@ -5,6 +5,7 @@ from lxml import html
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import colors, filesize, formatting
 
 API_URL = "https://api.datamarket.azure.com/Bing/Search/v1/Composite"
@@ -53,7 +54,7 @@ def bing(text, bot, reply):
         "$format": "json",
     }
 
-    request = requests.get(API_URL, params=params, auth=(api_key, api_key))
+    request = get_session().get(API_URL, params=params, auth=(api_key, api_key))
 
     try:
         request.raise_for_status()
@@ -106,7 +107,7 @@ def bingimage(text, bot, reply):
         "$format": "json",
     }
 
-    request = requests.get(API_URL, params=params, auth=(api_key, api_key))
+    request = get_session().get(API_URL, params=params, auth=(api_key, api_key))
 
     try:
         request.raise_for_status()

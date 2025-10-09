@@ -5,6 +5,7 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
 from cloudbot.util.http import parse_xml
 
@@ -20,7 +21,7 @@ def wolframalpha(text, bot, reply):
         return "error: missing api key"
 
     params = {"input": text, "appid": api_key}
-    request = requests.get(api_url, params=params)
+    request = get_session().get(api_url, params=params)
 
     try:
         request.raise_for_status()

@@ -5,6 +5,7 @@ import requests
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
 
 xkcd_re = re.compile(r"(.*:)//(www.xkcd.com|xkcd.com)(.*)", re.I)
@@ -15,7 +16,7 @@ ONR_URL = URL("http://www.ohnorobot.com/")
 
 def xkcd_info(xkcd_id, url=False):
     """takes an XKCD entry ID and returns a formatted string"""
-    request = requests.get(str(XKCD_URL / xkcd_id / "info.0.json"))
+    request = get_session().get(str(XKCD_URL / xkcd_id / "info.0.json"))
     request.raise_for_status()
     data = request.json()
 
@@ -46,7 +47,7 @@ def xkcd_search(term):
         "d": 0,
         "t": 0,
     }
-    request = requests.get(str(ONR_URL), params=params)
+    request = get_session().get(str(ONR_URL), params=params)
     request.raise_for_status()
     soup = parse_soup(request.text)
     result = soup.find("li")

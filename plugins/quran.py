@@ -2,6 +2,7 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 
 def statuscheck(status, item):
@@ -34,7 +35,7 @@ def quran(text, message, reply):
     chapter = text.split(":")[0]
     verse = text.split(":")[1]
     params = {"chapter": chapter, "number": verse, "lang": "ar"}
-    r = requests.get(api_url, params=params)
+    r = get_session().get(api_url, params=params)
     try:
         r.raise_for_status()
     except HTTPError as e:
@@ -44,7 +45,7 @@ def quran(text, message, reply):
     if r.status_code != 200:
         return statuscheck(r.status_code, text)
     params["lang"] = "en"
-    r2 = requests.get(api_url, params=params)
+    r2 = get_session().get(api_url, params=params)
 
     try:
         r2.raise_for_status()

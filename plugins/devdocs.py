@@ -11,6 +11,7 @@ from fuzzywuzzy import process
 from natsort import natsorted
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.formatting import truncate_str
 
 
@@ -28,7 +29,7 @@ SLUGS = {}
 @hook.on_start()
 def on_start():
     global SLUGS
-    for slug in requests.get(Api.slugs).json():
+    for slug in get_session().get(Api.slugs).json():
         SLUGS[slug["slug"]] = slug
 
 
@@ -49,7 +50,7 @@ class Doc:
         if self.path.count("#"):
             path = self.path.split("#")[0]
         url = Api.bodies.format(slug=self.slug, path=path)
-        soup = BeautifulSoup(requests.get(url).text, "html.parser")
+        soup = BeautifulSoup(get_session().get(url).text, "html.parser")
         if len(self.path.split("#")) < 2:
             node = soup.find("h1")
         else:
@@ -66,7 +67,7 @@ class Doc:
 
 def search(slug, query) -> Doc:
     url = Api.index.format(slug=slug)
-    response = requests.get(url)
+    response = get_session().get(url)
     if response.status_code == 200:
         index = {
             (d["path"], uuid1()): d["name"] for d in response.json()["entries"]
@@ -77,7 +78,7 @@ def search(slug, query) -> Doc:
 
     # loop over actual bodies
     url = Api.docs.format(slug=slug)
-    response = requests.get(url)
+    response = get_session().get(url)
     if response.status_code != 200:
         return
 

@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 
 if __name__ != "__main__":
     from cloudbot import hook
+from cloudbot.util.web import get_session
 
 URL = "https://www.asciiart.eu"
 FILE = "plugins/asciiart.json"
@@ -49,7 +50,7 @@ def str_similarity(a, b):
 
 
 def find_directories(url: str) -> List[Directory]:
-    r = requests.get(url)
+    r = get_session().get(url)
     if not r.ok:
         return []
 
@@ -67,7 +68,7 @@ def find_directories(url: str) -> List[Directory]:
 
 
 def scrape_page(url: str) -> Page:
-    r = requests.get(url)
+    r = get_session().get(url)
     if not r.ok:
         return None
 

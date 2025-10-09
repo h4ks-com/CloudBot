@@ -5,6 +5,7 @@ import requests
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import database, timeformat, web
 
 api_url = "https://libre.fm/2.0/?format=json"
@@ -25,7 +26,7 @@ last_cache: List[Tuple[str, str]] = []
 
 def api_request(method, **params):
     params.update(method=method)
-    request = requests.get(api_url, params=params)
+    request = get_session().get(api_url, params=params)
 
     if request.status_code != requests.codes.ok:
         return None, f"Failed to fetch info ({request.status_code})"

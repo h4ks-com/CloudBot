@@ -10,6 +10,7 @@ from google.transliteration import transliterate_text
 from google.transliteration.numerals import LANG2SCRIPT
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 API = "https://api.ctext.org/"
 
@@ -72,7 +73,7 @@ def chinese(text):
 
     named_fields = {k: quote(v) for k, v in zip(field_names, text.split()[1:])}
     url = API + fmtstr.format(**named_fields)
-    r = requests.get(url)
+    r = get_session().get(url)
 
     if r.status_code == 200:
         _list = pretty_dict(r.json()).split("\n")

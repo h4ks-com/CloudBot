@@ -11,6 +11,7 @@ import requests
 from pydub import AudioSegment
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 
 def get_latest_line(conn, chan, nick):
@@ -81,7 +82,7 @@ def fart_sentence(audio: str, sentence: str) -> AudioSegment:
 def upload_file(file):
     url = "https://ttm.sh"
     payload = {"file": file}
-    response = requests.request("POST", url, files=payload)
+    response = get_session().request("POST", url, files=payload)
     return response.text.strip()
 
 

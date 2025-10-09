@@ -3,6 +3,7 @@ import json
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 
 
@@ -12,7 +13,7 @@ def suggest(text, reply):
     params = {"output": "json", "client": "hp", "q": text}
 
     try:
-        request = requests.get(
+        request = get_session().get(
             "http://google.com/complete/search", params=params
         )
         request.raise_for_status()

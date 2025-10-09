@@ -11,6 +11,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 BASE_URL = "https://www.tiobe.com"
 TABLE_URL = f"{BASE_URL}/tiobe-index/"
@@ -79,7 +80,7 @@ class TiobeRowBuilder:
 
 def get_table() -> List[TiobeRow]:
     """Returns the tiobe index table."""
-    r = requests.get(TABLE_URL)
+    r = get_session().get(TABLE_URL)
     soup = BeautifulSoup(r.content, "html.parser")
     table = soup.find(
         "table", attrs={"class": "table table-striped table-top20"}

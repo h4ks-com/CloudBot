@@ -6,6 +6,7 @@ from requests import RequestException
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 
 api_prefix = "http://en.wikipedia.org/w/api.php"
@@ -24,7 +25,7 @@ def make_summary_url(title) -> str:
 
 
 def get_info(title):
-    with requests.get(make_summary_url(title), headers=headers) as response:
+    with get_session().get(make_summary_url(title), headers=headers) as response:
         return response.json()
 
 
@@ -34,7 +35,7 @@ def wiki(text, reply):
 
     search_params = {"srsearch": text.strip()}
     try:
-        with requests.get(
+        with get_session().get(
             search_url, params=search_params, headers=headers
         ) as response:
             response.raise_for_status()

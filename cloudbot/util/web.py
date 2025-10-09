@@ -44,18 +44,48 @@ logger = logging.getLogger("cloudbot")
 class TimeoutSession(requests.Session):
     """Session with automatic 5-minute timeout to prevent bot hangs"""
 
-    def __init__(self, timeout: int = DEFAULT_TIMEOUT):
+    def __init__(self, timeout: int = DEFAULT_TIMEOUT, **kwargs):
         super().__init__()
         self.timeout = timeout
+        # Apply any session configuration kwargs
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
     def request(self, *args, **kwargs):
         kwargs.setdefault("timeout", self.timeout)
         return super().request(*args, **kwargs)
 
 
-def get_session(timeout: int = DEFAULT_TIMEOUT) -> TimeoutSession:
-    """Create a new TimeoutSession instance"""
-    return TimeoutSession(timeout)
+def get_session(timeout: int = DEFAULT_TIMEOUT, **kwargs) -> TimeoutSession:
+    """Create a new TimeoutSession instance with optional configuration.
+
+    All keyword arguments are passed directly to configure the session, matching
+    the requests.Session interface. Common parameters include:
+
+    - headers: dict of HTTP headers
+    - cookies: dict or CookieJar
+    - auth: tuple (username, password) or auth handler
+    - proxies: dict mapping protocol to proxy URL
+    - verify: bool or path to CA bundle
+    - cert: path to SSL client cert or (cert, key) tuple
+    - hooks: dict of callback hooks
+    - params: dict of query parameters
+    - trust_env: bool for environment variable usage
+    - stream: bool for streaming responses
+
+    Args:
+        timeout: Request timeout in seconds (default: 300)
+        **kwargs: Any valid requests.Session attribute
+
+    Returns:
+        TimeoutSession: Configured session with automatic timeout
+
+    Examples:
+        >>> session = get_session(timeout=60, headers={"User-Agent": "MyBot"})
+        >>> session = get_session(verify=False)
+        >>> session = get_session(auth=("user", "pass"))
+    """
+    return TimeoutSession(timeout, **kwargs)
 
 
 # Shortening / pasting
@@ -189,9 +219,7 @@ def paste(data, ext="txt", service=DEFAULT_PASTEBIN, raise_on_no_paste=False):
 
 
 class ServiceError(Exception):
-    def __init__(
-        self, request: Union[Request, PreparedRequest], message: str
-    ) -> None:
+    def __init__(self, request: Union[Request, PreparedRequest], message: str) -> None:
         super().__init__(message)
         self.request = request
 
@@ -322,9 +350,7 @@ class Googl(Shortener):
     def expand(self, url):
         p = {"shortUrl": url}
         try:
-            r = get_session().get(
-                "https://www.googleapis.com/urlshortener/v1/url", params=p
-            )
+            r = get_session().get("https://www.googleapis.com/urlshortener/v1/url", params=p)
             r.raise_for_status()
         except HTTPError as e:
             r = e.response
@@ -427,9 +453,7 @@ class Girafiles(Pastebin):
 
 
 # Register pastebins - girafiles first (new default), hastebin disabled
-pastebins.register(
-    "girafiles", Girafiles(os.environ.get("FILEBIN_URL", DEFAULT_FILEBIN))
-)
+pastebins.register("girafiles", Girafiles(os.environ.get("FILEBIN_URL", DEFAULT_FILEBIN)))
 # pastebins.register("hastebin", Hastebin(HASTEBIN_SERVER))  # Disabled
 
 shorteners.register("git.io", Gitio())

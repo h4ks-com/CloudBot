@@ -4,6 +4,7 @@ import requests
 import requests.exceptions
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
 
 
@@ -17,7 +18,7 @@ def down(text):
     text = "http://" + urllib.parse.urlparse(text).netloc
 
     try:
-        r = requests.get(text)
+        r = get_session().get(text)
         r.raise_for_status()
     except requests.exceptions.ConnectionError:
         return f"{text} seems to be down"
@@ -36,7 +37,7 @@ def isup(text):
     domain = auth or path
 
     try:
-        response = requests.get("http://isup.me/" + domain)
+        response = get_session().get("http://isup.me/" + domain)
         response.raise_for_status()
     except requests.exceptions.ConnectionError:
         return "Failed to get status."

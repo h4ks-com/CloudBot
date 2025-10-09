@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import web
 from cloudbot.util.queue import Queue
 
@@ -55,7 +56,7 @@ def search_imdb(query: str) -> list[str] | None:
     }  # Search for titles  # Feature films
 
     try:
-        response = requests.get(SEARCH_URL, params=params, headers=HEADERS)
+        response = get_session().get(SEARCH_URL, params=params, headers=HEADERS)
         response.raise_for_status()
     except HTTPError:
         return None
@@ -72,7 +73,7 @@ def search_imdb(query: str) -> list[str] | None:
 def get_imdb_info(imdb_url: str) -> dict[str, str] | None:
     """Extract movie information from IMDB page"""
     try:
-        response = requests.get(imdb_url, headers=HEADERS)
+        response = get_session().get(imdb_url, headers=HEADERS)
         response.raise_for_status()
     except HTTPError:
         return None

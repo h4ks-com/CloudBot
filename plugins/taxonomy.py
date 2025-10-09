@@ -4,6 +4,7 @@ import requests
 from requests import RequestException
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.formatting import IRC_TAGS
 
 
@@ -38,7 +39,7 @@ def search_gbif_vernacular(common_name: str) -> str | None:
 
     for search_term in search_terms:
         try:
-            response = requests.get(
+            response = get_session().get(
                 "https://api.gbif.org/v1/species/search",
                 params={
                     "q": search_term,
@@ -107,7 +108,7 @@ def get_related_species(genus: str, family: str) -> dict[str, list[str]]:
 
     try:
         if genus:
-            response = requests.get(
+            response = get_session().get(
                 "https://api.gbif.org/v1/species/search",
                 params={
                     "q": genus,
@@ -130,7 +131,7 @@ def get_related_species(genus: str, family: str) -> dict[str, list[str]]:
                     related["genus_siblings"].append(name)
 
         if family:
-            response = requests.get(
+            response = get_session().get(
                 "https://api.gbif.org/v1/species/search",
                 params={
                     "q": family,
@@ -213,7 +214,7 @@ def get_taxonomy_from_gbif(species_name: str) -> dict[str, str | None] | None:
     }
 
     try:
-        response = requests.get(
+        response = get_session().get(
             "https://api.gbif.org/v1/species/match",
             params={"name": species_name.strip()},
             headers=headers,
@@ -237,7 +238,7 @@ def get_taxonomy_from_gbif(species_name: str) -> dict[str, str | None] | None:
             taxonomy["species"] = data.get("scientificName")
             return taxonomy
 
-        response = requests.get(
+        response = get_session().get(
             "https://api.gbif.org/v1/species/search",
             params={"q": species_name.strip(), "limit": 10, "rank": "SPECIES"},
             headers=headers,

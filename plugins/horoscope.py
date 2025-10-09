@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, Table, select
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import colors, database
 from cloudbot.util.http import parse_soup
 
@@ -139,7 +140,7 @@ def horoscope(text, db, bot, nick, event):
     params = {"sign": SIGN_MAP[sign]}
 
     try:
-        with requests.get(
+        with get_session().get(
             str(DAILY_URL), params=params, headers=headers
         ) as request:
             request.raise_for_status()

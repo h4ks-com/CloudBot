@@ -20,6 +20,7 @@ import isodate
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting, timeformat
 
 voat_re = re.compile(r".*(((www\.)?voat\.co/v)[^ ]+)", re.I)
@@ -70,7 +71,7 @@ def voat_url(match, bot):
     url = f"https://voat.co/api/singlesubmission?id={url[4]}"
 
     # the voat API gets grumpy if we don't include headers
-    r = requests.get(url, headers=headers)
+    r = get_session().get(url, headers=headers)
     r.raise_for_status()
     data = r.json()
     print(data)

@@ -3,6 +3,7 @@ import re
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
 from cloudbot.util.http import parse_soup
 
@@ -23,7 +24,7 @@ def format_game(app_id, show_url=True):
     params = {"appids": app_id}
 
     try:
-        request = requests.get(API_URL, params=params, timeout=15)
+        request = get_session().get(API_URL, params=params, timeout=15)
         request.raise_for_status()
     except requests.RequestException as e:
         return f"Could not get game info: {e}"
@@ -85,7 +86,7 @@ def steam(text, reply):
     params = {"term": text.strip().lower()}
 
     try:
-        request = requests.get(
+        request = get_session().get(
             "http://store.steampowered.com/search/", params=params
         )
         request.raise_for_status()

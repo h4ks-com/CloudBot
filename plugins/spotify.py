@@ -8,6 +8,7 @@ from requests.auth import HTTPBasicAuth
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 
 spotify_re = re.compile(
@@ -53,7 +54,7 @@ class SpotifyAPI:
             if datetime.now() >= self._token_expires:
                 self._refresh_token()
 
-            with requests.get(
+            with get_session().get(
                 self.api_url / endpoint,
                 params=params,
                 headers={"Authorization": "Bearer " + self._access_token},
@@ -69,7 +70,7 @@ class SpotifyAPI:
         with self._lock:
             basic_auth = HTTPBasicAuth(self._client_id, self._client_secret)
             gtcc = {"grant_type": "client_credentials"}
-            r = requests.post(
+            r = get_session().post(
                 str(self.token_refresh_url), data=gtcc, auth=basic_auth
             )
             r.raise_for_status()

@@ -9,6 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.queue import Queue
 
 API = "https://grep.app/api/search"
@@ -30,7 +31,7 @@ def grep(query: str, **params) -> ([str], [str]):
         **params,
     }
 
-    response = requests.get(API, params=params)
+    response = get_session().get(API, params=params)
     obj = response.json()
     for i in range(len(obj["hits"]["hits"])):
         match = obj["hits"]["hits"][i]

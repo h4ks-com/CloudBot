@@ -4,19 +4,20 @@ import requests
 from thefuzz import fuzz
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 API = "https://blackbeard.fly.dev/"
 
 
 def getJson(path, params={}):
-    r = requests.get(API + path, params=params)
+    r = get_session().get(API + path, params=params)
     return r.json()
 
 
 def pastebin(text):
     url = "http://ix.io"
     payload = {"f:1=<-": text}
-    response = requests.request("POST", url, data=payload)
+    response = get_session().request("POST", url, data=payload)
     return response.text
 
 

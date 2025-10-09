@@ -5,6 +5,7 @@ import requests
 from cloudbot import hook
 from cloudbot.bot import CloudBot
 from cloudbot.util.http import parse_soup
+from cloudbot.util.web import get_session
 
 search_url = "https://www.dogpile.com/search"
 
@@ -14,27 +15,28 @@ HEADERS = {
     "(KHTML, like Gecko) Chrome/18.0.1025.133 Mobile Safari/535.19"
 }
 
-session = requests.Session()
+verify_cert = None
 
 
 @hook.on_start()
 def check_certs(bot: CloudBot):
+    global verify_cert
     try:
-        with requests.get(search_url):
+        with get_session().get(search_url):
             pass
     except requests.exceptions.SSLError:
-        session.verify = str(bot.data_path / CERT_PATH)
+        verify_cert = str(bot.data_path / CERT_PATH)
     else:
-        session.verify = None
+        verify_cert = None
 
 
 def query(endpoint, text):
     params = {"q": " ".join(text.split())}
-    with requests.get(
+    with get_session().get(
         search_url + "/" + endpoint,
         params=params,
         headers=HEADERS,
-        verify=session.verify,
+        verify=verify_cert,
     ) as r:
         r.raise_for_status()
         return parse_soup(r.content)

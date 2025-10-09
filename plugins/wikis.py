@@ -67,8 +67,9 @@ class MyMediaWiki(MediaWiki):
         if self._session:
             self._session.close()
 
+        from cloudbot.util.web import TimeoutSession
         headers = {"User-Agent": self._user_agent}
-        self._session = requests.Session()
+        self._session = TimeoutSession()
         self._session.headers.update(headers)
         if self._proxies is not None:
             self._session.proxies.update(self._proxies)

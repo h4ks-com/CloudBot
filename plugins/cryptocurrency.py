@@ -25,6 +25,7 @@ from requests import Response
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import colors, web
 from cloudbot.util.func_utils import call_with_args
 
@@ -558,7 +559,7 @@ class CoinMarketCapAPI:
 
     def request(self, endpoint: str, **params) -> APIResponse:
         url = str(self.api_url / endpoint)
-        with requests.get(
+        with get_session().get(
             url, headers=self.request_headers, params=params
         ) as response:
             api_response = APIResponse.from_response(self, response)

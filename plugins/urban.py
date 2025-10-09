@@ -3,6 +3,7 @@ import random
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 
 base_url = "http://api.urbandictionary.com/v0"
@@ -34,7 +35,7 @@ def urban(text, reply):
         # fetch the definitions
         try:
             params = {"term": text}
-            request = requests.get(define_url, params=params, headers=headers)
+            request = get_session().get(define_url, params=params, headers=headers)
             request.raise_for_status()
         except (
             requests.exceptions.HTTPError,
@@ -47,7 +48,7 @@ def urban(text, reply):
     else:
         # get a random definition!
         try:
-            request = requests.get(random_url, headers=headers)
+            request = get_session().get(random_url, headers=headers)
             request.raise_for_status()
         except (
             requests.exceptions.HTTPError,

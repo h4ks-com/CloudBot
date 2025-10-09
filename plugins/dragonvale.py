@@ -5,6 +5,7 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
 from cloudbot.util.timeparse import time_parse
 
@@ -23,7 +24,7 @@ def dragonsearch(text, reply):
     """<query> - Searches the dragonvale wiki for the specified text."""
     params = {"query": text.strip(), "limit": 1}
 
-    r = requests.get(search_url, params=params)
+    r = get_session().get(search_url, params=params)
 
     try:
         r.raise_for_status()
@@ -64,7 +65,7 @@ def egg_calculator(text):
 
         params["time"] = time
 
-    r = requests.get(egg_calc_url, params=params, timeout=5)
+    r = get_session().get(egg_calc_url, params=params, timeout=5)
     soup = parse_soup(r.text)
     dragons = []
     for line in soup.findAll("td", {"class": "views-field views-field-title"}):

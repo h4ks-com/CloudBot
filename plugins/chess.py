@@ -1,6 +1,7 @@
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 
 @hook.command("chess", "lichess", autohelp=False)
@@ -18,7 +19,7 @@ def lichess(text: str) -> list[str] | str:
         data["clock.increment"] = 1
 
     try:
-        response = requests.post(
+        response = get_session().post(
             "https://lichess.org/api/challenge/open",
             data=data,
             headers={

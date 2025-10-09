@@ -4,6 +4,7 @@ import requests
 import requests.exceptions
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 
 api_url = "http://api.fishbans.com/stats/{}/"
@@ -16,7 +17,7 @@ def fishbans(text, bot):
     headers = {"User-Agent": bot.user_agent}
 
     try:
-        request = requests.get(
+        request = get_session().get(
             api_url.format(quote_plus(user)), headers=headers
         )
         request.raise_for_status()
@@ -56,7 +57,7 @@ def bancount(text, bot):
     headers = {"User-Agent": bot.user_agent}
 
     try:
-        request = requests.get(
+        request = get_session().get(
             api_url.format(quote_plus(user)), headers=headers
         )
         request.raise_for_status()

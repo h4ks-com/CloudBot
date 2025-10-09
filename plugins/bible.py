@@ -2,6 +2,7 @@ from curl_cffi import requests
 from curl_cffi.requests.exceptions import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 
 
@@ -11,7 +12,7 @@ def bible(text, reply):
     passage = text.strip()
     params = {"passage": passage, "formatting": "plain", "type": "json"}
     try:
-        r = requests.get(
+        r = get_session().get(
             "https://labs.bible.org/api/",
             params=params,
             impersonate="chrome124",

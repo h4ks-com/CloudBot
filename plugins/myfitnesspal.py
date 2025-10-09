@@ -6,6 +6,7 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
 
 scrape_url = "http://www.myfitnesspal.com/food/diary/{}"
@@ -14,7 +15,7 @@ scrape_url = "http://www.myfitnesspal.com/food/diary/{}"
 @hook.command("mfp", "myfitnesspal")
 def mfp(text, reply):
     """<user> - returns macros from the MyFitnessPal food diary of <user>"""
-    request = requests.get(scrape_url.format(text))
+    request = get_session().get(scrape_url.format(text))
 
     try:
         request.raise_for_status()

@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import colors, formatting, web
 
 SEARCH_URL = "http://www.amazon.{}/s/"
@@ -40,11 +41,11 @@ def amazon(text, reply, _parsed=False):
     params = {"url": "search-alias", "field-keywords": text.strip()}
     if _parsed:
         # input is from a link parser, we need a specific URL
-        request = requests.get(
+        request = get_session().get(
             SEARCH_URL.format(_parsed), params=params, headers=headers
         )
     else:
-        request = requests.get(
+        request = get_session().get(
             SEARCH_URL.format(REGION), params=params, headers=headers
         )
 

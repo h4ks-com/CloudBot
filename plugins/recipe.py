@@ -18,6 +18,7 @@ import microdata
 import requests
 
 from cloudbot.util import web
+from cloudbot.util.web import get_session
 
 BASE_URL = "http://www.cookstr.com"
 SEARCH_URL = BASE_URL + "/searches"
@@ -52,7 +53,7 @@ class ParseError(Exception):
 def get_data(url):
     """Uses the metadata module to parse the metadata from the provided URL"""
     try:
-        request = requests.get(url)
+        request = get_session().get(url)
         request.raise_for_status()
     except (
         requests.exceptions.HTTPError,
@@ -75,7 +76,7 @@ def recipe(text):
     if text:
         # get the recipe URL by searching
         try:
-            request = requests.get(SEARCH_URL, params={"query": text.strip()})
+            request = get_session().get(SEARCH_URL, params={"query": text.strip()})
             request.raise_for_status()
         except (
             requests.exceptions.HTTPError,
@@ -105,7 +106,7 @@ def recipe(text):
     else:
         # get a random recipe URL
         try:
-            request = requests.get(RANDOM_URL)
+            request = get_session().get(RANDOM_URL)
             request.raise_for_status()
         except (
             requests.exceptions.HTTPError,
@@ -130,7 +131,7 @@ def recipe(text):
 def dinner():
     """- TELLS YOU WHAT THE F**K YOU SHOULD MAKE FOR DINNER"""
     try:
-        request = requests.get(RANDOM_URL)
+        request = get_session().get(RANDOM_URL)
         request.raise_for_status()
     except (
         requests.exceptions.HTTPError,

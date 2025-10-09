@@ -6,6 +6,7 @@ import requests
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting, timeformat
 
 reddit_re = re.compile(
@@ -36,7 +37,7 @@ def api_request(url, bot):
     :type bot: cloudbot.bot.CloudBot
     """
     url = url.with_query("").with_scheme("https") / ".json"
-    r = requests.get(str(url), headers={"User-Agent": bot.user_agent})
+    r = get_session().get(str(url), headers={"User-Agent": bot.user_agent})
     r.raise_for_status()
     return r.json()
 
@@ -79,7 +80,7 @@ def reddit_url(match, bot):
     url = URL(url).with_scheme("https")
 
     if url.host.endswith("redd.it"):
-        response = requests.get(url, headers={"User-Agent": bot.user_agent})
+        response = get_session().get(url, headers={"User-Agent": bot.user_agent})
         response.raise_for_status()
         url = URL(response.url).with_scheme("https")
 

@@ -4,6 +4,7 @@ import requests
 from lxml import html
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
 
 search_url = "http://search.atomz.com/search/?sp_a=00062d45-sp00000000"
@@ -15,7 +16,7 @@ def snopes(text):
 
     try:
         params = {"sp_q": text, "sp_c": "1"}
-        request = requests.get(search_url, params=params)
+        request = get_session().get(search_url, params=params)
         request.raise_for_status()
     except (
         requests.exceptions.HTTPError,
@@ -30,7 +31,7 @@ def snopes(text):
         return "No matching pages found."
 
     try:
-        _request = requests.get(result_urls[0])
+        _request = get_session().get(result_urls[0])
         _request.raise_for_status()
     except (
         requests.exceptions.HTTPError,

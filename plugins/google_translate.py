@@ -1,6 +1,7 @@
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 
 max_length = 100
@@ -18,7 +19,7 @@ def goog_trans(text, source, target):
     if source:
         params["source"] = source
 
-    request = requests.get(url, params=params)
+    request = get_session().get(url, params=params)
     parsed = request.json()
 
     if parsed.get("error"):

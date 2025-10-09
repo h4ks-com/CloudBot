@@ -22,6 +22,7 @@ from typing import (
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import CloudBot
 from cloudbot.event import Event
 from cloudbot.util import func_utils
@@ -88,7 +89,7 @@ class TvdbApi:
         self._headers = None
 
     def _get(self, path: str, params: Optional[GetParams] = None) -> JsonObject:
-        with requests.get(
+        with get_session().get(
             self.base_url + path, headers=self.headers, params=params or {}
         ) as response:
             response.raise_for_status()
@@ -136,7 +137,7 @@ class TvdbApi:
             yield first_page
 
     def _post(self, path: str, json: Dict[str, Any]) -> JsonObject:
-        with requests.post(
+        with get_session().post(
             self.base_url + path, headers=self.headers, json=json
         ) as response:
             response.raise_for_status()

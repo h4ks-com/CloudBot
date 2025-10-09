@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util.queue import Queue
 
 API_URL = "https://api.stackexchange.com"
@@ -1025,7 +1026,7 @@ def search(query: str, tag: str = None) -> [Question]:
     if tag:
         params.update({"tagged": tag})
 
-    req = requests.get(API_URL + "/search/advanced", params)
+    req = get_session().get(API_URL + "/search/advanced", params)
     ans = req.json()
 
     if not ans["items"]:
@@ -1085,7 +1086,7 @@ def find_best_code(chan, nick) -> (Question, Answer):
     if not no_good_code:
         rcopy = list(results)
         for result in rcopy:
-            answer = find_best_answer_in_html(requests.get(result.url).text)
+            answer = find_best_answer_in_html(get_session().get(result.url).text)
             r = results.pop()
             if answer and answer.code:
                 return r, answer

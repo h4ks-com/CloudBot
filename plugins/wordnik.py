@@ -9,6 +9,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 from cloudbot.util import colors, web
 from cloudbot.util.http import GetParams
@@ -91,7 +92,7 @@ def api_request(endpoint: str, params=(), **kwargs) -> List[Dict[str, Any]]:
     url = API_URL + endpoint
 
     kwargs["api_key"] = api_key
-    with requests.get(url, params=kwargs) as response:
+    with get_session().get(url, params=kwargs) as response:
         try:
             data = response.json()
         except JSONDecodeError:

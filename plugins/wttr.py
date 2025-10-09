@@ -3,12 +3,13 @@ import random
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 
 @hook.command("forecast", "fc")
 def forecast(text):
     """<query> - returns the weather forecast result for <query>"""
-    response = requests.get(
+    response = get_session().get(
         f"http://wttr.in/{'+'.join(text.split())}?format=j1"
     )
     if response.status_code == 200:
@@ -33,7 +34,7 @@ def forecast(text):
 @hook.command("astronomy", "ast")
 def astronomy(text):
     """<query> - returns the astronomy result for <query>"""
-    response = requests.get(
+    response = get_session().get(
         f"http://wttr.in/{'+'.join(text.split())}?format=j1"
     )
     if response.status_code == 200:
@@ -74,7 +75,7 @@ def astronomy(text):
 def time_command(text, reply):
     """<location> - Gets the current time in <location>."""
     formatted_time = (
-        requests.get(
+        get_session().get(
             f"http://wttr.in/{'+'.join(text.split())}?format=\"%T %Z\"&nonce={random.randint(10**4, 10**6)}"
         )
         .text.strip()
@@ -82,7 +83,7 @@ def time_command(text, reply):
         .replace("'", "")
         .replace('"', "")
     )
-    j = requests.get(
+    j = get_session().get(
         f"http://wttr.in/{'+'.join(text.split())}?format=j1"
     ).json()
     location_name = f"{j['nearest_area'][0]['region'][0]['value']} - {j['nearest_area'][0]['country'][0]['value']}"

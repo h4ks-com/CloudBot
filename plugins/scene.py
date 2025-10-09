@@ -19,6 +19,7 @@ import requests
 from lxml import html
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import timeformat
 
 
@@ -27,7 +28,7 @@ def pre(text, reply):
     """<query> - searches scene releases using orlydb.com"""
 
     try:
-        request = requests.get("http://orlydb.com/", params={"q": text})
+        request = get_session().get("http://orlydb.com/", params={"q": text})
         request.raise_for_status()
     except requests.exceptions.HTTPError as e:
         reply(f"Unable to fetch results: {e}")

@@ -11,6 +11,7 @@ from decimal import Decimal
 import requests
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import colors
 
 
@@ -40,7 +41,7 @@ class AVApi:
 
     def _request(self, **args):
         args["apikey"] = self.api_key
-        response = requests.get(self.url, params=args)
+        response = get_session().get(self.url, params=args)
         response.raise_for_status()
         return response.json()
 

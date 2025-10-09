@@ -5,6 +5,7 @@ import requests
 from lxml import html
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 
 api_url = "http://minecraft.gamepedia.com/api.php?action=opensearch"
@@ -16,7 +17,7 @@ def mcwiki(text, reply):
     """<phrase> - gets the first paragraph of the Minecraft Wiki article on <phrase>"""
 
     try:
-        request = requests.get(api_url, params={"search": text.strip()})
+        request = get_session().get(api_url, params={"search": text.strip()})
         request.raise_for_status()
         j = request.json()
     except (
@@ -46,7 +47,7 @@ def mcwiki(text, reply):
     url = mc_url + quote(article_name, "")
 
     try:
-        request_ = requests.get(url)
+        request_ = get_session().get(url)
         request_.raise_for_status()
     except (
         requests.exceptions.HTTPError,
