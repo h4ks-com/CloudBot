@@ -4,20 +4,18 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
-from typing import Deque
 
 import requests
 
 from cloudbot import hook
 from cloudbot.util import formatting
+from cloudbot.util.web import TimeoutSession
 from plugins.huggingface import FileIrcResponseWrapper
 
-# Base URLs
 IMAGE_API = "https://image.pollinations.ai"
 TEXT_API = "https://text.pollinations.ai"
 MAX_HISTORY_LENGTH = 20
 
-# Voice options for audio generation
 VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
 
 
@@ -57,7 +55,7 @@ class Model:
 
 class PollinationsClient:
     def __init__(self):
-        self.session = requests.Session()
+        self.session = TimeoutSession()
         self.session.headers.update({"Content-Type": "application/json"})
 
     def get_image_models(self) -> list[str]:
@@ -86,10 +84,7 @@ class PollinationsClient:
         url = f"{TEXT_API}/{request}"
         params = {
             "model": "openai-audio",
-            # "modalities": ["text", "audio"],
             "voice": voice or "alloy",
-            # "format": "mp3",
-            # "private": True,
         }
         response = self.session.get(url, params=params)
         return response

@@ -5,7 +5,6 @@ import tempfile
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Deque, List, Literal
 from urllib.parse import urlparse
 
 import pywikibot
@@ -15,6 +14,7 @@ from markitdown import MarkItDown
 from cloudbot import hook
 from cloudbot.bot import bot
 from cloudbot.util import formatting
+from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 from plugins.wikis import WIKI_APIS, search
 
@@ -68,7 +68,7 @@ class Message:
         }
 
 
-def get_completion(messages: List[Message]) -> str:
+def get_completion(messages: list[Message]) -> str:
     headers = {
         "accept": "application/json",
         "Content-Type": "application/json",
@@ -78,12 +78,12 @@ def get_completion(messages: List[Message]) -> str:
         "messages": [message.as_dict() for message in messages],
     }
 
-    response = requests.post(API_URL, headers=headers, json=json_data)
+    response = get_session().post(API_URL, headers=headers, json=json_data)
     response.raise_for_status()
     return response.json()["completion"]
 
 
-def upload_responses(nick: str, messages: List[Message], header: str) -> str:
+def upload_responses(nick: str, messages: list[Message], header: str) -> str:
     bar = "-" * 80
     lb = "\n"
     text_contents = (

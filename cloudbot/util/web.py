@@ -31,14 +31,31 @@ from requests import (
 
 from cloudbot.bot import bot
 
-# Constants
 DEFAULT_SHORTENER = "is.gd"
 DEFAULT_PASTEBIN = "girafiles"
 
 HASTEBIN_SERVER = "https://hastebin.com"
 DEFAULT_FILEBIN = "https://s.h4ks.com"
+DEFAULT_TIMEOUT = 300
 
 logger = logging.getLogger("cloudbot")
+
+
+class TimeoutSession(requests.Session):
+    """Session with automatic 5-minute timeout to prevent bot hangs"""
+
+    def __init__(self, timeout: int = DEFAULT_TIMEOUT):
+        super().__init__()
+        self.timeout = timeout
+
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", self.timeout)
+        return super().request(*args, **kwargs)
+
+
+def get_session(timeout: int = DEFAULT_TIMEOUT) -> TimeoutSession:
+    """Create a new TimeoutSession instance"""
+    return TimeoutSession(timeout)
 
 
 # Shortening / pasting
@@ -204,7 +221,7 @@ class Shortener:
 
     def expand(self, url):
         try:
-            r = requests.get(url, allow_redirects=False)
+            r = get_session().get(url, allow_redirects=False)
             r.raise_for_status()
         except HTTPError as e:
             r = e.response
@@ -239,7 +256,7 @@ class Isgd(Shortener):
             p["shorturl"] = custom
 
         try:
-            r = requests.get("https://is.gd/create.php", params=p)
+            r = get_session().get("https://is.gd/create.php", params=p)
             r.raise_for_status()
         except HTTPError as e:
             r = e.response
@@ -260,7 +277,7 @@ class Isgd(Shortener):
     def expand(self, url):
         p = {"shorturl": url, "format": "json"}
         try:
-            r = requests.get("https://is.gd/forward.php", params=p)
+            r = get_session().get("https://is.gd/forward.php", params=p)
             r.raise_for_status()
         except HTTPError as e:
             r = e.response
@@ -282,7 +299,7 @@ class Googl(Shortener):
         k = {"key": key}
         p = {"longUrl": url}
         try:
-            r = requests.post(
+            r = get_session().post(
                 "https://www.googleapis.com/urlshortener/v1/url",
                 params=k,
                 data=json.dumps(p),
@@ -305,7 +322,7 @@ class Googl(Shortener):
     def expand(self, url):
         p = {"shortUrl": url}
         try:
-            r = requests.get(
+            r = get_session().get(
                 "https://www.googleapis.com/urlshortener/v1/url", params=p
             )
             r.raise_for_status()
@@ -327,7 +344,7 @@ class Gitio(Shortener):
     def shorten(self, url, custom=None, key=None):
         p = {"url": url, "code": custom}
         try:
-            r = requests.post("https://git.io", data=p)
+            r = get_session().post("https://git.io", data=p)
             r.raise_for_status()
         except HTTPError as e:
             r = e.response
@@ -358,7 +375,7 @@ class Hastebin(Pastebin):
 
         try:
             api_key = bot.config.get_api_key("hastebin")
-            r = requests.post(
+            r = get_session().post(
                 self.url + "/documents",
                 data=encoded,
                 headers={
@@ -393,10 +410,8 @@ class Girafiles(Pastebin):
             encoded = data
 
         try:
-            # Prepare file for upload - girafiles expects form data with 'file' field
             files = {"file": ("paste." + ext, encoded, "text/plain")}
-
-            r = requests.post(self.url, files=files)
+            r = get_session().post(self.url, files=files)
             r.raise_for_status()
         except HTTPError as e:
             r = e.response

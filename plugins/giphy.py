@@ -1,8 +1,7 @@
 import random
 
-import requests
-
 from cloudbot import hook
+from cloudbot.util.web import get_session
 
 api_url = "http://api.giphy.com/v1/gifs"
 
@@ -14,7 +13,7 @@ def giphy(text, bot):
     term = text.strip()
     search_url = api_url + "/search"
     params = {"q": term, "limit": 10, "fmt": "json", "api_key": api_key}
-    results = requests.get(search_url, params=params)
+    results = get_session().get(search_url, params=params)
     results.raise_for_status()
     r = results.json()
     if not r["data"]:
