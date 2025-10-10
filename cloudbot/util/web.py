@@ -18,7 +18,7 @@ import logging
 import os
 import time
 from operator import attrgetter
-from typing import Dict, Optional, Union
+from typing import Optional
 
 import requests
 from requests import (
@@ -118,7 +118,7 @@ class Registry:
             return False
 
     def __init__(self):
-        self._items: Dict[str, "Registry.Item"] = {}
+        self._items: dict[str, "Registry.Item"] = {}
 
     def register(self, name, item):
         if name in self._items:
@@ -219,7 +219,7 @@ def paste(data, ext="txt", service=DEFAULT_PASTEBIN, raise_on_no_paste=False):
 
 
 class ServiceError(Exception):
-    def __init__(self, request: Union[Request, PreparedRequest], message: str) -> None:
+    def __init__(self, request: Request | PreparedRequest, message: str) -> None:
         super().__init__(message)
         self.request = request
 
