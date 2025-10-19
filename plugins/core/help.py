@@ -14,6 +14,49 @@ def get_potential_commands(bot, cmd_name):
                 yield name, _hook
 
 
+def help_flood(bot, chan, notice, message, has_permission, triggered_prefix):
+    commands = []
+    for plugin in sorted(
+        set(bot.plugin_manager.commands.values()), key=attrgetter("name")
+    ):
+        # use set to remove duplicate commands (from multiple aliases), and sorted to sort by name
+
+        if plugin.permissions:
+            # check permissions
+            allowed = False
+            for perm in plugin.permissions:
+                if has_permission(perm, notice=False):
+                    allowed = True
+                    break
+
+            if not allowed:
+                # skip adding this command
+                continue
+
+        # add the command to lines sent
+        command = plugin.name
+
+        commands.append(command)
+
+    # list of lines to send to the user
+    lines = formatting.chunk_str(
+        "Here's a list of commands you can use: " + ", ".join(commands)
+    )
+
+    for line in lines:
+        if chan[:1] == "#":
+            notice(line)
+        else:
+            # This is an user in this case.
+            message(line)
+
+    notice(
+        "For detailed help, use {}help <command>, without the brackets.".format(
+            triggered_prefix
+        )
+    )
+
+
 @hook.command("help", autohelp=False)
 async def help_command(
     text, chan, bot, notice, message, has_permission, triggered_prefix
@@ -51,47 +94,11 @@ async def help_command(
                 )
             )
     else:
-        commands = []
-
-        for plugin in sorted(
-            set(bot.plugin_manager.commands.values()), key=attrgetter("name")
-        ):
-            # use set to remove duplicate commands (from multiple aliases), and sorted to sort by name
-
-            if plugin.permissions:
-                # check permissions
-                allowed = False
-                for perm in plugin.permissions:
-                    if has_permission(perm, notice=False):
-                        allowed = True
-                        break
-
-                if not allowed:
-                    # skip adding this command
-                    continue
-
-            # add the command to lines sent
-            command = plugin.name
-
-            commands.append(command)
-
-        # list of lines to send to the user
-        lines = formatting.chunk_str(
-            "Here's a list of commands you can use: " + ", ".join(commands)
-        )
-
-        for line in lines:
-            if chan[:1] == "#":
-                notice(line)
-            else:
-                # This is an user in this case.
-                message(line)
-
-        notice(
-            "For detailed help, use {}help <command>, without the brackets.".format(
-                triggered_prefix
-            )
-        )
+        webhooks_config = bot.config.get("webhooks", {})
+        base_url = webhooks_config.get("base_url")
+        if base_url:
+            return base_url
+        help_flood(bot, chan, notice, message, has_permission, triggered_prefix)
 
 
 @hook.command()
