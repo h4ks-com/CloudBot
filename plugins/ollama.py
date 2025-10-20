@@ -13,7 +13,7 @@ from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 
 MAX_USER_HISTORY_LENGTH = 50
-ALLOWED_MODELS = ["qwen:latest", "qwen2.5-coder:3b"]
+ALLOWED_MODELS = ["qwen2.5-coder:3b", "qwen:latest"]
 RoleType = Literal["user", "assistant"]
 
 
@@ -36,7 +36,7 @@ def get_ollama_config(bot, model: str | None = None) -> tuple[str | None, str | 
     api_url = config.get("api_url")
     api_key = config.get("api_key")
     if model is None:
-        model = "qwen:latest"
+        model = ALLOWED_MODELS[0]
     if model not in ALLOWED_MODELS:
         raise ValueError(f"Model '{model}' is not allowed. Choose from: {', '.join(ALLOWED_MODELS)}")
 
@@ -262,7 +262,7 @@ def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     model = text.strip()
     if not model:
-        return "Please specify a model."
+        return f"You are currently using model '{user_models.get((chan, nick), 'qwen:latest')}'. Specify a model with this command to change it."
 
     # Get configuration
     try:
@@ -272,4 +272,4 @@ def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     channick = (chan, nick)
     user_models[channick] = model
-    return f"Ollama model set to '{model}' for {nick} in {chan}."
+    return f"Ollama model set to '{model}'  {nick} in {chan}."
