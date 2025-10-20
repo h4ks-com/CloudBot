@@ -1,3 +1,4 @@
+import re
 import tempfile
 from collections import deque
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 
 MAX_USER_HISTORY_LENGTH = 50
+ALLOWED_MODELS = ["qwen:latest", "qwen2.5-coder:3b"]
 RoleType = Literal["user", "assistant"]
 
 
@@ -28,14 +30,17 @@ class Message:
         }
 
 
-def get_ollama_config(bot):
+def get_ollama_config(bot, model: str | None = None) -> tuple[str | None, str | None]:
     """Get Ollama configuration from bot config."""
     config = bot.config.get("plugins", {}).get("ollama", {})
     api_url = config.get("api_url")
     api_key = config.get("api_key")
-    model = config.get("model", "qwen:latest")
+    if model is None:
+        model = "qwen:latest"
+    if model not in ALLOWED_MODELS:
+        raise ValueError(f"Model '{model}' is not allowed. Choose from: {', '.join(ALLOWED_MODELS)}")
 
-    return api_url, api_key, model
+    return api_url, api_key
 
 
 def get_completion(api_url: str, api_key: str, model: str, messages: list[Message]) -> str:
@@ -78,22 +83,29 @@ def upload_responses(nick: str, messages: list[Message], header: str) -> str:
 
 def detect_code_blocks(markdown_text: str) -> list[str]:
     """Extract code blocks from markdown."""
-    import re
-
     code_block_pattern = re.compile(r"```\S*(.*)```", re.DOTALL)
-    return code_block_pattern.findall(markdown_text)
+    block = code_block_pattern.findall(markdown_text)
+    if not block:
+        code_block_pattern = re.compile(r"```(.*)", re.DOTALL)
+        block = code_block_pattern.findall(markdown_text)
+        if not block:
+            return [markdown_text]
+    return block
 
 
 ollama_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
+user_models: dict[tuple[str, str], str] = {}
 
 
 @hook.command("ai", "ollama")
 def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
     """<text> - Get a response from Ollama LLM."""
     global ollama_messages_cache
+    global user_models
+    model = user_models.get((chan, nick), "qwen:latest")
 
     # Get configuration
-    api_url, api_key, model = get_ollama_config(bot)
+    api_url, api_key = get_ollama_config(bot, model)
     if not api_url:
         notice("Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config.")
         return
@@ -162,9 +174,11 @@ def create_web_app(
 def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
     """<text> - Create a single page html web app on the fly with Ollama"""
     global ollama_messages_cache
+    global user_models
+    model = user_models.get((chan, nick), "qwen:latest")
 
     # Get configuration
-    api_url, api_key, model = get_ollama_config(bot)
+    api_url, api_key = get_ollama_config(bot, model)
     if not api_url:
         notice("Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config.")
         return
@@ -208,10 +222,10 @@ def ai_clear_command(nick: str, chan: str) -> str:
 
 
 @hook.command("aimodels", autohelp=False)
-def ai_models_command(bot, notice) -> str:
+def ai_models_command(bot, notice) -> list[str] | str:
     """List available Ollama models."""
     # Get configuration
-    api_url, api_key, model = get_ollama_config(bot)
+    api_url, api_key = get_ollama_config(bot)
     if not api_url:
         notice("Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config.")
         return
@@ -229,10 +243,33 @@ def ai_models_command(bot, notice) -> str:
         response.raise_for_status()
         models = response.json()["models"]
         model_names = [m["name"] for m in models]
-        return f"Available models: {', '.join(model_names)} (currently using: {model})"
+        return [
+            f"Available models: {', '.join(model_names)}",
+            "Allowed models: " + ", ".join(ALLOWED_MODELS),
+        ]
     except requests.HTTPError as e:
         return f"Error fetching models: {e}"
     except requests.Timeout:
         return "Error: Request timed out"
     except Exception as e:
         return f"Error: {e}"
+
+
+@hook.command("aisetmodel", "aimodel", "setaimodel", autohelp=False)
+def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<model> - Set the Ollama model to use for this user in this channel."""
+    global user_models
+
+    model = text.strip()
+    if not model:
+        return "Please specify a model."
+
+    # Get configuration
+    try:
+        get_ollama_config(bot, model)
+    except ValueError as e:
+        return str(e)
+
+    channick = (chan, nick)
+    user_models[channick] = model
+    return f"Ollama model set to '{model}' for {nick} in {chan}."
