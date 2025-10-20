@@ -112,6 +112,11 @@
         },
         "youtube": {
             "http_proxy": "default"
+        },
+        "ollama": {
+            "api_url": "https://your-ollama-instance.com/api/chat",
+            "api_key": "your_api_key_here",
+            "model": "qwen:latest"
         }
     },
     "api_keys": {
