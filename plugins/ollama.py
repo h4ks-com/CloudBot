@@ -13,7 +13,14 @@ from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 
 MAX_USER_HISTORY_LENGTH = 10
-ALLOWED_MODELS = ["qwen2.5-coder:3b", "qwen:latest"]
+ALLOWED_MODELS = [
+    "qwen2.5-coder:3b",
+    "qwen:latest",
+    "llama3:latest",
+    "qwen2.5-coder:7b",
+    "qwen2.5-coder:3b",
+    "opencoder:8b",
+]
 RoleType = Literal["user", "assistant"]
 
 
