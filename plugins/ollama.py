@@ -139,8 +139,8 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
             list(ollama_messages_cache[channick]),
             f"{nick}'s Ollama conversation in {chan}",
         )
-        return f"{truncated} (full response: {paste_url})"
-    return truncated
+        return f"[{model}] {truncated} (full response: {paste_url})"
+    return f"[{model}] {truncated}"
 
 
 def create_web_app(
