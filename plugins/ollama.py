@@ -20,6 +20,7 @@ ALLOWED_MODELS = [
     "qwen2.5-coder:7b",
     "qwen2.5-coder:3b",
     "opencoder:8b",
+    "olmo2:7b",
 ]
 RoleType = Literal["user", "assistant"]
 
@@ -174,7 +175,7 @@ def create_web_app(
             file.write(code_blocks[0].encode("utf-8").strip())
         html_url = FileIrcResponseWrapper.upload_file(f.name, "st")
         paste_url = html_url.removesuffix(".html") + "/p"
-        return f"{paste_url}. Try online: {html_url}"
+        return f"[{model}] {paste_url}. Try online: {html_url}"
 
 
 @hook.command("aiapp", "aiweb")
