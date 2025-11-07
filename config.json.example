@@ -117,6 +117,19 @@
             "api_url": "https://your-ollama-instance.com/api/chat",
             "api_key": "your_api_key_here",
             "model": "qwen:latest"
+        },
+        "radio": {
+            "api_url": "http://localhost:8383",
+            "api_token": "your_bearer_token_here",
+            "connection": "gobot",
+            "channels": {
+                "#yourchannel": {
+                    "events": ["song_changed", "livestream_started", "livestream_ended"]
+                },
+                "#anotherchannel": {
+                    "events": ["song_changed"]
+                }
+            }
         }
     },
     "api_keys": {
@@ -164,9 +177,19 @@
     "webhooks": {
         "enabled": false,
         "port": 8081,
+        "base_url": "http://localhost:8081",
         "tokens": {
             "default": "your_api_token_here"
-        }
+        },
+        "subscriptions": [
+            {
+                "plugin": "radio",
+                "url": "http://localhost:8081/webhooks/radio",
+                "events": ["song_changed", "livestream_started", "livestream_ended"],
+                "signing_key": "your-signing-key-here",
+                "description": "Radio updates"
+            }
+        ]
     },
     "repo_link": "https://github.com/TotallyNotRobots/CloudBot/",
     "logging": {

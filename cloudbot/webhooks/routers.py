@@ -11,8 +11,9 @@ from pydantic import BaseModel
 
 from cloudbot.bot import bot
 from cloudbot.util import database
+from cloudbot.webhooks.handlers import call_webhook_handler
 from cloudbot.webhooks.plugin_parser import PluginParser
-from plugins.core.webhook_tokens import cleanup_expired_tokens, is_token_valid
+from plugins.core.webhook_tokens import cleanup_expired_tokens, is_token_valid, verify_webhook_signature
 
 logger = logging.getLogger("cloudbot.webhooks")
 
@@ -271,3 +272,36 @@ def send_message(
         status="sent",
         detail="Message sent. IRC errors (e.g., invalid target) are logged but not returned here.",
     )
+
+
+@router.post("/webhooks/{plugin_name}")
+async def receive_webhook(plugin_name: str, request: Request):
+    """Receive and process webhook events for registered plugins."""
+    payload = await request.json()
+    signature = request.headers.get("X-Webhook-Signature")
+    if not signature:
+        raise HTTPException(status_code=400, detail="Missing signature header")
+
+    bot_instance = bot.get()
+    if not bot_instance:
+        raise HTTPException(status_code=500, detail="Bot not available")
+
+    subscriptions = bot_instance.config.get("webhooks", {}).get("subscriptions", [])
+    signing_key = None
+    for sub in subscriptions:
+        if sub.get("plugin") == plugin_name:
+            signing_key = sub.get("signing_key")
+            break
+
+    if not signing_key:
+        raise HTTPException(
+            status_code=404, detail=f"Plugin {plugin_name} not configured"
+        )
+
+    if not verify_webhook_signature(payload, signature, signing_key):
+        logger.warning("Invalid webhook signature for plugin: %s", plugin_name)
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    logger.info("Webhook received for plugin: %s", plugin_name)
+    call_webhook_handler(plugin_name, bot_instance, payload)
+    return {"status": "received"}
