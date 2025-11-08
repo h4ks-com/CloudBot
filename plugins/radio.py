@@ -620,12 +620,17 @@ def admin_queue_add(
 
 @hook.command("reqyt", autohelp=False)
 def queue_add_youtube(
-    event: Any, bot: Any, conn: Any, nick: str, chan: str
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
 ) -> str:
-    """- Add your last YouTube search result to the user queue"""
-    url = last_youtube_url.get((chan, nick))
+    """[nick] - Add your last YouTube search result (or another user's) to the user queue"""
+    target_nick = text.strip() if text and text.strip() else nick
+
+    url = last_youtube_url.get((chan, target_nick))
     if not url:
-        return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
+        if target_nick == nick:
+            return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
+        else:
+            return f"❌ No recent YouTube search found for {target_nick}."
 
     config = bot.config.get("plugins", {}).get("radio", {})
     return add_url_to_queue(url, "user", config, event, conn, nick, chan)
@@ -633,16 +638,21 @@ def queue_add_youtube(
 
 @hook.command("areqyt", autohelp=False, permissions=["botcontrol"])
 def admin_queue_add_youtube(
-    event: Any, bot: Any, conn: Any, nick: str, chan: str
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
 ) -> str:
-    """- Add your last YouTube search result to the fallback playlist"""
+    """[nick] - Add your last YouTube search result (or another user's) to the fallback playlist"""
     auth_error = check_user_authenticated(conn, nick)
     if auth_error:
         return auth_error
 
-    url = last_youtube_url.get((chan, nick))
+    target_nick = text.strip() if text and text.strip() else nick
+
+    url = last_youtube_url.get((chan, target_nick))
     if not url:
-        return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
+        if target_nick == nick:
+            return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
+        else:
+            return f"❌ No recent YouTube search found for {target_nick}."
 
     config = bot.config.get("plugins", {}).get("radio", {})
     return add_url_to_queue(url, "fallback", config, event, conn, nick, chan)
