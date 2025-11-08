@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -15,8 +16,14 @@ from plugins.youtube import last_youtube_url
 
 logger = logging.getLogger("cloudbot")
 
+# Rate limiting configuration
+QUEUE_RATE_LIMIT_AUTHENTICATED = 20
+QUEUE_RATE_LIMIT_UNAUTHENTICATED = 5
+QUEUE_RATE_LIMIT_WINDOW = 3600
+
 last_sent_messages: dict[str, dict[str, Any]] = {}
 stream_token_cache = TTLCache(maxsize=1000, ttl=3600)
+queue_additions_tracker: dict[tuple[str, str], list[float]] = {}
 
 
 def check_user_authenticated(conn, nick):
@@ -35,6 +42,62 @@ def check_user_authenticated(conn, nick):
         return "🚫 Unable to verify your authentication status. 🚫"
 
     return None
+
+
+def check_queue_rate_limit(conn, nick: str, chan: str) -> tuple[bool, str | None]:
+    """
+    Check if user has exceeded queue addition rate limit.
+
+    Returns:
+        (allowed, error_message): allowed is True if under limit, False if over.
+                                  error_message is None if allowed, otherwise contains error.
+    """
+    is_authenticated = check_user_authenticated(conn, nick) is None
+
+    limit = QUEUE_RATE_LIMIT_AUTHENTICATED if is_authenticated else QUEUE_RATE_LIMIT_UNAUTHENTICATED
+    current_time = time.time()
+    cutoff_time = current_time - QUEUE_RATE_LIMIT_WINDOW
+
+    key = (chan, nick.lower())
+
+    if key not in queue_additions_tracker:
+        queue_additions_tracker[key] = []
+
+    recent_additions = [
+        timestamp
+        for timestamp in queue_additions_tracker[key]
+        if timestamp > cutoff_time
+    ]
+    queue_additions_tracker[key] = recent_additions
+
+    if len(recent_additions) >= limit:
+        remaining_time = int(recent_additions[0] + QUEUE_RATE_LIMIT_WINDOW - current_time)
+        minutes = remaining_time // 60
+        seconds = remaining_time % 60
+
+        user_type = "authenticated" if is_authenticated else "non-authenticated"
+        if minutes > 0:
+            time_str = f"{minutes}m {seconds}s"
+        else:
+            time_str = f"{seconds}s"
+
+        return False, (
+            f"⏳ Rate limit exceeded! {user_type.capitalize()} users can add {limit} songs per hour. "
+            f"Try again in {time_str}. (Used: {len(recent_additions)}/{limit})"
+        )
+
+    return True, None
+
+
+def record_queue_addition(nick: str, chan: str) -> None:
+    """Record a successful queue addition for rate limiting."""
+    key = (chan, nick.lower())
+    current_time = time.time()
+
+    if key not in queue_additions_tracker:
+        queue_additions_tracker[key] = []
+
+    queue_additions_tracker[key].append(current_time)
 
 
 def get_radio_url(config: dict[str, Any]) -> str:
@@ -456,7 +519,13 @@ def stream(bot: Any, conn: Any, nick: str, message: Any) -> str:
 
 
 def add_url_to_queue(
-    url: str, playlist: str, config: dict[str, Any], event: Any
+    url: str,
+    playlist: str,
+    config: dict[str, Any],
+    event: Any,
+    conn: Any,
+    nick: str,
+    chan: str,
 ) -> str:
     """
     Helper function to add a URL to a radio queue.
@@ -466,10 +535,17 @@ def add_url_to_queue(
         playlist: Either "user" or "fallback"
         config: Radio plugin configuration
         event: Event object for sending status updates
+        conn: IRC connection for authentication check
+        nick: User's nickname
+        chan: Channel name
 
     Returns:
         Success or error message
     """
+    allowed, error_msg = check_queue_rate_limit(conn, nick, chan)
+    if not allowed:
+        return error_msg
+
     api_url = config.get("api_url")
     api_token = config.get("api_token")
 
@@ -497,6 +573,8 @@ def add_url_to_queue(
 
         song_id = data.get("song_id", "Unknown")
 
+        record_queue_addition(nick, chan)
+
         return f"✅ Added to {queue_name}: {song_id}"
     except requests.HTTPError as e:
         if e.response is not None:
@@ -513,23 +591,19 @@ def add_url_to_queue(
 
 
 @hook.command("queue", "request", "req")
-def queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str) -> str:
+def queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
     """<url> - Add a song to the user queue"""
     if not text or not text.strip():
         return "Usage: .queue <url> or .request <url> - Add a YouTube/SoundCloud URL to user queue"
 
-    auth_error = check_user_authenticated(conn, nick)
-    if auth_error:
-        return auth_error
-
     config = bot.config.get("plugins", {}).get("radio", {})
     url = text.strip()
-    return add_url_to_queue(url, "user", config, event)
+    return add_url_to_queue(url, "user", config, event, conn, nick, chan)
 
 
 @hook.command("adminqueue", "adminrequest", "areq", permissions=["botcontrol"])
 def admin_queue_add(
-    text: str, event: Any, bot: Any, conn: Any, nick: str
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
 ) -> str:
     """<url> - Add a song to the fallback playlist"""
     if not text or not text.strip():
@@ -541,7 +615,7 @@ def admin_queue_add(
 
     config = bot.config.get("plugins", {}).get("radio", {})
     url = text.strip()
-    return add_url_to_queue(url, "fallback", config, event)
+    return add_url_to_queue(url, "fallback", config, event, conn, nick, chan)
 
 
 @hook.command("reqyt", autohelp=False)
@@ -549,16 +623,12 @@ def queue_add_youtube(
     event: Any, bot: Any, conn: Any, nick: str, chan: str
 ) -> str:
     """- Add your last YouTube search result to the user queue"""
-    auth_error = check_user_authenticated(conn, nick)
-    if auth_error:
-        return auth_error
-
     url = last_youtube_url.get((chan, nick))
     if not url:
         return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
 
     config = bot.config.get("plugins", {}).get("radio", {})
-    return add_url_to_queue(url, "user", config, event)
+    return add_url_to_queue(url, "user", config, event, conn, nick, chan)
 
 
 @hook.command("areqyt", autohelp=False, permissions=["botcontrol"])
@@ -575,7 +645,7 @@ def admin_queue_add_youtube(
         return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
 
     config = bot.config.get("plugins", {}).get("radio", {})
-    return add_url_to_queue(url, "fallback", config, event)
+    return add_url_to_queue(url, "fallback", config, event, conn, nick, chan)
 
 
 @hook.on_start()
