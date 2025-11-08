@@ -385,13 +385,15 @@ def youtube_url(match: Match[str]) -> str:
 
 
 user_results = {}
+last_youtube_url: dict[tuple[str, str], str] = {}
 
 
 @hook.command("ytn")
-def youtube_next(text: str, nick: str, reply) -> str:
-    global user_results
+def youtube_next(text: str, nick: str, chan: str, reply) -> str:
+    global user_results, last_youtube_url
     client = get_client()
     url = user_results[nick].pop(0)
+    last_youtube_url[(chan, nick)] = url
     result = get_video_info(client, video_url=url)
     time = timeformat.format_time(
         int(isodate.parse_duration(result["duration"]).total_seconds()),
@@ -404,7 +406,7 @@ def youtube_next(text: str, nick: str, reply) -> str:
 
 
 @hook.command("youtube", "you", "yt", "y")
-def youtube(text: str, nick: str, reply) -> str:
+def youtube(text: str, nick: str, chan: str, reply) -> str:
     """<query> - Returns the first YouTube search result for <query>.
 
     :param text: User input
@@ -413,7 +415,7 @@ def youtube(text: str, nick: str, reply) -> str:
     client = get_client()
     results = search_youtube_videos(client, text)
     user_results[nick] = results
-    return youtube_next(text, nick, reply)
+    return youtube_next(text, nick, chan, reply)
 
 
 @hook.command("youtime", "ytime")

@@ -11,6 +11,7 @@ from cloudbot import hook
 from cloudbot.webhooks.handlers import register_webhook_handler
 from cloudbot.bot import bot
 from plugins.core.chan_track import get_users
+from plugins.youtube import last_youtube_url
 
 logger = logging.getLogger("cloudbot")
 
@@ -56,7 +57,7 @@ def fetch_current_metadata(config: dict[str, Any]) -> dict[str, Any] | None:
         headers["Authorization"] = f"Bearer {api_token}"
 
     try:
-        response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=5.0)
+        response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=30.0)
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -256,7 +257,7 @@ def radio(bot: Any) -> str:
     if api_token:
         headers["Authorization"] = f"Bearer {api_token}"
 
-    response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=5.0)
+    response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=30.0)
     response.raise_for_status()
     data = response.json()
 
@@ -337,7 +338,7 @@ def stream(bot: Any, conn: Any, nick: str, message: Any) -> str:
                 "show_name": nick,
                 "min_recording_duration": 5,
             },
-            timeout=10.0,
+            timeout=30.0,
         )
         response.raise_for_status()
         data = response.json()
@@ -376,17 +377,19 @@ def stream(bot: Any, conn: Any, nick: str, message: Any) -> str:
         return f"❌ Failed to create stream token: {e}"
 
 
-@hook.command("queue", "request", "req")
-def queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str) -> str:
-    """<url> - Add a song to the user queue"""
-    if not text or not text.strip():
-        return "Usage: .queue <url> or .request <url> - Add a YouTube/SoundCloud URL to user queue"
+def add_url_to_queue(url: str, playlist: str, config: dict[str, Any], event: Any) -> str:
+    """
+    Helper function to add a URL to a radio queue.
 
-    auth_error = check_user_authenticated(conn, nick)
-    if auth_error:
-        return auth_error
+    Args:
+        url: The URL to add
+        playlist: Either "user" or "fallback"
+        config: Radio plugin configuration
+        event: Event object for sending status updates
 
-    config = bot.config.get("plugins", {}).get("radio", {})
+    Returns:
+        Success or error message
+    """
     api_url = config.get("api_url")
     api_token = config.get("api_token")
 
@@ -398,35 +401,50 @@ def queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str) -> str:
     if api_token:
         headers["Authorization"] = f"Bearer {api_token}"
 
-    url = text.strip()
-    event.reply("⏳ Adding to queue...")
+    queue_name = "user queue" if playlist == "user" else "fallback playlist"
+    event.reply(f"⏳ Adding to {queue_name}...")
 
     try:
         response = requests.post(
             f"{api_url}/admin/queue/add",
-            params={"playlist": "user"},
+            params={"playlist": playlist},
             headers=headers,
             files={"url": (None, url)},
-            timeout=15.0,
+            timeout=120.0,
         )
         response.raise_for_status()
         data = response.json()
 
         song_id = data.get("song_id", "Unknown")
 
-        return f"✅ Added to user queue: {song_id}"
+        return f"✅ Added to {queue_name}: {song_id}"
     except requests.HTTPError as e:
         if e.response is not None:
             try:
                 error_data = e.response.json()
                 error_msg = error_data.get("detail", str(e))
-                return f"❌ Failed to add to user queue: {error_msg}"
+                return f"❌ Failed to add to {queue_name}: {error_msg}"
             except Exception:
-                return f"❌ Failed to add to user queue: HTTP {e.response.status_code}"
-        return f"❌ Failed to add to user queue: {e}"
+                return f"❌ Failed to add to {queue_name}: HTTP {e.response.status_code}"
+        return f"❌ Failed to add to {queue_name}: {e}"
     except requests.RequestException as e:
-        logger.error("User queue add request failed: %s", e)
-        return f"❌ Failed to add to user queue: {e}"
+        logger.error("%s add request failed: %s", queue_name, e)
+        return f"❌ Failed to add to {queue_name}: {e}"
+
+
+@hook.command("queue", "request", "req")
+def queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str) -> str:
+    """<url> - Add a song to the user queue"""
+    if not text or not text.strip():
+        return "Usage: .queue <url> or .request <url> - Add a YouTube/SoundCloud URL to user queue"
+
+    auth_error = check_user_authenticated(conn, nick)
+    if auth_error:
+        return auth_error
+
+    config = bot.config.get("plugins", {}).get("radio", {})
+    url = text.strip()
+    return add_url_to_queue(url, "user", config, event)
 
 
 @hook.command("adminqueue", "adminrequest", "areq", permissions=["admins"])
@@ -440,46 +458,38 @@ def admin_queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str) -> st
         return auth_error
 
     config = bot.config.get("plugins", {}).get("radio", {})
-    api_url = config.get("api_url")
-    api_token = config.get("api_token")
-
-    if not api_url:
-        logger.error("Radio plugin not configured: missing api_url")
-        return "Radio not configured. Set 'api_url' in config.json under plugins.radio"
-
-    headers = {}
-    if api_token:
-        headers["Authorization"] = f"Bearer {api_token}"
-
     url = text.strip()
-    event.reply("⏳ Adding to fallback playlist...")
+    return add_url_to_queue(url, "fallback", config, event)
 
-    try:
-        response = requests.post(
-            f"{api_url}/admin/queue/add",
-            params={"playlist": "fallback"},
-            headers=headers,
-            files={"url": (None, url)},
-            timeout=15.0,
-        )
-        response.raise_for_status()
-        data = response.json()
 
-        song_id = data.get("song_id", "Unknown")
+@hook.command("reqyt", autohelp=False)
+def queue_add_youtube(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+    """- Add your last YouTube search result to the user queue"""
+    auth_error = check_user_authenticated(conn, nick)
+    if auth_error:
+        return auth_error
 
-        return f"✅ Added to fallback playlist: {song_id}"
-    except requests.HTTPError as e:
-        if e.response is not None:
-            try:
-                error_data = e.response.json()
-                error_msg = error_data.get("detail", str(e))
-                return f"❌ Failed to add to fallback playlist: {error_msg}"
-            except Exception:
-                return f"❌ Failed to add to fallback playlist: HTTP {e.response.status_code}"
-        return f"❌ Failed to add to fallback playlist: {e}"
-    except requests.RequestException as e:
-        logger.error("Fallback playlist add request failed: %s", e)
-        return f"❌ Failed to add to fallback playlist: {e}"
+    url = last_youtube_url.get((chan, nick))
+    if not url:
+        return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
+
+    config = bot.config.get("plugins", {}).get("radio", {})
+    return add_url_to_queue(url, "user", config, event)
+
+
+@hook.command("areqyt", autohelp=False, permissions=["admins"])
+def admin_queue_add_youtube(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+    """- Add your last YouTube search result to the fallback playlist"""
+    auth_error = check_user_authenticated(conn, nick)
+    if auth_error:
+        return auth_error
+
+    url = last_youtube_url.get((chan, nick))
+    if not url:
+        return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
+
+    config = bot.config.get("plugins", {}).get("radio", {})
+    return add_url_to_queue(url, "fallback", config, event)
 
 
 @hook.on_start()
@@ -513,7 +523,7 @@ def subscribe_radio_webhook() -> None:
                     f"{api_url}/admin/webhooks/subscribe",
                     headers=headers,
                     json=sub,
-                    timeout=10.0,
+                    timeout=30.0,
                 )
                 response.raise_for_status()
                 logger.info("Successfully subscribed to radio webhooks")
