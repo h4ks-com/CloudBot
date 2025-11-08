@@ -16,8 +16,8 @@ import re
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
+from cloudbot.util.web import get_session
 
 # CONSTANTS
 

@@ -80,16 +80,22 @@ class VibeClient:
     def create(self, name: str, prompt: str) -> VibeResponse | dict:
         """Create a new game"""
         from cloudbot.util.web import get_session
+
         response = get_session().post(
-            f"{self.api_url}/api/ai/{name}", json={"content": prompt}, headers=self.headers
+            f"{self.api_url}/api/ai/{name}",
+            json={"content": prompt},
+            headers=self.headers,
         )
         return self._handle_response(response)
 
     def update(self, name: str, prompt: str) -> VibeResponse | dict:
         """Update an existing game"""
         from cloudbot.util.web import get_session
+
         response = get_session().put(
-            f"{self.api_url}/api/ai/{name}", json={"content": prompt}, headers=self.headers
+            f"{self.api_url}/api/ai/{name}",
+            json={"content": prompt},
+            headers=self.headers,
         )
         return self._handle_response(response)
 
@@ -98,27 +104,32 @@ class VibeClient:
     ) -> VibeResponse | dict:
         """Import a game"""
         from cloudbot.util.web import get_session
+
         text = base64.b64encode(content).decode("utf-8")
         response = get_session().put(
             f"{self.api_url}/api/project/{name}/{path}",
             json={"content": text, "encoding": "base64"},
-            headers=self.headers
+            headers=self.headers,
         )
         return self._handle_response(response)
 
     def delete(self, name: str) -> bool:
         """Delete a game"""
         from cloudbot.util.web import get_session
-        response = get_session().delete(f"{self.api_url}/api/project/{name}", headers=self.headers)
+
+        response = get_session().delete(
+            f"{self.api_url}/api/project/{name}", headers=self.headers
+        )
         return response.status_code == 200
 
     def search(self, name: str) -> list[VibeSearchResult]:
         """Search for a game"""
         from cloudbot.util.web import get_session
+
         response = get_session().get(
             f"{self.api_url}/api/games",
             params={"search_query": name, "sort_by": "hottest"},
-            headers=self.headers
+            headers=self.headers,
         )
         if response.status_code != 200:
             return []
@@ -128,7 +139,10 @@ class VibeClient:
     def revert(self, name: str) -> VibeResponse | dict:
         """Revert a game"""
         from cloudbot.util.web import get_session
-        response = get_session().get(f"{self.api_url}/api/revert_project/{name}", headers=self.headers)
+
+        response = get_session().get(
+            f"{self.api_url}/api/revert_project/{name}", headers=self.headers
+        )
         return self._handle_response(response)
 
 

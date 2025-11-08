@@ -4,8 +4,8 @@ import requests
 import requests.exceptions
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
+from cloudbot.util.web import get_session
 
 
 @hook.command("down", "offline", "up")

@@ -2,8 +2,8 @@
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting
+from cloudbot.util.web import get_session
 
 base_url = "https://n8n.h4ks.com/webhook"
 

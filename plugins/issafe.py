@@ -16,8 +16,8 @@ import requests
 
 import cloudbot
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import bot
+from cloudbot.util.web import get_session
 
 API_SB = "https://sb-ssl.google.com/safebrowsing/api/lookup"
 

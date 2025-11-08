@@ -38,7 +38,9 @@ class Message:
         }
 
 
-def get_ollama_config(bot, model: str | None = None) -> tuple[str | None, str | None]:
+def get_ollama_config(
+    bot, model: str | None = None
+) -> tuple[str | None, str | None]:
     """Get Ollama configuration from bot config."""
     config = bot.config.get("plugins", {}).get("ollama", {})
     api_url = config.get("api_url")
@@ -46,12 +48,16 @@ def get_ollama_config(bot, model: str | None = None) -> tuple[str | None, str | 
     if model is None:
         model = ALLOWED_MODELS[0]
     if model not in ALLOWED_MODELS:
-        raise ValueError(f"Model '{model}' is not allowed. Choose from: {', '.join(ALLOWED_MODELS)}")
+        raise ValueError(
+            f"Model '{model}' is not allowed. Choose from: {', '.join(ALLOWED_MODELS)}"
+        )
 
     return api_url, api_key
 
 
-def get_completion(api_url: str, api_key: str, model: str, messages: list[Message]) -> str:
+def get_completion(
+    api_url: str, api_key: str, model: str, messages: list[Message]
+) -> str:
     """Call Ollama API to get completion."""
     headers = {
         "Content-Type": "application/json",
@@ -66,7 +72,9 @@ def get_completion(api_url: str, api_key: str, model: str, messages: list[Messag
         "stream": False,
     }
 
-    response = get_session().post(api_url, headers=headers, json=json_data, timeout=60)
+    response = get_session().post(
+        api_url, headers=headers, json=json_data, timeout=60
+    )
     response.raise_for_status()
     return response.json()["message"]["content"]
 
@@ -79,7 +87,8 @@ def upload_responses(nick: str, messages: list[Message], header: str) -> str:
         header
         + "\n" * 4
         + f"{lb}{bar}{lb*2}".join(
-            f"{nick if message.role == 'user' else 'bot'}: {message.content}" for message in messages
+            f"{nick if message.role == 'user' else 'bot'}: {message.content}"
+            for message in messages
         )
     )
     with tempfile.NamedTemporaryFile(suffix=".txt") as f:
@@ -115,7 +124,9 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
     # Get configuration
     api_url, api_key = get_ollama_config(bot, model)
     if not api_url:
-        notice("Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config.")
+        notice(
+            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
+        )
         return
 
     channick = (chan, nick)
@@ -124,7 +135,9 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     ollama_messages_cache[channick].append(Message(role="user", content=text))
     try:
-        response = get_completion(api_url, api_key, model, list(ollama_messages_cache[channick]))
+        response = get_completion(
+            api_url, api_key, model, list(ollama_messages_cache[channick])
+        )
     except requests.HTTPError as e:
         return f"Error: {e}"
     except requests.Timeout:
@@ -132,7 +145,9 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
     except Exception as e:
         return f"Error: {e}"
 
-    ollama_messages_cache[channick].append(Message(role="assistant", content=response))
+    ollama_messages_cache[channick].append(
+        Message(role="assistant", content=response)
+    )
     truncated = formatting.truncate_str(response, 350)
     if len(truncated) < len(response):
         paste_url = upload_responses(
@@ -145,7 +160,12 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
 
 def create_web_app(
-    text: str, history: list[Message] | Deque[Message], bot, api_url: str, api_key: str, model: str
+    text: str,
+    history: list[Message] | Deque[Message],
+    bot,
+    api_url: str,
+    api_key: str,
+    model: str,
 ) -> str:
     """Create a single-page HTML app using Ollama."""
     history.append(
@@ -188,14 +208,18 @@ def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
     # Get configuration
     api_url, api_key = get_ollama_config(bot, model)
     if not api_url:
-        notice("Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config.")
+        notice(
+            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
+        )
         return
 
     channick = (chan, nick)
     if channick not in ollama_messages_cache:
         ollama_messages_cache[channick] = deque(maxlen=MAX_USER_HISTORY_LENGTH)
 
-    return create_web_app(text, ollama_messages_cache[channick], bot, api_url, api_key, model)
+    return create_web_app(
+        text, ollama_messages_cache[channick], bot, api_url, api_key, model
+    )
 
 
 @hook.command("aih", "aihistory", "aipaste", autohelp=False)
@@ -235,7 +259,9 @@ def ai_models_command(bot, notice) -> list[str] | str:
     # Get configuration
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
-        notice("Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config.")
+        notice(
+            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
+        )
         return
 
     # Get base URL (remove /api/chat if present)

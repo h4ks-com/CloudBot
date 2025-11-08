@@ -3,8 +3,8 @@ import re
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
+from cloudbot.util.web import get_session
 
 fml_cache = []
 

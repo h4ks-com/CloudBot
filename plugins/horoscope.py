@@ -4,9 +4,9 @@ from sqlalchemy import Column, String, Table, select
 from yarl import URL
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import colors, database
 from cloudbot.util.http import parse_soup
+from cloudbot.util.web import get_session
 
 table = Table(
     "horoscope",

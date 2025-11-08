@@ -3,8 +3,8 @@ import json
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting
+from cloudbot.util.web import get_session
 
 
 @hook.command()

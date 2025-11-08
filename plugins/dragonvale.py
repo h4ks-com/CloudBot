@@ -5,9 +5,9 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
 from cloudbot.util.timeparse import time_parse
+from cloudbot.util.web import get_session
 
 search_url = "http://dragonvale.wikia.com/api/v1/Search/list"
 

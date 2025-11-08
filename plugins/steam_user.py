@@ -3,9 +3,9 @@ from typing import Dict
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 from cloudbot.util.http import parse_xml
+from cloudbot.util.web import get_session
 
 API_URL = "http://steamcommunity.com/id/{}/"
 ID_BASE = 76561197960265728

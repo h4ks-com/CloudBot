@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import colors, formatting, web
+from cloudbot.util.web import get_session
 
 SEARCH_URL = "http://www.amazon.{}/s/"
 REGION = "com"

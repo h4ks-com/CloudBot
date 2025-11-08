@@ -68,6 +68,7 @@ class MyMediaWiki(MediaWiki):
             self._session.close()
 
         from cloudbot.util.web import TimeoutSession
+
         headers = {"User-Agent": self._user_agent}
         self._session = TimeoutSession()
         self._session.headers.update(headers)

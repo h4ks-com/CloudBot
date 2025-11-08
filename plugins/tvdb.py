@@ -22,11 +22,11 @@ from typing import (
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import CloudBot
 from cloudbot.event import Event
 from cloudbot.util import func_utils
 from cloudbot.util.http import GetParams
+from cloudbot.util.web import get_session
 
 logger = logging.getLogger(__name__)
 token_lifetime = datetime.timedelta(hours=1)

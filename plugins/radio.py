@@ -8,8 +8,8 @@ import requests
 from cachetools import TTLCache
 
 from cloudbot import hook
-from cloudbot.webhooks.handlers import register_webhook_handler
 from cloudbot.bot import bot
+from cloudbot.webhooks.handlers import register_webhook_handler
 from plugins.core.chan_track import get_users
 from plugins.youtube import last_youtube_url
 
@@ -57,7 +57,9 @@ def fetch_current_metadata(config: dict[str, Any]) -> dict[str, Any] | None:
         headers["Authorization"] = f"Bearer {api_token}"
 
     try:
-        response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=30.0)
+        response = requests.get(
+            f"{api_url}/metadata/now", headers=headers, timeout=30.0
+        )
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -65,7 +67,9 @@ def fetch_current_metadata(config: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
 
-def format_livestream_message(event_type: str, metadata_response: dict[str, Any], radio_url: str) -> str | None:
+def format_livestream_message(
+    event_type: str, metadata_response: dict[str, Any], radio_url: str
+) -> str | None:
     """Format livestream event with current metadata."""
     source = metadata_response.get("source", "unknown")
     metadata = metadata_response.get("metadata", {})
@@ -102,14 +106,18 @@ def format_livestream_message(event_type: str, metadata_response: dict[str, Any]
         return f"📺 Livestream started | Listen: {radio_url}"
     elif event_type == "livestream_ended":
         if source == "fallback":
-            return f"📻 Livestream ended, back to fallback: ♫ {artist} - {title}"
+            return (
+                f"📻 Livestream ended, back to fallback: ♫ {artist} - {title}"
+            )
         elif source == "user":
             return f"🎵 Livestream ended, now playing: ♫ {artist} - {title}"
         return "📺 Livestream ended"
     return None
 
 
-def send_debounced_message(bot_instance: Any, chan: str, event_type: str) -> None:
+def send_debounced_message(
+    bot_instance: Any, chan: str, event_type: str
+) -> None:
     """Fetch metadata after delay and send message if different from last."""
     config = bot_instance.config.get("plugins", {}).get("radio", {})
     connection_name = config.get("connection", "gobot")
@@ -119,7 +127,9 @@ def send_debounced_message(bot_instance: Any, chan: str, event_type: str) -> Non
         return
 
     radio_url = get_radio_url(config)
-    message = format_livestream_message(event_type, metadata_response, radio_url)
+    message = format_livestream_message(
+        event_type, metadata_response, radio_url
+    )
     if not message:
         return
 
@@ -160,12 +170,16 @@ def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
             allowed_events = chan_config.get("events", [])
             if event_type in allowed_events:
                 timer = threading.Timer(
-                    5.0, send_debounced_message, args=(bot_instance, chan, event_type)
+                    5.0,
+                    send_debounced_message,
+                    args=(bot_instance, chan, event_type),
                 )
                 timer.daemon = True
                 timer.start()
                 logger.debug(
-                    "Scheduled debounced message for %s in channel %s", event_type, chan
+                    "Scheduled debounced message for %s in channel %s",
+                    event_type,
+                    chan,
                 )
         return
 
@@ -198,7 +212,9 @@ def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
                 and last_state.get("artist") == current_state["artist"]
                 and last_state.get("event") == event_type
             ):
-                logger.debug("Skipping duplicate immediate message for %s", chan)
+                logger.debug(
+                    "Skipping duplicate immediate message for %s", chan
+                )
                 continue
 
             connection.message(chan, message)
@@ -206,7 +222,9 @@ def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
             logger.info("Sent immediate message to %s: %s", chan, message)
 
 
-def format_radio_message(event_type: str, payload: dict[str, Any]) -> str | None:
+def format_radio_message(
+    event_type: str, payload: dict[str, Any]
+) -> str | None:
     """Format webhook payload into IRC message."""
     if event_type == "song_changed":
         data = payload.get("data", {})
@@ -257,7 +275,9 @@ def radio(bot: Any) -> str:
     if api_token:
         headers["Authorization"] = f"Bearer {api_token}"
 
-    response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=30.0)
+    response = requests.get(
+        f"{api_url}/metadata/now", headers=headers, timeout=30.0
+    )
     response.raise_for_status()
     data = response.json()
 
@@ -405,7 +425,10 @@ def stream(bot: Any, conn: Any, nick: str, message: Any) -> str:
         stream_url = f"{stream_base_url}/stream"
         stream_url_with_token = f"{stream_url}?token={token}"
 
-        message(f"🎬 Livestream token (valid for 15 minutes, expires: {expires_at}):", nick)
+        message(
+            f"🎬 Livestream token (valid for 15 minutes, expires: {expires_at}):",
+            nick,
+        )
         message(f"Anonymous Stream URL: {stream_url_with_token}", nick)
         message("", nick)
         message(
@@ -432,7 +455,9 @@ def stream(bot: Any, conn: Any, nick: str, message: Any) -> str:
         return f"❌ Failed to create stream token: {e}"
 
 
-def add_url_to_queue(url: str, playlist: str, config: dict[str, Any], event: Any) -> str:
+def add_url_to_queue(
+    url: str, playlist: str, config: dict[str, Any], event: Any
+) -> str:
     """
     Helper function to add a URL to a radio queue.
 
@@ -502,8 +527,10 @@ def queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str) -> str:
     return add_url_to_queue(url, "user", config, event)
 
 
-@hook.command("adminqueue", "adminrequest", "areq", permissions=["admins"])
-def admin_queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str) -> str:
+@hook.command("adminqueue", "adminrequest", "areq", permissions=["botcontrol"])
+def admin_queue_add(
+    text: str, event: Any, bot: Any, conn: Any, nick: str
+) -> str:
     """<url> - Add a song to the fallback playlist"""
     if not text or not text.strip():
         return "Usage: .adminqueue <url> or .adminrequest <url> - Add a URL to fallback playlist"
@@ -518,7 +545,9 @@ def admin_queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str) -> st
 
 
 @hook.command("reqyt", autohelp=False)
-def queue_add_youtube(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+def queue_add_youtube(
+    event: Any, bot: Any, conn: Any, nick: str, chan: str
+) -> str:
     """- Add your last YouTube search result to the user queue"""
     auth_error = check_user_authenticated(conn, nick)
     if auth_error:
@@ -532,8 +561,10 @@ def queue_add_youtube(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> 
     return add_url_to_queue(url, "user", config, event)
 
 
-@hook.command("areqyt", autohelp=False, permissions=["admins"])
-def admin_queue_add_youtube(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+@hook.command("areqyt", autohelp=False, permissions=["botcontrol"])
+def admin_queue_add_youtube(
+    event: Any, bot: Any, conn: Any, nick: str, chan: str
+) -> str:
     """- Add your last YouTube search result to the fallback playlist"""
     auth_error = check_user_authenticated(conn, nick)
     if auth_error:
@@ -569,7 +600,9 @@ def subscribe_radio_webhook() -> None:
     if api_token:
         headers["Authorization"] = f"Bearer {api_token}"
 
-    subscriptions = bot_instance.config.get("webhooks", {}).get("subscriptions", [])
+    subscriptions = bot_instance.config.get("webhooks", {}).get(
+        "subscriptions", []
+    )
 
     for sub in subscriptions:
         if sub.get("plugin") == "radio":

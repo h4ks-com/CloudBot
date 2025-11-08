@@ -10,9 +10,9 @@ import validators
 from pypdf import PdfReader
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting
 from cloudbot.util.http import ua_firefox
+from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 
 API_URL = "https://export.arxiv.org/api/query"

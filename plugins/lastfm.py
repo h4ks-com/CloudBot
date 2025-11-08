@@ -8,9 +8,9 @@ import requests
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 from cloudbot.util import database, timeformat, web
+from cloudbot.util.web import get_session
 
 api_url = "http://ws.audioscrobbler.com/2.0/?format=json"
 

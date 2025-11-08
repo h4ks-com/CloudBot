@@ -19,8 +19,8 @@ import requests
 from lxml import html
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import timeformat
+from cloudbot.util.web import get_session
 
 
 @hook.command("pre", "scene")

@@ -36,7 +36,9 @@ def patch_input(wiki_password: str):
             return wiki_password
         from pywikibot import input as original_input
 
-        return original_input(question, password=password, default=default, force=force)
+        return original_input(
+            question, password=password, default=default, force=force
+        )
 
     pywikibot.input = mock_input
 
@@ -89,7 +91,8 @@ def upload_responses(nick: str, messages: list[Message], header: str) -> str:
         header
         + "\n" * 4
         + f"{lb}{bar}{lb*2}".join(
-            f"{nick if message.role == 'user' else 'bot'}: {message.content}" for message in messages
+            f"{nick if message.role == 'user' else 'bot'}: {message.content}"
+            for message in messages
         )
     )
     with tempfile.NamedTemporaryFile(suffix=".txt") as f:
@@ -116,7 +119,9 @@ def gpt_command(text: str, nick: str, chan: str) -> str:
         response = get_completion(list(gpt_messages_cache[channick]))
     except requests.HTTPError as e:
         return f"Error: {e}"
-    gpt_messages_cache[channick].append(Message(role="assistant", content=response))
+    gpt_messages_cache[channick].append(
+        Message(role="assistant", content=response)
+    )
     truncated = formatting.truncate_str(response, 350)
     if len(truncated) < len(response):
         paste_url = upload_responses(
@@ -191,7 +196,9 @@ def gpt_paste_command(nick: str, chan: str, text: str) -> str:
             list(gpt_messages_cache[channick]),
             f"{nick}'s GPT conversation in {chan}",
         )
-    return f"No conversation history for {nick}. Start a conversation with .gpt."
+    return (
+        f"No conversation history for {nick}. Start a conversation with .gpt."
+    )
 
 
 @hook.command("gptclear", autohelp=False)
@@ -226,7 +233,9 @@ def summarize(
             " keywords separated by comma: \n```"
         )
     else:
-        question_header = f"Please summarize briefly the following {what}: \n```"
+        question_header = (
+            f"Please summarize briefly the following {what}: \n```"
+        )
 
     summarize_body = question_header + "\n".join(messages) + "\n```"
 
@@ -234,7 +243,9 @@ def summarize(
         summarize_body += f"Use at most {max_words} words."
 
     try:
-        response = get_completion([Message(role="user", content=summarize_body)])
+        response = get_completion(
+            [Message(role="user", content=summarize_body)]
+        )
     except requests.HTTPError as e:
         return f"Error: {e}"
 
@@ -251,7 +262,9 @@ def summarize(
             return "error: missing api key for huggingface"
 
         client = HuggingFaceClient([api_key])
-        response = attempt_inference(client, summarize_body, ALIASES["image"].id, reply)
+        response = attempt_inference(
+            client, summarize_body, ALIASES["image"].id, reply
+        )
         if isinstance(response, str):
             return formatting.truncate(response, 420)
         return formatting.truncate(process_response(response, chan, nick), 420)
@@ -265,13 +278,20 @@ def summarize(
                 [Message(role="assistant", content=response)],
                 f"{nick}'s GPT summary in {chan}",
             )
-            output[2] = formatting.truncate(output[2], 350) + " (full response: " + paste_url + ")"
+            output[2] = (
+                formatting.truncate(output[2], 350)
+                + " (full response: "
+                + paste_url
+                + ")"
+            )
             return output[:3]
         return output
 
 
 @hook.command("summarize", "summary", autohelp=False)
-def summarize_command(bot, reply, text: str, chan: str, nick: str, conn) -> str | list[str] | None:
+def summarize_command(
+    bot, reply, text: str, chan: str, nick: str, conn
+) -> str | list[str] | None:
     """Summarizes the contents of the last chat messages. Optionally pass a number for max words and nicks to summarize. Sorry yeah if your nick is a number fuck you"""
     image = False
     worcount = None
@@ -308,16 +328,22 @@ def summarize_command(bot, reply, text: str, chan: str, nick: str, conn) -> str 
     if not messages:
         reply("Nothing found in history to summarize")
         return
-    return summarize(messages, image, nick, chan, bot, reply, max_words=worcount)
+    return summarize(
+        messages, image, nick, chan, bot, reply, max_words=worcount
+    )
 
 
 @hook.command("sumsum", "sumsummarize", "sumsummary", autohelp=False)
-def sumsum(bot, text: str, reply, nick: str, chan: str, conn) -> str | list[str] | None:
+def sumsum(
+    bot, text: str, reply, nick: str, chan: str, conn
+) -> str | list[str] | None:
     """Summarizes the last summary"""
     global last_summary
     if not last_summary:
         return "No summary to summarize."
-    return summarize([last_summary], False, nick, chan, bot, reply, what="text even more")
+    return summarize(
+        [last_summary], False, nick, chan, bot, reply, what="text even more"
+    )
 
 
 agi_messages_cache: Deque[tuple[float, str]] = deque(maxlen=AGI_HISTORY_LENGTH)
@@ -344,7 +370,9 @@ def generate_agi_history(conn, chan: str) -> list[Message]:
         if i >= AGI_HISTORY_LENGTH:
             break
 
-    inner.extend(("assistant", timestamp, msg) for timestamp, msg in agi_messages_cache)
+    inner.extend(
+        ("assistant", timestamp, msg) for timestamp, msg in agi_messages_cache
+    )
     sorted_messages = sorted(inner, key=lambda x: x[1])
     messages = copy.deepcopy(sorted_messages)
 
@@ -373,7 +401,9 @@ def generate_agi_history(conn, chan: str) -> list[Message]:
 
 
 @hook.command("agi", "sentient", autohelp=False)
-def gpts_command(reply, text: str, nick: str, chan: str, conn) -> str | list[str] | None:
+def gpts_command(
+    reply, text: str, nick: str, chan: str, conn
+) -> str | list[str] | None:
     """<text> - Get a response from text generating LLM that is aware of the conversation."""
     # Same logic as .summarize but with the last 30 messages and the user's message
     messages = generate_agi_history(conn, chan)
@@ -392,7 +422,12 @@ def gpts_command(reply, text: str, nick: str, chan: str, conn) -> str | list[str
             [Message(role="assistant", content=response)],
             f"GPT conversation in {chan}",
         )
-        output[2] = formatting.truncate(output[2], 350) + " (full response: " + paste_url + ")"
+        output[2] = (
+            formatting.truncate(output[2], 350)
+            + " (full response: "
+            + paste_url
+            + ")"
+        )
         return output[:3]
     return output
 
@@ -405,7 +440,9 @@ def agi_paste_command(nick: str, conn, chan: str) -> str:
 
 
 @hook.command("gpredict", "gptpredict", "gptpred", "predict", autohelp=False)
-def gpredict_command(bot, reply, text: str, chan: str, nick: str, conn) -> str | list[str] | None:
+def gpredict_command(
+    bot, reply, text: str, chan: str, nick: str, conn
+) -> str | list[str] | None:
     """<nick> - Predict what the given user might say next based on their chat history."""
     if not text.strip():
         return "Error: You must provide a nick to predict."
@@ -429,7 +466,9 @@ def gpredict_command(bot, reply, text: str, chan: str, nick: str, conn) -> str |
             messages.append(Message(role="assistant", content=mod_msg))
             was_user_in_history = True
         else:
-            messages.append(Message(role="user", content=f"{name} said: {mod_msg}"))
+            messages.append(
+                Message(role="user", content=f"{name} said: {mod_msg}")
+            )
 
         if len(messages) >= AGI_HISTORY_LENGTH:
             break
@@ -546,7 +585,9 @@ def edit_wiki(
 
 
 @hook.command("gptwiki", autohelp=False)
-def gptwiki(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | str:
+def gptwiki(
+    bot, reply, text: str, chan: str, nick: str, conn
+) -> list[str] | str:
     """<text> - Create or edit a wiki page on demand from AI prompt"""
     global gpt_messages_cache
     channick = (chan, nick)
@@ -557,14 +598,18 @@ def gptwiki(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | st
 
 
 @hook.command("agiwiki", autohelp=False)
-def agiwiki(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | str:
+def agiwiki(
+    bot, reply, text: str, chan: str, nick: str, conn
+) -> list[str] | str:
     """<text> - Create or edit a wiki page on demand from AI prompt"""
     messages = generate_agi_history(conn, chan)
     return edit_wiki(bot, reply, chan, nick, text, messages)
 
 
 @hook.command("gptsummarize", "gptsum", "gpts", autohelp=False)
-def gptsummarize(bot, reply, text: str, chan: str, nick: str, conn) -> list[str] | str:
+def gptsummarize(
+    bot, reply, text: str, chan: str, nick: str, conn
+) -> list[str] | str:
     """<url> - Summarizes the contents of the given url. Can also be youtube urls or anything supported by https://github.com/microsoft/markitdown"""
     global gpt_messages_cache
     if not text.strip():
@@ -601,7 +646,9 @@ def gptsummarize(bot, reply, text: str, chan: str, nick: str, conn) -> list[str]
     except requests.HTTPError as e:
         return f"Error: {e}"
 
-    gpt_messages_cache[channick].append(Message(role="assistant", content=response))
+    gpt_messages_cache[channick].append(
+        Message(role="assistant", content=response)
+    )
 
     truncated = f"Summary: {formatting.truncate_str(response, 350)}"
     if len(truncated) < len(response):

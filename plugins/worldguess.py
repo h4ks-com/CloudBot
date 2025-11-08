@@ -74,7 +74,9 @@ class WorldGuessClient:
         data = response.json()
         return RandomGameResponse(**data)
 
-    def create_challenge(self, request: CreateChallengeRequest) -> CreateChallengeResponse:
+    def create_challenge(
+        self, request: CreateChallengeRequest
+    ) -> CreateChallengeResponse:
         payload = {
             "latitude": request.latitude,
             "longitude": request.longitude,
@@ -95,7 +97,9 @@ class WorldGuessClient:
         return CreateChallengeResponse(**data)
 
     def end_challenge(self, challenge_id: str) -> EndChallengeResponse:
-        response = self.client.post(f"{self.base_url}/v1/challenge/{challenge_id}/end")
+        response = self.client.post(
+            f"{self.base_url}/v1/challenge/{challenge_id}/end"
+        )
         response.raise_for_status()
         data = response.json()
         return EndChallengeResponse(**data)
@@ -136,7 +140,9 @@ def worldguess_cmd(text: str, bot) -> str:
         return f"❌ Failed to create game: {e}"
 
 
-@hook.command("wgc", "worldguesschallenge", "populationchallenge", autohelp=False)
+@hook.command(
+    "wgc", "worldguesschallenge", "populationchallenge", autohelp=False
+)
 def worldguess_challenge_cmd(text: str, bot, chan, conn, notice, db) -> str:
     """[category|list] - Create a WorldGuess challenge for the channel. One challenge per channel at a time."""
     if text and text.strip().lower() == "list":
@@ -146,7 +152,11 @@ def worldguess_challenge_cmd(text: str, bot, chan, conn, notice, db) -> str:
         challenge_id = active_challenges[chan]
         return f"⚠️ Challenge {challenge_id} is already active in this channel. End it first with .wgend"
 
-    category = text.strip().lower() if text and text.strip() else random.choice(CATEGORIES)
+    category = (
+        text.strip().lower()
+        if text and text.strip()
+        else random.choice(CATEGORIES)
+    )
     if category not in CATEGORIES:
         return f"❌ Invalid category. Available: {', '.join(CATEGORIES)}"
 
@@ -164,9 +174,7 @@ def worldguess_challenge_cmd(text: str, bot, chan, conn, notice, db) -> str:
             size_class=game.size_class,
             webhook_url=webhook_url,
             webhook_token=webhook_token,
-            webhook_extra_params={
-                "target": chan
-            },
+            webhook_extra_params={"target": chan},
         )
 
         challenge = client.create_challenge(challenge_request)
@@ -203,9 +211,12 @@ def end_worldguess_challenge_cmd(bot, chan, notice, db) -> str | list[str]:
         ]
 
         for i, ranking in enumerate(result.rankings[:5], 1):
-            score_emoji = {"good": "🟢", "meh": "🟡", "bad": "🔴"}.get(ranking.get("score", "bad"), "⚪")
+            score_emoji = {"good": "🟢", "meh": "🟡", "bad": "🔴"}.get(
+                ranking.get("score", "bad"), "⚪"
+            )
             response.append(
-                f"{i}. {ranking['username']}: {ranking['guess']:,} " f"(off by {ranking['difference']:,}) {score_emoji}"
+                f"{i}. {ranking['username']}: {ranking['guess']:,} "
+                f"(off by {ranking['difference']:,}) {score_emoji}"
             )
 
         if len(result.rankings) > 5:

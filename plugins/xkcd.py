@@ -5,8 +5,8 @@ import requests
 from yarl import URL
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
+from cloudbot.util.web import get_session
 
 xkcd_re = re.compile(r"(.*:)//(www.xkcd.com|xkcd.com)(.*)", re.I)
 

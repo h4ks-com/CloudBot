@@ -76,7 +76,9 @@ def recipe(text):
     if text:
         # get the recipe URL by searching
         try:
-            request = get_session().get(SEARCH_URL, params={"query": text.strip()})
+            request = get_session().get(
+                SEARCH_URL, params={"query": text.strip()}
+            )
             request.raise_for_status()
         except (
             requests.exceptions.HTTPError,

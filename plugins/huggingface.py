@@ -274,9 +274,13 @@ class HuggingFaceClient:
 
     def _send(self, payload: dict, model: str) -> requests.Response:
         from cloudbot.util.web import get_session
+
         data = json.dumps(payload)
         response = get_session().request(
-            "POST", INFERENCE_API.format(model=model), data=data, headers=self.headers
+            "POST",
+            INFERENCE_API.format(model=model),
+            data=data,
+            headers=self.headers,
         )
         return response
 
@@ -289,8 +293,11 @@ class HuggingFaceClient:
 
     def search_model(self, query: str) -> List[ModelInfo]:
         from cloudbot.util.web import get_session
+
         query = quote(query)
-        response = get_session().get(BASE_API + f"models?search={query}", headers=self.headers)
+        response = get_session().get(
+            BASE_API + f"models?search={query}", headers=self.headers
+        )
         response.raise_for_status()
         return [ModelInfo(**model) for model in response.json()]
 

@@ -9,8 +9,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.queue import Queue
+from cloudbot.util.web import get_session
 
 API = "https://grep.app/api/search"
 

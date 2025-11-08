@@ -5,8 +5,8 @@ from lxml import html
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import colors, filesize, formatting
+from cloudbot.util.web import get_session
 
 API_URL = "https://api.datamarket.azure.com/Bing/Search/v1/Composite"
 

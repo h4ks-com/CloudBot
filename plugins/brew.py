@@ -2,8 +2,8 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import bot
+from cloudbot.util.web import get_session
 
 api_url = "http://api.brewerydb.com/v2/search?format=json"
 

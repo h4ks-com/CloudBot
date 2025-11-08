@@ -6,9 +6,9 @@ from bs4 import BeautifulSoup
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import web
 from cloudbot.util.queue import Queue
+from cloudbot.util.web import get_session
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"

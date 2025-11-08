@@ -76,6 +76,7 @@ def pypi_search(
         Package: package object
     """
     from cloudbot.util.web import get_session
+
     headers = {
         "Accept": "application/vnd.pypi.simple.v1+json",
     }
@@ -94,7 +95,9 @@ def pypi_search(
     matches.sort(key=lambda x: fuzz.ratio(query, x), reverse=True)
     matches = matches[:MAX_RESULTS]
     for name in matches:
-        response = get_session().get(f"https://pypi.org/pypi/{name}/json", headers=headers)
+        response = get_session().get(
+            f"https://pypi.org/pypi/{name}/json", headers=headers
+        )
         if response.status_code != 200:
             yield Package(name, "-!Failed to get info!-", "", "", "")
             continue

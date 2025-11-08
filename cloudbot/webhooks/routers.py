@@ -13,7 +13,11 @@ from cloudbot.bot import bot
 from cloudbot.util import database
 from cloudbot.webhooks.handlers import call_webhook_handler
 from cloudbot.webhooks.plugin_parser import PluginParser
-from plugins.core.webhook_tokens import cleanup_expired_tokens, is_token_valid, verify_webhook_signature
+from plugins.core.webhook_tokens import (
+    cleanup_expired_tokens,
+    is_token_valid,
+    verify_webhook_signature,
+)
 
 logger = logging.getLogger("cloudbot.webhooks")
 
@@ -80,7 +84,9 @@ def authenticate(
     try:
         cleanup_expired_tokens(db)
         if is_token_valid(db, token):
-            logger.info("Webhook authentication successful with temporary token")
+            logger.info(
+                "Webhook authentication successful with temporary token"
+            )
             return "temporary"
     finally:
         db.close()
@@ -286,7 +292,9 @@ async def receive_webhook(plugin_name: str, request: Request):
     if not bot_instance:
         raise HTTPException(status_code=500, detail="Bot not available")
 
-    subscriptions = bot_instance.config.get("webhooks", {}).get("subscriptions", [])
+    subscriptions = bot_instance.config.get("webhooks", {}).get(
+        "subscriptions", []
+    )
     signing_key = None
     for sub in subscriptions:
         if sub.get("plugin") == plugin_name:

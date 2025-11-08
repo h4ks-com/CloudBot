@@ -15,9 +15,9 @@ from pyproj import Geod
 from streetview import get_streetview, search_panoramas
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import timeformat
 from cloudbot.util.formatting import html_to_irc
+from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 from plugins.locate import GeolocationException, GoogleLocation
 

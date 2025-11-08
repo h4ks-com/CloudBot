@@ -10,8 +10,8 @@ from github import Auth, Github, GithubException
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import colors, formatting, web
+from cloudbot.util.web import get_session
 
 shortcuts = {}
 url_re = re.compile(

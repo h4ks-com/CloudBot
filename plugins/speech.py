@@ -11,8 +11,8 @@ import requests
 import validators
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import bot
+from cloudbot.util.web import get_session
 
 API = bot.config["plugins"]["speech"]["api"]
 headers = {"Authorization": "Bearer " + bot.config.get_api_key("speech", "")}
@@ -21,7 +21,9 @@ headers = {"Authorization": "Bearer " + bot.config.get_api_key("speech", "")}
 def stt_file(file, language):
     url = f"{API}stt/{language}"
     payload = {"file": open(file, "rb")}
-    response = get_session().request("POST", url, files=payload, headers=headers)
+    response = get_session().request(
+        "POST", url, files=payload, headers=headers
+    )
     return response.json()
 
 

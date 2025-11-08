@@ -10,8 +10,8 @@ import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import queue
+from cloudbot.util.web import get_session
 
 BASE_URL = "https://store.playstation.com/"
 LANG = "en-us"

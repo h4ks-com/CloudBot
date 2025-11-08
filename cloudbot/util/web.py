@@ -219,7 +219,9 @@ def paste(data, ext="txt", service=DEFAULT_PASTEBIN, raise_on_no_paste=False):
 
 
 class ServiceError(Exception):
-    def __init__(self, request: Request | PreparedRequest, message: str) -> None:
+    def __init__(
+        self, request: Request | PreparedRequest, message: str
+    ) -> None:
         super().__init__(message)
         self.request = request
 
@@ -350,7 +352,9 @@ class Googl(Shortener):
     def expand(self, url):
         p = {"shortUrl": url}
         try:
-            r = get_session().get("https://www.googleapis.com/urlshortener/v1/url", params=p)
+            r = get_session().get(
+                "https://www.googleapis.com/urlshortener/v1/url", params=p
+            )
             r.raise_for_status()
         except HTTPError as e:
             r = e.response
@@ -453,7 +457,9 @@ class Girafiles(Pastebin):
 
 
 # Register pastebins - girafiles first (new default), hastebin disabled
-pastebins.register("girafiles", Girafiles(os.environ.get("FILEBIN_URL", DEFAULT_FILEBIN)))
+pastebins.register(
+    "girafiles", Girafiles(os.environ.get("FILEBIN_URL", DEFAULT_FILEBIN))
+)
 # pastebins.register("hastebin", Hastebin(HASTEBIN_SERVER))  # Disabled
 
 shorteners.register("git.io", Gitio())

@@ -8,8 +8,8 @@ from requests.auth import HTTPBasicAuth
 from yarl import URL
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import bot
+from cloudbot.util.web import get_session
 
 spotify_re = re.compile(
     r"(spotify:(track|album|artist|user):([a-zA-Z0-9]+))", re.I

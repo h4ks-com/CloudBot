@@ -14,9 +14,9 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
 from cloudbot.util.http import parse_soup
+from cloudbot.util.web import get_session
 
 
 @hook.command("etree")

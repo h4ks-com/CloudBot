@@ -14,10 +14,10 @@ from youtube_transcript_api import (
 )
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 from cloudbot.util import colors, timeformat
 from cloudbot.util.formatting import pluralize_suffix, truncate
+from cloudbot.util.web import get_session
 
 youtube_re = re.compile(
     r"(?:youtube.*?(?:v=|/v/)|youtu\.be/|yooouuutuuube.*?id=)([-_a-zA-Z0-9]+)",

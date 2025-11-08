@@ -5,8 +5,8 @@ import requests
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import database, timeformat, web
+from cloudbot.util.web import get_session
 
 api_url = "https://libre.fm/2.0/?format=json"
 

@@ -44,7 +44,11 @@ def generate_webhook_token(db, expiration_hours: int = 24) -> str:
 
 def delete_webhook_token(db, token: str) -> bool:
     """Delete a specific webhook token."""
-    result = db.execute(webhook_tokens_table.delete().where(webhook_tokens_table.c.token == token))
+    result = db.execute(
+        webhook_tokens_table.delete().where(
+            webhook_tokens_table.c.token == token
+        )
+    )
     db.commit()
     return result.rowcount > 0
 
@@ -52,7 +56,11 @@ def delete_webhook_token(db, token: str) -> bool:
 def cleanup_expired_tokens(db) -> None:
     """Remove all expired tokens from database."""
     now = datetime.now()
-    db.execute(webhook_tokens_table.delete().where(webhook_tokens_table.c.expires_at < now))
+    db.execute(
+        webhook_tokens_table.delete().where(
+            webhook_tokens_table.c.expires_at < now
+        )
+    )
     db.commit()
 
 
@@ -68,9 +76,13 @@ def is_token_valid(db, token: str) -> bool:
     return result is not None
 
 
-def verify_webhook_signature(payload: dict[str, Any], signature: str, signing_key: str) -> bool:
+def verify_webhook_signature(
+    payload: dict[str, Any], signature: str, signing_key: str
+) -> bool:
     """Verify HMAC signature for webhook payload."""
     payload_json = json.dumps(payload, sort_keys=True)
-    expected_signature = hmac.new(signing_key.encode(), payload_json.encode(), hashlib.sha256).hexdigest()
+    expected_signature = hmac.new(
+        signing_key.encode(), payload_json.encode(), hashlib.sha256
+    ).hexdigest()
     received_digest = signature.split("=")[1] if "=" in signature else signature
     return hmac.compare_digest(expected_signature, received_digest)

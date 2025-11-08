@@ -25,9 +25,9 @@ from requests import Response
 from yarl import URL
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import colors, web
 from cloudbot.util.func_utils import call_with_args
+from cloudbot.util.web import get_session
 
 
 class APIError(Exception):

@@ -2,8 +2,8 @@ from curl_cffi import requests
 from curl_cffi.requests.exceptions import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting
+from cloudbot.util.web import get_session
 
 
 @hook.command("bible", "passage", singlethread=True)

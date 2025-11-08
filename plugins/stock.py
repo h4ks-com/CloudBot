@@ -11,8 +11,8 @@ from decimal import Decimal
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import colors
+from cloudbot.util.web import get_session
 
 
 class APIError(Exception):

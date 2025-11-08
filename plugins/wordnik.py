@@ -9,10 +9,10 @@ import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import bot
 from cloudbot.util import colors, web
 from cloudbot.util.http import GetParams
+from cloudbot.util.web import get_session
 
 logger = logging.getLogger("cloudbot")
 

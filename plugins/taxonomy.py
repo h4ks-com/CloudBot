@@ -4,8 +4,8 @@ import requests
 from requests import RequestException
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.formatting import IRC_TAGS
+from cloudbot.util.web import get_session
 
 
 def bold(text):

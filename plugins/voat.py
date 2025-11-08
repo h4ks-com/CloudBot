@@ -20,8 +20,8 @@ import isodate
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting, timeformat
+from cloudbot.util.web import get_session
 
 voat_re = re.compile(r".*(((www\.)?voat\.co/v)[^ ]+)", re.I)
 

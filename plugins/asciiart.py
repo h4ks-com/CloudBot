@@ -12,9 +12,10 @@ from typing import List, Optional, Union
 import requests
 from bs4 import BeautifulSoup
 
+from cloudbot.util.web import get_session
+
 if __name__ != "__main__":
     from cloudbot import hook
-from cloudbot.util.web import get_session
 
 URL = "https://www.asciiart.eu"
 FILE = "plugins/asciiart.json"

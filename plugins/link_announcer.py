@@ -3,9 +3,9 @@ import re
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.hook import Action, Priority
 from cloudbot.util.http import parse_soup
+from cloudbot.util.web import get_session
 
 MAX_TITLE = 100
 

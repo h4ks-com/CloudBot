@@ -15,7 +15,9 @@ def register_webhook_handler(
     logger.info("Registered webhook handler for plugin: %s", plugin_name)
 
 
-def call_webhook_handler(plugin_name: str, bot: Any, payload: dict[str, Any]) -> None:
+def call_webhook_handler(
+    plugin_name: str, bot: Any, payload: dict[str, Any]
+) -> None:
     """Call the webhook handler for a plugin if registered."""
     handler = webhook_handlers.get(plugin_name)
     if handler:

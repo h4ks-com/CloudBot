@@ -4,8 +4,8 @@ import requests
 from lxml import html
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting, web
+from cloudbot.util.web import get_session
 
 search_url = "http://search.atomz.com/search/?sp_a=00062d45-sp00000000"
 

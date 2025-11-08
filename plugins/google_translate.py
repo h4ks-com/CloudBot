@@ -1,8 +1,8 @@
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.bot import bot
+from cloudbot.util.web import get_session
 
 max_length = 100
 

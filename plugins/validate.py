@@ -3,8 +3,8 @@ import urllib.parse
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import web
+from cloudbot.util.web import get_session
 
 api_url = "https://validator.w3.org/check"
 

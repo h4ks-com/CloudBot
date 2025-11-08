@@ -6,8 +6,8 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.http import parse_soup
+from cloudbot.util.web import get_session
 
 scrape_url = "http://www.myfitnesspal.com/food/diary/{}"
 

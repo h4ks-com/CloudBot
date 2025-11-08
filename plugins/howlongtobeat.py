@@ -9,8 +9,8 @@ from dataclasses import dataclass
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.queue import Queue
+from cloudbot.util.web import get_session
 
 
 @dataclass

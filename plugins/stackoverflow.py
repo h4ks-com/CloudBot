@@ -12,8 +12,8 @@ from dataclasses import dataclass
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.queue import Queue
+from cloudbot.util.web import get_session
 
 API_URL = "https://api.stackexchange.com"
 TAGS = {
@@ -1086,7 +1086,9 @@ def find_best_code(chan, nick) -> (Question, Answer):
     if not no_good_code:
         rcopy = list(results)
         for result in rcopy:
-            answer = find_best_answer_in_html(get_session().get(result.url).text)
+            answer = find_best_answer_in_html(
+                get_session().get(result.url).text
+            )
             r = results.pop()
             if answer and answer.code:
                 return r, answer

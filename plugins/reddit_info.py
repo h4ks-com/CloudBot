@@ -9,10 +9,10 @@ from requests import HTTPError
 from yarl import URL
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import colors, formatting, timeformat
 from cloudbot.util.formatting import pluralize_auto
 from cloudbot.util.pager import CommandPager, paginated_list
+from cloudbot.util.web import get_session
 
 search_pages: Dict[str, Dict[str, CommandPager]] = defaultdict(dict)
 user_re = re.compile(r"^(?:/?(?:u(?:ser)?/)?)?(?P<name>.+?)/?$", re.IGNORECASE)

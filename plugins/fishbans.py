@@ -4,8 +4,8 @@ import requests
 import requests.exceptions
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting
+from cloudbot.util.web import get_session
 
 api_url = "http://api.fishbans.com/stats/{}/"
 

@@ -2,8 +2,8 @@ import requests
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import web
+from cloudbot.util.web import get_session
 
 api_url = "https://translate.yandex.net/api/v1.5/tr.json/"
 

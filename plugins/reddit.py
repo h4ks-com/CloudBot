@@ -6,8 +6,8 @@ import requests
 from yarl import URL
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting, timeformat
+from cloudbot.util.web import get_session
 
 reddit_re = re.compile(
     r"""
@@ -80,7 +80,9 @@ def reddit_url(match, bot):
     url = URL(url).with_scheme("https")
 
     if url.host.endswith("redd.it"):
-        response = get_session().get(url, headers={"User-Agent": bot.user_agent})
+        response = get_session().get(
+            url, headers={"User-Agent": bot.user_agent}
+        )
         response.raise_for_status()
         url = URL(response.url).with_scheme("https")
 

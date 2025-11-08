@@ -11,8 +11,8 @@ from fuzzywuzzy import process
 from natsort import natsorted
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util.formatting import truncate_str
+from cloudbot.util.web import get_session
 
 
 @dataclass

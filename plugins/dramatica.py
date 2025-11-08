@@ -6,8 +6,8 @@ from lxml import html
 from requests import HTTPError
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
 from cloudbot.util import formatting
+from cloudbot.util.web import get_session
 
 api_url = "http://encyclopediadramatica.se/api.php"
 ed_url = "http://encyclopediadramatica.se/"
