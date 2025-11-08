@@ -306,6 +306,61 @@ def radio(bot: Any) -> str:
     return " | ".join(parts)
 
 
+@hook.command("upcoming", "next", autohelp=False)
+def show_upcoming(bot: Any) -> str:
+    """- Show the next 5 songs in the queue"""
+    config = bot.config.get("plugins", {}).get("radio", {})
+    api_url = config.get("api_url")
+    api_token = config.get("api_token")
+
+    if not api_url:
+        logger.error("Radio plugin not configured: missing api_url")
+        return "Radio not configured. Set 'api_url' in config.json under plugins.radio"
+
+    headers = {}
+    if api_token:
+        headers["Authorization"] = f"Bearer {api_token}"
+
+    try:
+        response = requests.get(
+            f"{api_url}/queue/list",
+            params={"limit": 5, "user_only": False},
+            headers=headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if not data:
+            return "📭 Queue is empty"
+
+        songs = data
+
+        lines = ["🎵 Upcoming:"]
+        for i, song in enumerate(songs, 1):
+            title = song.get("title", "Unknown")
+            artist = song.get("artist", "Unknown Artist")
+            playlist = song.get("playlist", "")
+
+            if playlist == "user":
+                emoji = "👤"
+            elif playlist == "fallback":
+                emoji = "📻"
+            else:
+                emoji = "🎶"
+
+            lines.append(f"{i}. {emoji} {artist} - {title}")
+
+        return " | ".join(lines)
+    except requests.HTTPError as e:
+        if e.response is not None:
+            return f"❌ Failed to fetch queue: HTTP {e.response.status_code}"
+        return f"❌ Failed to fetch queue: {e}"
+    except requests.RequestException as e:
+        logger.error("Queue fetch failed: %s", e)
+        return f"❌ Failed to fetch queue: {e}"
+
+
 @hook.command("stream", autohelp=False)
 def stream(bot: Any, conn: Any, nick: str, message: Any) -> str:
     """- Request a temporary livestream token (15 minutes)"""
