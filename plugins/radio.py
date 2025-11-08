@@ -36,6 +36,13 @@ def check_user_authenticated(conn, nick):
     return None
 
 
+def get_radio_url(config: dict[str, Any]) -> str:
+    """Extract the base radio URL from config (preserves port, removes paths)."""
+    api_url = config.get("api_url", "")
+    parsed = urlparse(api_url)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def fetch_current_metadata(config: dict[str, Any]) -> dict[str, Any] | None:
     """Fetch current playing metadata from radio API."""
     api_url = config.get("api_url")
@@ -57,7 +64,7 @@ def fetch_current_metadata(config: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
 
-def format_livestream_message(event_type: str, metadata_response: dict[str, Any]) -> str | None:
+def format_livestream_message(event_type: str, metadata_response: dict[str, Any], radio_url: str) -> str | None:
     """Format livestream event with current metadata."""
     source = metadata_response.get("source", "unknown")
     metadata = metadata_response.get("metadata", {})
@@ -85,10 +92,13 @@ def format_livestream_message(event_type: str, metadata_response: dict[str, Any]
             if title and title not in ("Testing Stream", "Unknown Track"):
                 parts.append(f"♫ {artist} - {title}")
 
+            # Add radio URL
+            parts.append(f"| Listen: {radio_url}")
+
             return " ".join(parts)
         elif source == "user":
-            return f"🎬 Livestream started: ♫ {artist} - {title}"
-        return "📺 Livestream started"
+            return f"🎬 Livestream started: ♫ {artist} - {title} | Listen: {radio_url}"
+        return f"📺 Livestream started | Listen: {radio_url}"
     elif event_type == "livestream_ended":
         if source == "fallback":
             return f"📻 Livestream ended, back to fallback: ♫ {artist} - {title}"
@@ -107,7 +117,8 @@ def send_debounced_message(bot_instance: Any, chan: str, event_type: str) -> Non
     if not metadata_response:
         return
 
-    message = format_livestream_message(event_type, metadata_response)
+    radio_url = get_radio_url(config)
+    message = format_livestream_message(event_type, metadata_response, radio_url)
     if not message:
         return
 
@@ -288,6 +299,9 @@ def radio(bot: Any) -> str:
     if description:
         parts.append(f"ℹ️ {description}")
 
+    radio_url = get_radio_url(config)
+    parts.append(f"🔗 {radio_url}")
+
     return " | ".join(parts)
 
 
@@ -331,8 +345,7 @@ def stream(bot: Any, conn: Any, nick: str, message: Any) -> str:
         token = data.get("token")
         expires_at = data.get("expires_at")
 
-        parsed = urlparse(api_url)
-        stream_base_url = f"{parsed.scheme}://{parsed.netloc}"
+        stream_base_url = get_radio_url(config)
         stream_url = f"{stream_base_url}/stream"
         stream_url_with_token = f"{stream_url}?token={token}"
 
