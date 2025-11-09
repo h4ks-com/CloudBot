@@ -137,7 +137,7 @@ def format_livestream_message(
     source = metadata_response.get("source", "unknown")
     metadata = metadata_response.get("metadata", {})
     title = metadata.get("title", "Unknown Track")
-    artist = metadata.get("artist", "Unknown Artist")
+    artist: str | None = metadata.get("artist", None)
     show_name = metadata.get("show_name")
     show_user = metadata.get("show_user")
 
@@ -158,7 +158,10 @@ def format_livestream_message(
 
             # Add track info if meaningful
             if title and title not in ("Testing Stream", "Unknown Track"):
-                parts.append(f"♫ {artist} - {title}")
+                if artist is None:
+                    parts.append(f"♫ {title}")
+                else:
+                    parts.append(f"♫ {artist} - {title}")
 
             # Add radio URL
             parts.append(f"| Listen: {radio_url}")
@@ -221,7 +224,15 @@ def send_debounced_message(
 
 
 def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
-    """Handle incoming webhook events from radio streaming service."""
+    """Handle incoming webhook events from radio streaming service.
+
+    Supported events:
+    - song_changed: Track changed (user queue or fallback)
+    - queue_switched: Source changed between user/fallback/livestream
+    - livestream_started: Livestream began
+    - livestream_ended: Livestream stopped
+    - livestream_recording_done: Recording saved after livestream
+    """
     config = bot_instance.config.get("plugins", {}).get("radio", {})
     channels_config = config.get("channels", {})
     connection_name = config.get("connection", "gobot")
@@ -246,7 +257,7 @@ def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
                 )
         return
 
-    message = format_radio_message(event_type, payload)
+    message = format_radio_message(event_type, payload, config)
     if not message:
         return
 
@@ -286,7 +297,7 @@ def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
 
 
 def format_radio_message(
-    event_type: str, payload: dict[str, Any]
+    event_type: str, payload: dict[str, Any], config: dict[str, Any]
 ) -> str | None:
     """Format webhook payload into IRC message."""
     if event_type == "song_changed":
@@ -320,6 +331,21 @@ def format_radio_message(
             return "🔄 Switched from fallback to user queue"
         else:
             return f"🔄 Source changed: {from_source} → {to_source}"
+    elif event_type == "livestream_recording_done":
+        data = payload.get("data", {})
+        title = data.get("title") or "Untitled"
+        artist = data.get("artist") or "Unknown"
+        duration_seconds = data.get("duration_seconds", 0)
+        recording_url = data.get("recording_url", "")
+
+        minutes = int(duration_seconds // 60)
+        seconds = int(duration_seconds % 60)
+        duration_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+
+        api_url = config.get("api_url", "")
+        full_url = f"{api_url}{recording_url}" if api_url and recording_url else recording_url
+
+        return f"💾 Recording saved: ♫ {artist} - {title} ({duration_str}) | {full_url}"
     return None
 
 
