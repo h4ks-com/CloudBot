@@ -11,18 +11,22 @@ License:
     GNU General Public License (Version 3)
 """
 
+import isodate
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
-from cloudbot.util import filesize, formatting
+from cloudbot.util import filesize, formatting, timeformat
 from cloudbot.util.web import get_session
+from plugins.youtube import get_client, get_video_id, get_video_info
 
 API_CS = "https://www.googleapis.com/customsearch/v1"
 
+last_gse_url: dict[tuple[str, str], str] = {}
+
 
 @hook.command("gse")
-def gse(text):
+def gse(text: str, nick: str, chan: str) -> str:
     """<query> - Returns first Google search result for <query>."""
     dev_key = bot.config.get_api_key("google_dev_key")
     cx = bot.config.get_api_key("google_cse_id")
@@ -44,6 +48,7 @@ def gse(text):
     except KeyError:
         return "No results found."
 
+    url = result["link"]
     title = formatting.truncate_str(result["title"], 60)
     content = result["snippet"]
 
@@ -52,7 +57,19 @@ def gse(text):
     else:
         content = formatting.truncate_str(content.replace("\n", ""), 150)
 
-    return '{} -- \x02{}\x02: "{}"'.format(result["link"], title, content)
+    video_id = get_video_id(url)
+    if video_id:
+        last_gse_url[(chan, nick)] = url
+        try:
+            client = get_client()
+            video_info = get_video_info(client, video_id=video_id)
+            duration = isodate.parse_duration(video_info["duration"])
+            length_text = timeformat.format_time(int(duration.total_seconds()), simple=True)
+            return '{} -- \x02{}\x02: "{}" [YouTube: {}]'.format(url, title, content, length_text)
+        except Exception:
+            pass
+
+    return '{} -- \x02{}\x02: "{}"'.format(url, title, content)
 
 
 @hook.command("gseis", "image")

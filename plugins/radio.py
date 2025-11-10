@@ -16,13 +16,14 @@ from cloudbot.util.formatting import truncate
 from cloudbot.util.web import get_session
 from cloudbot.webhooks.handlers import register_webhook_handler
 from plugins.core.chan_track import get_users
+from plugins.google_cse import last_gse_url
 from plugins.youtube import last_youtube_url
 
 logger = logging.getLogger("cloudbot")
 
 # Rate limiting configuration
 QUEUE_RATE_LIMIT_AUTHENTICATED = 20
-QUEUE_RATE_LIMIT_UNAUTHENTICATED = 5
+QUEUE_RATE_LIMIT_UNAUTHENTICATED = 10
 QUEUE_RATE_LIMIT_WINDOW = 3600
 
 last_sent_messages: dict[str, dict[str, Any]] = {}
@@ -735,6 +736,22 @@ def queue_add_youtube(text: str, event: Any, bot: Any, conn: Any, nick: str, cha
     return add_url_to_queue(url, "user", config, event, conn, nick, chan)
 
 
+@hook.command("reqgse", autohelp=False)
+def queue_add_gse(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+    """[nick] - Add your last Google search result (or another user's) to the user queue"""
+    target_nick = text.strip() if text and text.strip() else nick
+
+    url = last_gse_url.get((chan, target_nick))
+    if not url:
+        if target_nick == nick:
+            return "❌ No recent Google search found. Use .gse <query> first to search."
+        else:
+            return f"❌ No recent Google search found for {target_nick}."
+
+    config = bot.config.get("plugins", {}).get("radio", {})
+    return add_url_to_queue(url, "user", config, event, conn, nick, chan)
+
+
 @hook.command("areqyt", autohelp=False, permissions=["botcontrol"])
 def admin_queue_add_youtube(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
     """[nick] - Add your last YouTube search result (or another user's) to the fallback playlist"""
@@ -750,6 +767,26 @@ def admin_queue_add_youtube(text: str, event: Any, bot: Any, conn: Any, nick: st
             return "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
         else:
             return f"❌ No recent YouTube search found for {target_nick}."
+
+    config = bot.config.get("plugins", {}).get("radio", {})
+    return add_url_to_queue(url, "fallback", config, event, conn, nick, chan)
+
+
+@hook.command("areqgse", autohelp=False, permissions=["botcontrol"])
+def admin_queue_add_gse(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+    """[nick] - Add your last Google search result (or another user's) to the fallback playlist"""
+    auth_error = check_user_authenticated(conn, nick)
+    if auth_error:
+        return auth_error
+
+    target_nick = text.strip() if text and text.strip() else nick
+
+    url = last_gse_url.get((chan, target_nick))
+    if not url:
+        if target_nick == nick:
+            return "❌ No recent Google search found. Use .gse <query> first to search."
+        else:
+            return f"❌ No recent Google search found for {target_nick}."
 
     config = bot.config.get("plugins", {}).get("radio", {})
     return add_url_to_queue(url, "fallback", config, event, conn, nick, chan)
