@@ -105,6 +105,17 @@
         "worldguess": {
             "api_url": "http://localhost:8000"
         },
+        "radio": {
+            "api_url": "http://localhost:8383",
+            "api_token": "",
+            "connection": "esper",
+            "channels": {},
+            "n8n_slop": {
+                "webhook_url": "https://n8n.t3ks.com/webhook/slopradio",
+                "header_name": "X-Custom-Auth",
+                "header_value": ""
+            }
+        },
         "comfyui_workflows": {
             "api_url": "https://comfy.example.com",
             "basic_auth": {

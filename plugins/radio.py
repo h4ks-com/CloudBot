@@ -792,6 +792,47 @@ def admin_queue_add_gse(text: str, event: Any, bot: Any, conn: Any, nick: str, c
     return add_url_to_queue(url, "fallback", config, event, conn, nick, chan)
 
 
+@hook.command("rsuno", "rslop", autohelp=False)
+def random_slop(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+    """Add a random song from Suno's featured section"""
+    allowed, error_msg = check_queue_rate_limit(conn, nick, chan)
+    if not allowed:
+        return error_msg
+
+    config = bot.config.get("plugins", {}).get("radio", {})
+    n8n_config = config.get("n8n_slop", {})
+
+    webhook_url = n8n_config.get("webhook_url", "https://n8n.t3ks.com/webhook/slopradio")
+    header_name = n8n_config.get("header_name")
+    header_value = n8n_config.get("header_value")
+
+    event.reply("⏳ Fetching random Suno song...")
+
+    headers = {}
+    if header_name and header_value:
+        headers[header_name] = header_value
+
+    try:
+        response = requests.get(webhook_url, headers=headers, timeout=30.0)
+        response.raise_for_status()
+
+        record_queue_addition(nick, chan)
+
+        return "✅ Added random Suno song to the queue!"
+    except requests.HTTPError as e:
+        if e.response is not None:
+            try:
+                error_data = e.response.json()
+                error_msg = error_data.get("detail", str(e))
+                return f"❌ Failed to add random song: {error_msg}"
+            except Exception:
+                return f"❌ Failed to add random song: HTTP {e.response.status_code}"
+        return f"❌ Failed to add random song: {e}"
+    except requests.RequestException as e:
+        logger.error("Random slop request failed: %s", e)
+        return f"❌ Failed to add random song: {e}"
+
+
 @hook.on_start()
 def subscribe_radio_webhook() -> None:
     """Subscribe to radio webhooks on bot startup."""

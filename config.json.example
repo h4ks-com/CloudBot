@@ -129,6 +129,11 @@
                 "#anotherchannel": {
                     "events": ["song_changed"]
                 }
+            },
+            "n8n_slop": {
+                "webhook_url": "https://n8n.t3ks.com/webhook/slopradio",
+                "header_name": "X-Custom-Auth",
+                "header_value": "your_auth_token_here"
             }
         },
         "comfyui_workflows": {
