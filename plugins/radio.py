@@ -818,6 +818,17 @@ def random_slop(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
 
         record_queue_addition(nick, chan)
 
+        if response.ok:
+            try:
+                data = response.json()
+                name = data.get("name")
+                artist = data.get("artist")
+
+                if name and artist:
+                    return f"✅ Added to queue: {artist} - {name}"
+            except Exception:
+                pass
+
         return "✅ Added random Suno song to the queue!"
     except requests.HTTPError as e:
         if e.response is not None:
