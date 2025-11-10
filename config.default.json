@@ -104,6 +104,23 @@
         },
         "worldguess": {
             "api_url": "http://localhost:8000"
+        },
+        "comfyui_workflows": {
+            "api_url": "https://comfy.example.com",
+            "basic_auth": {
+                "username": "",
+                "password": ""
+            },
+            "poll_interval": 2,
+            "max_wait_time": 120,
+            "workflows": {
+                "audio_stable_audio_example": {
+                    "text_input_node": "CLIP Text Encode (Prompt)",
+                    "output_node": "SaveAudio",
+                    "output_type": "output",
+                    "file_extension": "flac"
+                }
+            }
         }
     },
     "webhooks": {

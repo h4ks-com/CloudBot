@@ -130,6 +130,23 @@
                     "events": ["song_changed"]
                 }
             }
+        },
+        "comfyui_workflows": {
+            "api_url": "https://comfy.t5ks.com",
+            "basic_auth": {
+                "username": "your_username",
+                "password": "your_password"
+            },
+            "poll_interval": 2,
+            "max_wait_time": 120,
+            "workflows": {
+                "audio_stable_audio_example": {
+                    "text_input_node": "CLIP Text Encode (Prompt)",
+                    "output_node": "SaveAudio",
+                    "output_type": "output",
+                    "file_extension": "flac"
+                }
+            }
         }
     },
     "api_keys": {
