@@ -827,11 +827,11 @@ def random_slop(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
                 artist = data.get("artist")
 
                 if name and artist:
-                    return f"✅ Added to queue: {artist} - {name} | Now live: {radio_url}"
+                    return f"✅ Added to queue: {artist} - {name} | Coming up soon at {radio_url}"
             except Exception:
                 pass
 
-        return f"✅ Added random Suno song to the queue! | Now live: {radio_url}"
+        return f"✅ Added random Suno song to the queue! | Coming up soon at {radio_url}"
     except requests.HTTPError as e:
         if e.response is not None:
             try:
