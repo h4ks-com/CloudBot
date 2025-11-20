@@ -1,3 +1,4 @@
+import json
 import math
 import random
 import re
@@ -19,7 +20,7 @@ from sqlalchemy.sql.base import Executable
 
 from cloudbot import hook
 from cloudbot.event import EventType
-from cloudbot.util import database
+from cloudbot.util import database, web
 from plugins.core.chan_track import get_users
 
 
@@ -42,12 +43,8 @@ def check_user_authenticated(conn, nick):
 
 
 # Regular expressions for bean commands
-bean_add_re = re.compile(
-    r"^\+(\d+)\s+beans?\s+to\s+(\S+)(?:\s+.*)?$", re.IGNORECASE
-)
-bean_admin_add_re = re.compile(
-    r"^\+\+(\d+)\s+beans?\s+to\s+(\S+)(?:\s+.*)?$", re.IGNORECASE
-)
+bean_add_re = re.compile(r"^\+(\d+)\s+beans?\s+to\s+(\S+)(?:\s+.*)?$", re.IGNORECASE)
+bean_admin_add_re = re.compile(r"^\+\+(\d+)\s+beans?\s+to\s+(\S+)(?:\s+.*)?$", re.IGNORECASE)
 
 # Database table for storing bean balances
 beans_table = Table(
@@ -86,9 +83,7 @@ trivia_bets_table = Table(
 def get_beans(nick: str, db) -> int:
     """Get the current bean count for a user."""
     nick = nick.lower()
-    beans = db.execute(
-        select([beans_table.c.beans]).where(beans_table.c.nick == nick)
-    ).fetchone()
+    beans = db.execute(select([beans_table.c.beans]).where(beans_table.c.nick == nick)).fetchone()
 
     if beans:
         return beans["beans"]
@@ -186,9 +181,7 @@ def transfer_beans_cmd(match, nick: str, db, notice, event, conn) -> str | None:
 
 
 @hook.regex(bean_admin_add_re)
-def admin_add_beans(
-    match, nick: str, db, notice, has_permission, event
-) -> str | None:
+def admin_add_beans(match, nick: str, db, notice, has_permission, event) -> str | None:
     """<++amount beans to user> - Admin command to create beans and give them to a user."""
     if not any(has_permission(per) for per in ["op", "botcontrol"]):
         notice("🚫 You don't have permission to use this command! 🚫")
@@ -209,39 +202,32 @@ def admin_add_beans(
     add_beans(target, amount, db)
     target_beans = get_beans(target, db)
 
-    return f"✨ {nick} created 🫘 {amount} beans and gave them to {target}! ✨ {target} now has 🫘 {target_beans} beans!"
+    return (
+        f"✨ {nick} created 🫘 {amount} beans and gave them to {target}! ✨ {target} now has 🫘 {target_beans} beans!"
+    )
 
 
 def _generate_top_beans_response(top_n: int, db) -> str:
     """Helper function to generate the top beans response."""
     query = (
-        select([beans_table.c.nick, beans_table.c.beans])
-        .order_by(sqlalchemy.desc(beans_table.c.beans))
-        .limit(top_n)
+        select([beans_table.c.nick, beans_table.c.beans]).order_by(sqlalchemy.desc(beans_table.c.beans)).limit(top_n)
     )
     results = db.execute(query).fetchall()
 
     if not results:
         return "😢 No one has any beans yet! 😢"
 
-    beans_list = [
-        f"{i+1}. {row['nick']} 🫘 ({row['beans']:,} beans)"
-        for i, row in enumerate(results)
-    ]
+    beans_list = [f"{i+1}. {row['nick']} 🫘 ({row['beans']:,} beans)" for i, row in enumerate(results)]
     return f"🏆 Top {top_n} Bean Holders: " + "\n".join(beans_list)
 
 
 @hook.command("topbeans", "beanstats", autohelp=False)
-def top_beans(
-    text: str, nick: str, chan: str, db, notice, message
-) -> str | None:
+def top_beans(text: str, nick: str, chan: str, db, notice, message) -> str | None:
     """[number] - Shows the top N users with the most beans (default is 10)."""
     try:
         top_n = int(text.strip()) if text else 10
     except ValueError:
-        return (
-            "🚫 Please provide a valid number for the top users to display. 🚫"
-        )
+        return "🚫 Please provide a valid number for the top users to display. 🚫"
 
     response = _generate_top_beans_response(top_n, db)
     if top_n <= 10:
@@ -256,9 +242,7 @@ def top_beans(
 
 def get_total_beans(db) -> int:
     """Get the total number of beans in circulation."""
-    query = select(
-        [sqlalchemy.func.sum(beans_table.c.beans).label("total_beans")]
-    )
+    query = select([sqlalchemy.func.sum(beans_table.c.beans).label("total_beans")])
     result = db.execute(query).fetchone()
     return result["total_beans"] if result["total_beans"] is not None else 0
 
@@ -270,9 +254,26 @@ def total_beans(db) -> str:
     return f"🌍 There are 🫘 {total_beans:,} beans in circulation! 🌍"
 
 
-slot_cooldown_cache = TTLCache(
-    maxsize=1000, ttl=3600 * 24 * 2
-)  # Cache for slot cooldowns
+@hook.command("exportbeans", autohelp=False)
+def export_beans(db) -> str:
+    """Export all bean balances as JSON file"""
+    query = select([beans_table.c.nick, beans_table.c.beans]).order_by(beans_table.c.nick)
+    results = db.execute(query).fetchall()
+
+    if not results:
+        return "❌ No bean data to export."
+
+    data = [{"nick": row["nick"], "beans": row["beans"]} for row in results]
+    json_data = json.dumps(data, indent=2)
+
+    try:
+        url = web.paste(json_data, ext="json", raise_on_no_paste=True)
+        return f"📊 Bean data exported ({len(results)} users): {url}"
+    except web.NoPasteException:
+        return "❌ Failed to paste data to service."
+
+
+slot_cooldown_cache = TTLCache(maxsize=1000, ttl=3600 * 24 * 2)  # Cache for slot cooldowns
 
 
 @hook.command("slots", autohelp=False)
@@ -354,16 +355,12 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
         # User did not increase bet, apply new cooldown
         else:
             cooldown_time = round(
-                cooldown_time_base
-                * cooldown_time_multiplier
-                * cooldown_entry["accumulated_bet"]
-                / min_bet
+                cooldown_time_base * cooldown_time_multiplier * cooldown_entry["accumulated_bet"] / min_bet
             )
             slot_cooldown_cache[nick] = {
                 "remaining_plays": attempts_per_cooldown,
                 "cooldown_until": current_time + cooldown_time,
-                "accumulated_bet": cooldown_entry["accumulated_bet"]
-                * cooldown_bet_multiplier,
+                "accumulated_bet": cooldown_entry["accumulated_bet"] * cooldown_bet_multiplier,
             }
             return f"⏳ You entered a cooldown! You can play again in {cooldown_time:.2f} seconds. Increase your bet to {slot_cooldown_cache[nick]['accumulated_bet']} beans to play now ⏳"
 
@@ -374,9 +371,7 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
     is_cooldown = wait_time > 0
 
     if is_cooldown:
-        bet_multiplier = max(
-            min(bet / min_bet, (bet) / (cooldown_entry["accumulated_bet"])), 1
-        )
+        bet_multiplier = max(min(bet / min_bet, (bet) / (cooldown_entry["accumulated_bet"])), 1)
 
     user_beans = get_beans(nick, db)
     if user_beans < bet:
@@ -384,7 +379,9 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
 
     max_prize = math.ceil(bet_multiplier * max_prize)
     if bot_beans < max_prize:
-        return f"The bot doesn't have enough beans to pay out a potential prize of {max_prize:,} beans. Try again later!"
+        return (
+            f"The bot doesn't have enough beans to pay out a potential prize of {max_prize:,} beans. Try again later!"
+        )
 
     # Deduct bet from user and add to bot's wallet
     if not transfer_beans(nick, conn.nick, bet, db):
@@ -393,25 +390,19 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
     # Generate expected and actual slot values
     expected_slots = [random.choice(emojis) for _ in range(3)]
     actual_slots = [random.choice(emojis) for _ in range(3)]
-    result = " | ".join(
-        f"{e} {a}" for e, a in zip(expected_slots, actual_slots)
-    )
+    result = " | ".join(f"{e} {a}" for e, a in zip(expected_slots, actual_slots))
 
     # Check for win conditions
     matches = sum(e == a for e, a in zip(expected_slots, actual_slots))
     if matches == 3:
         if not transfer_beans(conn.nick, nick, max_prize, db):
             return "The bot doesn't have enough beans to pay out the jackpot. Try again later!"
-        return f"{result} JACKPOT! You won {max_prize:,} beans!" + (
-            " ⏳" if is_cooldown else ""
-        )
+        return f"{result} JACKPOT! You won {max_prize:,} beans!" + (" ⏳" if is_cooldown else "")
     elif matches == 2:
         prize = math.ceil(bet_multiplier * (max_prize / 2))
         if not transfer_beans(conn.nick, nick, prize, db):
             return "The bot doesn't have enough beans to pay out your prize. Try again later!"
-        return f"{result} You won {prize:,} beans!" + (
-            " ⏳" if is_cooldown else ""
-        )
+        return f"{result} You won {prize:,} beans!" + (" ⏳" if is_cooldown else "")
     elif matches == 1:
         return f"{result} Almost there! Keep trying! You lost {bet:,} beans."
     else:
@@ -419,27 +410,19 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
 
 
 # Trivia bet functions
-def add_trivia_bet(
-    creator: str, trivia_id: int, bet_amount: int, winner: str, db
-) -> bool:
+def add_trivia_bet(creator: str, trivia_id: int, bet_amount: int, winner: str, db) -> bool:
     """Add a bet for a trivia question. Returns True if successful."""
     creator = creator.lower()
     winner = winner.lower()
 
     # Add or update the bet
-    clause = (trivia_bets_table.c.creator == creator) & (
-        trivia_bets_table.c.trivia_id == trivia_id
-    )
-    existing_bet = db.execute(
-        select([trivia_bets_table]).where(clause)
-    ).fetchone()
+    clause = (trivia_bets_table.c.creator == creator) & (trivia_bets_table.c.trivia_id == trivia_id)
+    existing_bet = db.execute(select([trivia_bets_table]).where(clause)).fetchone()
 
     if existing_bet:
         query = (
             trivia_bets_table.update()
-            .values(
-                bet_amount=bet_amount, winner=winner, timestamp=datetime.now()
-            )
+            .values(bet_amount=bet_amount, winner=winner, timestamp=datetime.now())
             .where(clause)
         )
     else:
@@ -458,9 +441,7 @@ def add_trivia_bet(
 
 def get_trivia_bets(trivia_id: int, db):
     """Get all bets for a specific trivia."""
-    query = select([trivia_bets_table]).where(
-        trivia_bets_table.c.trivia_id == trivia_id
-    )
+    query = select([trivia_bets_table]).where(trivia_bets_table.c.trivia_id == trivia_id)
     return db.execute(query).fetchall()
 
 
@@ -481,16 +462,12 @@ def get_recent_trivia_bets(db):
         select(
             [
                 trivia_bets_table.c.trivia_id,
-                sqlalchemy.func.sum(trivia_bets_table.c.bet_amount).label(
-                    "total_bet_amount"
-                ),
+                sqlalchemy.func.sum(trivia_bets_table.c.bet_amount).label("total_bet_amount"),
                 sqlalchemy.func.count().label("bet_count"),
             ]
         )
         .group_by(trivia_bets_table.c.trivia_id)
-        .order_by(
-            sqlalchemy.desc(sqlalchemy.func.max(trivia_bets_table.c.timestamp))
-        )
+        .order_by(sqlalchemy.desc(sqlalchemy.func.max(trivia_bets_table.c.timestamp)))
         .limit(3)
     )
     return db.execute(query).fetchall()
@@ -504,21 +481,15 @@ def delete_trivia_bets(trivia_id: int, db, conn) -> None:
         # Refund the bet amount to the creator
         if not transfer_beans(conn.nick, bet["creator"], bet["bet_amount"], db):
             # If we can't refund, log or handle the error
-            print(
-                f"Failed to refund {bet['bet_amount']} beans to {bet['creator']}"
-            )
+            print(f"Failed to refund {bet['bet_amount']} beans to {bet['creator']}")
 
     # Delete all bets for this trivia
-    query = trivia_bets_table.delete().where(
-        trivia_bets_table.c.trivia_id == trivia_id
-    )
+    query = trivia_bets_table.delete().where(trivia_bets_table.c.trivia_id == trivia_id)
     db.execute(query)
     db.commit()
 
 
-def handle_trivia_win(
-    trivia_id: int, winner_nick: str, db, conn
-) -> tuple[int, int, list[str]]:
+def handle_trivia_win(trivia_id: int, winner_nick: str, db, conn) -> tuple[int, int, list[str]]:
     """
     Handle bets when a trivia is won.
     Returns a tuple with (number of winners, total payout amount, unpaid winners list).
@@ -537,9 +508,7 @@ def handle_trivia_win(
 
     if not winning_bets:
         # No winners, all bets are lost
-        query = trivia_bets_table.delete().where(
-            trivia_bets_table.c.trivia_id == trivia_id
-        )
+        query = trivia_bets_table.delete().where(trivia_bets_table.c.trivia_id == trivia_id)
         db.execute(query)
         db.commit()
         return 0, total_bet_amount, []
@@ -560,9 +529,7 @@ def handle_trivia_win(
             unpaid_winners.append(bet["creator"])
 
     # Delete all bets for this trivia
-    query = trivia_bets_table.delete().where(
-        trivia_bets_table.c.trivia_id == trivia_id
-    )
+    query = trivia_bets_table.delete().where(trivia_bets_table.c.trivia_id == trivia_id)
     db.execute(query)
     db.commit()
 
@@ -612,11 +579,7 @@ def get_latest_user_trivia(creator: str, db):
 
 def get_latest_trivias(limit: int, db):
     """Get the latest trivia questions."""
-    query = (
-        select([trivia_table])
-        .order_by(sqlalchemy.desc(trivia_table.c.timestamp))
-        .limit(limit)
-    )
+    query = select([trivia_table]).order_by(sqlalchemy.desc(trivia_table.c.timestamp)).limit(limit)
     return db.execute(query).fetchall()
 
 
@@ -741,9 +704,7 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
 
         result = ["🎯 Latest Trivia Questions 🎯"]
         for t in trivias:
-            result.append(
-                f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans (by {t['creator']})"
-            )
+            result.append(f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans (by {t['creator']})")
 
         return result
 
@@ -755,9 +716,7 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
 
         result = [f"🧩 Trivia Questions by {target} 🧩"]
         for t in trivias:
-            result.append(
-                f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans"
-            )
+            result.append(f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans")
 
         return result
 
@@ -802,9 +761,7 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
 
 
 @hook.regex(re.compile(r"^\s*(\S+)\s*$", re.I))
-def track_trivia_answers(
-    match, event, db, conn, chan
-) -> list[str] | None | str:
+def track_trivia_answers(match, event, db, conn, chan) -> list[str] | None | str:
     if event.type is EventType.action:
         return
     if not chan.startswith("#"):
@@ -821,9 +778,7 @@ def track_trivia_answers(
         return "❌ The bot doesn't have enough beans to pay out the prize. Try again later!"
 
     # Handle any bets on this trivia
-    winners_count, total_bet_amount, unpaid_winners = handle_trivia_win(
-        trivia["id"], event.nick, db, conn
-    )
+    winners_count, total_bet_amount, unpaid_winners = handle_trivia_win(trivia["id"], event.nick, db, conn)
 
     # Delete the trivia question after answering
     delete_trivia(trivia["id"], db, conn)
@@ -843,11 +798,7 @@ def track_trivia_answers(
             result.append(
                 f" Sorry, couldn't pay {len(unpaid_winners)} winners due to insufficient bot beans: "
                 f"{', '.join(unpaid_winners[:3])}"
-                + (
-                    f" and {len(unpaid_winners) - 3} more"
-                    if len(unpaid_winners) > 3
-                    else ""
-                )
+                + (f" and {len(unpaid_winners) - 3} more" if len(unpaid_winners) > 3 else "")
             )
 
     return result
@@ -940,9 +891,7 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
         )
 
         for bet in sorted_bets[:3]:  # Limit to 3 recent bets
-            result.append(
-                f"{bet['creator']} bet 🫘 {bet['bet_amount']} beans on {bet['winner']}"
-            )
+            result.append(f"{bet['creator']} bet 🫘 {bet['bet_amount']} beans on {bet['winner']}")
 
         if len(sorted_bets) > 3:
             result.append(f"...and {len(sorted_bets) - 3} more bets")
@@ -1015,8 +964,7 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
     # Check if user already placed a bet on this trivia
     existing_bet = db.execute(
         select([trivia_bets_table]).where(
-            (trivia_bets_table.c.creator == nick.lower())
-            & (trivia_bets_table.c.trivia_id == trivia_id)
+            (trivia_bets_table.c.creator == nick.lower()) & (trivia_bets_table.c.trivia_id == trivia_id)
         )
     ).fetchone()
 
@@ -1026,9 +974,7 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
     # Check if user has enough beans
     user_beans = get_beans(nick, db)
     if user_beans < bet_amount:
-        return (
-            f"❌ You don't have enough beans. You have 🫘 {user_beans} beans."
-        )
+        return f"❌ You don't have enough beans. You have 🫘 {user_beans} beans."
 
     # Deduct beans from user
     if not transfer_beans(nick, conn.nick, bet_amount, db):

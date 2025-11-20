@@ -64,12 +64,16 @@ def gse(text: str, nick: str, chan: str) -> str:
             client = get_client()
             video_info = get_video_info(client, video_id=video_id)
             duration = isodate.parse_duration(video_info["duration"])
-            length_text = timeformat.format_time(int(duration.total_seconds()), simple=True)
-            return '{} -- \x02{}\x02: "{}" [YouTube: {}]'.format(url, title, content, length_text)
+            length_text = timeformat.format_time(
+                int(duration.total_seconds()), simple=True
+            )
+            return '{} -- \x02{}\x02: "{}" [YouTube: {}]'.format(
+                url, title, content, length_text
+            )
         except Exception:
             pass
 
-    return '{} -- \x02{}\x02: "{}"'.format(url, title, content)
+    return f'{url} -- \x02{title}\x02: "{content}"'
 
 
 @hook.command("gseis", "image")

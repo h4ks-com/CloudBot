@@ -38,7 +38,12 @@ class PendingJob:
 class ComfyUIClient:
     """Client for interacting with ComfyUI API."""
 
-    def __init__(self, api_url: str, username: str | None = None, password: str | None = None):
+    def __init__(
+        self,
+        api_url: str,
+        username: str | None = None,
+        password: str | None = None,
+    ):
         self.api_url = api_url.rstrip("/")
         self.username = username
         self.password = password
@@ -50,13 +55,17 @@ class ComfyUIClient:
             if self.username and self.password:
                 auth_string = f"{self.username}:{self.password}"
                 encoded = base64.b64encode(auth_string.encode()).decode()
-                self._session.headers.update({"Authorization": f"Basic {encoded}"})
+                self._session.headers.update(
+                    {"Authorization": f"Basic {encoded}"}
+                )
         return self._session
 
     def submit_prompt(self, workflow_data: dict[str, any]) -> str:
         session = self._get_session()
         response = session.post(
-            f"{self.api_url}/api/prompt", json=workflow_data, headers={"Content-Type": "application/json"}
+            f"{self.api_url}/api/prompt",
+            json=workflow_data,
+            headers={"Content-Type": "application/json"},
         )
         response.raise_for_status()
         result = response.json()
@@ -69,7 +78,9 @@ class ComfyUIClient:
         history = response.json()
         return history.get(prompt_id)
 
-    def download_file(self, filename: str, output_type: str = "output", subfolder: str = "") -> bytes:
+    def download_file(
+        self, filename: str, output_type: str = "output", subfolder: str = ""
+    ) -> bytes:
         session = self._get_session()
         params = {"filename": filename, "type": output_type}
         if subfolder:
@@ -111,7 +122,9 @@ class WorkflowExecutor:
                     "_meta": {"title": "KSampler"},
                 },
                 "4": {
-                    "inputs": {"ckpt_name": "stable-audio-open-1.0.safetensors"},
+                    "inputs": {
+                        "ckpt_name": "stable-audio-open-1.0.safetensors"
+                    },
                     "class_type": "CheckpointLoaderSimple",
                     "_meta": {"title": "Load Checkpoint"},
                 },
@@ -126,7 +139,11 @@ class WorkflowExecutor:
                     "_meta": {"title": "CLIP Text Encode (Prompt)"},
                 },
                 "10": {
-                    "inputs": {"clip_name": "t5-base.safetensors", "type": "stable_audio", "device": "default"},
+                    "inputs": {
+                        "clip_name": "t5-base.safetensors",
+                        "type": "stable_audio",
+                        "device": "default",
+                    },
                     "class_type": "CLIPLoader",
                     "_meta": {"title": "Load CLIP"},
                 },
@@ -141,14 +158,25 @@ class WorkflowExecutor:
                     "_meta": {"title": "VAEDecodeAudio"},
                 },
                 "13": {
-                    "inputs": {"filename_prefix": "audio", "audioUI": "", "audio": ["12", 0]},
+                    "inputs": {
+                        "filename_prefix": "audio",
+                        "audioUI": "",
+                        "audio": ["12", 0],
+                    },
                     "class_type": "SaveAudio",
                     "_meta": {"title": "SaveAudio"},
                 },
             },
         }
 
-    def submit_workflow(self, workflow_name: str, prompt_text: str, chan: str, nick: str, network: str) -> str:
+    def submit_workflow(
+        self,
+        workflow_name: str,
+        prompt_text: str,
+        chan: str,
+        nick: str,
+        network: str,
+    ) -> str:
         workflow_config = self.config.get("workflows", {}).get(workflow_name)
         if not workflow_config:
             return f"❌ Unknown workflow: {workflow_name}"
@@ -216,7 +244,9 @@ class WorkflowExecutor:
         outputs = history.get("outputs", {})
         return not bool(outputs)
 
-    def _process_completed_job(self, bot, job: PendingJob, history: dict[str, any]) -> None:
+    def _process_completed_job(
+        self, bot, job: PendingJob, history: dict[str, any]
+    ) -> None:
         try:
             outputs = history.get("outputs", {})
 
@@ -232,15 +262,21 @@ class WorkflowExecutor:
                 self._notify_error(bot, job, "No output file found in results")
                 return
 
-            file_content = self.client.download_file(output_filename, output_type="output")
+            file_content = self.client.download_file(
+                output_filename, output_type="output"
+            )
 
             extension = output_filename.split(".")[-1]
-            with tempfile.NamedTemporaryFile(suffix=f".{extension}", delete=False) as tmp_file:
+            with tempfile.NamedTemporaryFile(
+                suffix=f".{extension}", delete=False
+            ) as tmp_file:
                 tmp_file.write(file_content)
                 tmp_path = tmp_file.name
 
             try:
-                upload_url = FileIrcResponseWrapper.upload_file(tmp_path, job.chan)
+                upload_url = FileIrcResponseWrapper.upload_file(
+                    tmp_path, job.chan
+                )
                 self._notify_success(bot, job, upload_url)
             finally:
                 try:
@@ -258,13 +294,17 @@ class WorkflowExecutor:
             message = f"{job.nick}: Audio generated! {url}"
             conn.message(job.chan, message)
 
-    def _notify_failure(self, bot, job: PendingJob, history: dict[str, any]) -> None:
+    def _notify_failure(
+        self, bot, job: PendingJob, history: dict[str, any]
+    ) -> None:
         _release_lock()
         conn = bot.connections.get(job.network)
         if conn and conn.ready:
             status = history.get("status", {})
             error_messages = status.get("messages", [])
-            error_text = error_messages[0] if error_messages else "Unknown error"
+            error_text = (
+                error_messages[0] if error_messages else "Unknown error"
+            )
             message = f"{job.nick}: ❌ Audio generation failed: {error_text}"
             conn.message(job.chan, message)
 
@@ -272,7 +312,9 @@ class WorkflowExecutor:
         _release_lock()
         conn = bot.connections.get(job.network)
         if conn and conn.ready:
-            message = f"{job.nick}: ⏰ Audio generation timed out. Please try again."
+            message = (
+                f"{job.nick}: ⏰ Audio generation timed out. Please try again."
+            )
             conn.message(job.chan, message)
 
     def _notify_error(self, bot, job: PendingJob, error: str) -> None:
@@ -300,7 +342,11 @@ def _acquire_lock(nick: str) -> str | None:
         else:
             _global_lock = None
 
-    _global_lock = GlobalLock(nick=nick, locked_at=now, expires_at=now + timedelta(minutes=_LOCK_DURATION_MINUTES))
+    _global_lock = GlobalLock(
+        nick=nick,
+        locked_at=now,
+        expires_at=now + timedelta(minutes=_LOCK_DURATION_MINUTES),
+    )
     return None
 
 
@@ -316,7 +362,9 @@ def init_comfyui(bot) -> None:
     config = bot.config.get("plugins", {}).get("comfyui_workflows", {})
 
     if not config.get("api_url"):
-        print("ComfyUI workflows plugin: No API URL configured, plugin disabled")
+        print(
+            "ComfyUI workflows plugin: No API URL configured, plugin disabled"
+        )
         return
 
     api_url = config["api_url"]
@@ -349,4 +397,6 @@ def aiaudio_cmd(text: str, chan: str, nick: str, conn) -> str:
         return lock_error
 
     prompt = text.strip()
-    return _executor.submit_workflow("audio_stable_audio_example", prompt, chan, nick, conn.name)
+    return _executor.submit_workflow(
+        "audio_stable_audio_example", prompt, chan, nick, conn.name
+    )
