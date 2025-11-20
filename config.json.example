@@ -152,6 +152,11 @@
                     "file_extension": "flac"
                 }
             }
+        },
+        "beapin": {
+            "api_url": "https://beans.h4ks.com",
+            "admin_api_key": "your_admin_jwt_token_here",
+            "bot_username": "cloudbot"
         }
     },
     "api_keys": {

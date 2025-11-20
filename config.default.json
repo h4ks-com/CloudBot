@@ -132,6 +132,11 @@
                     "file_extension": "flac"
                 }
             }
+        },
+        "beapin": {
+            "api_url": "https://beans.h4ks.com",
+            "admin_api_key": "",
+            "bot_username": "cloudbot"
         }
     },
     "webhooks": {

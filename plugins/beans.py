@@ -1,3 +1,38 @@
+"""
+Beans Plugin - Hybrid Bean Management System
+
+This plugin manages a bean economy system with a hybrid architecture:
+
+BEAN MANAGEMENT (External Beapin API):
+- User bean balances are tracked via external Beapin API
+- Commands: .beans, .topbeans, .totalbeans, .exportbeans use API
+- Transfers: +beans creates transfer links (users claim via web UI)
+- Awards: ++beans instantly awards beans to users (admin only)
+
+GIFT LINKS (Bot-to-User Rewards):
+- Trivia prizes: Winners receive gift links via DM
+- Slot winnings: Winners receive gift links via DM
+- Gift links expire after 7 days
+- Recipients claim via web interface: {base_url}/gift/{code}
+
+LOCAL DATABASE (Trivia/Bets Only):
+- Local DB is preserved for trivia questions and betting functionality
+- Bet payouts still use local transfers (bettors use local DB)
+- Slots machine uses local DB for user bets, API for bot wallet
+- Trivia/betting system remains DB-based for compatibility
+
+AUTHENTICATION:
+- Bean transfer authentication is handled by external Beapin API
+- Users claim transfers and gifts via web interface with authentication
+- Bot uses admin JWT token for API operations
+
+CONFIGURATION:
+Config in plugins.beapin:
+- api_url: Base URL for Beapin API (e.g., https://beans.h4ks.com)
+- admin_api_key: JWT token for admin API access
+- bot_username: Bot's username in the Beapin system
+"""
+
 import json
 import math
 import random
@@ -6,6 +41,7 @@ import time
 from datetime import datetime
 from time import time
 
+import requests
 import sqlalchemy
 from cachetools import TTLCache
 from sqlalchemy import (
@@ -21,30 +57,342 @@ from sqlalchemy.sql.base import Executable
 from cloudbot import hook
 from cloudbot.event import EventType
 from cloudbot.util import database, web
-from plugins.core.chan_track import get_users
+
+logger = __import__("logging").getLogger("cloudbot")
+
+
+# ============================================================================
+# API CONSTANTS - Single Source of Truth
+# ============================================================================
+
+
+class BeapinAPI:
+    """Constants for Beapin API endpoints and configuration"""
+
+    # Default Configuration
+    DEFAULT_BASE_URL = "https://beans.h4ks.com"
+    DEFAULT_BOT_USERNAME = "cloudbot"
+    DEFAULT_TIMEOUT = 30.0
+
+    # API Endpoints
+    ENDPOINT_ADMIN_USERS = "/api/v1/admin/users"
+    ENDPOINT_TOTAL = "/api/v1/total"
+    ENDPOINT_GIFTLINKS = "/api/v1/giftlinks"
+    ENDPOINT_HARVESTS = "/api/v1/admin/harvests"
+
+    # Web UI Paths
+    PATH_GIFT = "/gift"
+    PATH_HARVEST = "/#harvest"
+    PATH_TRANSFER = "/transfer"
+
+    # Gift Link Settings
+    DEFAULT_GIFT_EXPIRY = "7d"
+
+    @staticmethod
+    def harvest_assign_endpoint(harvest_id):
+        """Build harvest assignment endpoint"""
+        return f"{BeapinAPI.ENDPOINT_HARVESTS}/{harvest_id}/assign"
+
+    @staticmethod
+    def harvest_complete_endpoint(harvest_id):
+        """Build harvest completion endpoint"""
+        return f"{BeapinAPI.ENDPOINT_HARVESTS}/{harvest_id}/complete"
+
+
+# ============================================================================
+# BEAPIN API CLIENT - Centralized API Interactions
+# ============================================================================
+
+
+class BeapinClient:
+    """Centralized client for all Beapin API interactions"""
+
+    def __init__(self, bot):
+        self.bot = bot
+        self._config = None
+
+    @property
+    def config(self):
+        """Lazy load configuration"""
+        if self._config is None:
+            self._config = self.bot.config.get("plugins", {}).get("beapin", {})
+        return self._config
+
+    @property
+    def base_url(self):
+        """Get API base URL"""
+        return self.config.get("api_url", BeapinAPI.DEFAULT_BASE_URL)
+
+    @property
+    def bot_username(self):
+        """Get bot username"""
+        return self.config.get("bot_username", BeapinAPI.DEFAULT_BOT_USERNAME)
+
+    def _get_headers(self):
+        """Get authentication headers"""
+        api_key = self.config.get("admin_api_key", "")
+        return {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def _make_request(self, method, endpoint, **kwargs):
+        """
+        Make HTTP request with standardized error handling
+
+        Returns:
+            Response JSON dict on success, None on failure
+        """
+        url = f"{self.base_url}{endpoint}"
+        kwargs.setdefault("headers", self._get_headers())
+        kwargs.setdefault("timeout", BeapinAPI.DEFAULT_TIMEOUT)
+
+        try:
+            response = requests.request(method, url, **kwargs)
+            response.raise_for_status()
+            return response.json() if response.content else {}
+        except requests.RequestException as e:
+            logger.error(f"API request failed: {method} {endpoint} - {e}")
+            if hasattr(e, "response") and e.response is not None:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
+            if "json" in kwargs:
+                logger.error(f"Request payload: {kwargs['json']}")
+            return None
+
+    def get_all_users(self):
+        """Get all users and their balances"""
+        return self._make_request("GET", BeapinAPI.ENDPOINT_ADMIN_USERS)
+
+    def get_user_balance(self, username):
+        """Get wallet balance for a specific user"""
+        username = strip_nick(username)
+        users = self.get_all_users()
+
+        if not users:
+            return None
+
+        for user in users:
+            if user.get("username", "").lower() == username.lower():
+                return user.get("bean_amount", 0)
+
+        return 0
+
+    def get_bot_balance(self):
+        """Get bot's wallet balance"""
+        return self.get_user_balance(self.bot_username)
+
+    def get_total_beans(self):
+        """Get total beans in circulation"""
+        result = self._make_request("GET", BeapinAPI.ENDPOINT_TOTAL)
+        return result.get("total_beans", 0) if result else None
+
+    def create_gift_link(self, amount, message="", expires_in=None):
+        """Create a gift link"""
+        if expires_in is None:
+            expires_in = BeapinAPI.DEFAULT_GIFT_EXPIRY
+
+        payload = {"amount": int(amount)}
+        if message:
+            payload["message"] = str(message)
+        if expires_in:
+            payload["expires_in"] = str(expires_in)
+
+        logger.debug(f"Creating gift link: {payload}")
+        return self._make_request(
+            "POST", BeapinAPI.ENDPOINT_GIFTLINKS, json=payload
+        )
+
+    def create_harvest(self, title, description, bean_amount):
+        """Create a harvest"""
+        payload = {
+            "title": title,
+            "description": description,
+            "bean_amount": bean_amount,
+        }
+        result = self._make_request(
+            "POST", BeapinAPI.ENDPOINT_HARVESTS, json=payload
+        )
+        return result.get("id") if result else None
+
+    def assign_harvest(self, harvest_id, username):
+        """Assign a harvest to a user"""
+        username = strip_nick(username)
+        payload = {"username": username}
+        endpoint = BeapinAPI.harvest_assign_endpoint(harvest_id)
+        return self._make_request("POST", endpoint, json=payload)
+
+    def complete_harvest(self, harvest_id):
+        """Complete a harvest, transferring beans to assigned user"""
+        endpoint = BeapinAPI.harvest_complete_endpoint(harvest_id)
+        return self._make_request("POST", endpoint)
+
+    def build_gift_url(self, gift_code):
+        """Build gift redemption URL"""
+        return f"{self.base_url}{BeapinAPI.PATH_GIFT}/{gift_code}"
+
+    def build_harvest_url(self, harvest_id):
+        """Build harvest UI URL"""
+        return f"{self.base_url}{BeapinAPI.PATH_HARVEST}/{harvest_id}"
+
+    def build_transfer_url(self, from_user, to_user, amount):
+        """Build transfer UI URL"""
+        from_user = strip_nick(from_user)
+        to_user = strip_nick(to_user)
+        return f"{self.base_url}{BeapinAPI.PATH_TRANSFER}/{from_user}/{to_user}/{amount}"
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+
+def strip_nick(nick):
+    """Strip / from nickname and use only the last part"""
+    return nick.split("/")[-1] if "/" in nick else nick
+
+
+def send_prize_gift_link(bot, winner_nick, amount, prize_message, message_func):
+    """
+    Create gift link and DM winner with redemption URL
+
+    Args:
+        bot: Bot instance
+        winner_nick: Recipient nickname
+        amount: Prize amount in beans
+        prize_message: Message to include in gift link
+        message_func: CloudBot message function for DMing
+
+    Returns:
+        tuple: (success: bool, error_message: str or None, channel_message: str)
+    """
+    client = BeapinClient(bot)
+
+    # Check bot balance
+    bot_balance = client.get_bot_balance()
+    if bot_balance is None or bot_balance < amount:
+        logger.error(
+            f"Insufficient bot balance for prize. Need {amount}, have {bot_balance}"
+        )
+        return (
+            False,
+            f"❌ Bot doesn't have enough beans to award the prize of 🫘 {amount:,} beans. Please contact an admin!",
+            None,
+        )
+
+    # Create gift link
+    gift = client.create_gift_link(amount, prize_message)
+    if not gift:
+        logger.error(f"Failed to create gift link for prize of {amount} beans")
+        return (
+            False,
+            "❌ Failed to create prize gift link. Please contact an admin!",
+            None,
+        )
+
+    # Build gift URL and DM winner
+    gift_url = client.build_gift_url(gift["code"])
+    message_func(
+        f"🎉 Congratulations! You won 🫘 {amount:,} beans!", winner_nick
+    )
+    message_func(f"Claim your prize here: {gift_url}", winner_nick)
+
+    return (True, None, f"Check your DM to claim 🫘 {amount:,} beans!")
+
+
+# ============================================================================
+# LEGACY COMPATIBILITY WRAPPERS
+# ============================================================================
+
+
+def get_beapin_config(bot):
+    """Legacy wrapper for config access"""
+    return bot.config.get("plugins", {}).get("beapin", {})
+
+
+def get_api_headers(bot):
+    """Legacy wrapper for headers"""
+    client = BeapinClient(bot)
+    return client._get_headers()
+
+
+def create_transfer_url(bot, from_user, to_user, amount):
+    """Legacy wrapper for transfer URL"""
+    client = BeapinClient(bot)
+    return client.build_transfer_url(from_user, to_user, amount)
+
+
+def get_wallet_balance(bot, username):
+    """Legacy wrapper for wallet balance"""
+    client = BeapinClient(bot)
+    return client.get_user_balance(username)
+
+
+def get_total_beans(bot):
+    """Legacy wrapper for total beans"""
+    client = BeapinClient(bot)
+    return client.get_total_beans()
+
+
+def get_all_users(bot):
+    """Legacy wrapper for all users"""
+    client = BeapinClient(bot)
+    return client.get_all_users()
+
+
+def create_harvest(bot, title, description, bean_amount):
+    """Legacy wrapper for harvest creation"""
+    client = BeapinClient(bot)
+    return client.create_harvest(title, description, bean_amount)
+
+
+def assign_harvest_to_user(bot, harvest_id, username):
+    """Legacy wrapper for harvest assignment"""
+    client = BeapinClient(bot)
+    return client.assign_harvest(harvest_id, username)
+
+
+def complete_harvest(bot, harvest_id):
+    """Legacy wrapper for harvest completion"""
+    client = BeapinClient(bot)
+    return client.complete_harvest(harvest_id)
+
+
+def get_bot_wallet_balance(bot):
+    """Legacy wrapper for bot balance"""
+    client = BeapinClient(bot)
+    return client.get_bot_balance()
+
+
+def create_gift_link(bot, amount, message="", expires_in=None):
+    """Legacy wrapper for gift link creation"""
+    client = BeapinClient(bot)
+    return client.create_gift_link(amount, message, expires_in)
 
 
 def check_user_authenticated(conn, nick):
     """
-    Check if a user is authenticated with services.
-    Returns None if authenticated, error message if not.
+    DEPRECATED: Authentication is now handled by the external Beapin API.
+    This function is kept for trivia/bet functionality compatibility.
     """
-    if not nick or not conn:
-        return "🚫 Unable to verify user authentication status. 🚫"
+    return None
 
-    try:
-        user = get_users(conn).getuser(nick)
-        if not user.account:
-            return "🚫 This command requires you to be authenticated with services (e.g., NickServ). Please identify and try again. 🚫"
-    except:
-        return "🚫 Unable to verify your authentication status. 🚫"
 
-    return None  # User is authenticated
-
+# ============================================================================
+# COMMAND PATTERNS
+# ============================================================================
 
 # Regular expressions for bean commands
-bean_add_re = re.compile(r"^\+(\d+)\s+beans?\s+to\s+(\S+)(?:\s+.*)?$", re.IGNORECASE)
-bean_admin_add_re = re.compile(r"^\+\+(\d+)\s+beans?\s+to\s+(\S+)(?:\s+.*)?$", re.IGNORECASE)
+bean_add_re = re.compile(
+    r"^\+(\d+)\s+beans?\s+to\s+(\S+)(?:\s+.*)?$", re.IGNORECASE
+)
+bean_admin_add_re = re.compile(
+    r"^\+\+(\d+)\s+beans?\s+to\s+(\S+)\s+for\s+(.+)$", re.IGNORECASE
+)
+
+# ============================================================================
+# DATABASE SCHEMA
+# ============================================================================
 
 # Database table for storing bean balances
 beans_table = Table(
@@ -80,10 +428,17 @@ trivia_bets_table = Table(
 )
 
 
+# ============================================================================
+# LOCAL DATABASE FUNCTIONS (Trivia/Bets Only)
+# ============================================================================
+
+
 def get_beans(nick: str, db) -> int:
     """Get the current bean count for a user."""
     nick = nick.lower()
-    beans = db.execute(select([beans_table.c.beans]).where(beans_table.c.nick == nick)).fetchone()
+    beans = db.execute(
+        select([beans_table.c.beans]).where(beans_table.c.nick == nick)
+    ).fetchone()
 
     if beans:
         return beans["beans"]
@@ -134,26 +489,40 @@ def add_beans(nick: str, amount: int, db) -> None:
     set_beans(nick, current_beans + amount, db)
 
 
+def get_total_beans_db(db) -> int:
+    """Get the total number of beans in circulation from local DB (for trivia/bets)."""
+    query = select(
+        [sqlalchemy.func.sum(beans_table.c.beans).label("total_beans")]
+    )
+    result = db.execute(query).fetchone()
+    return result["total_beans"] if result["total_beans"] is not None else 0
+
+
+# ============================================================================
+# BEAN COMMANDS
+# ============================================================================
+
+
 @hook.command("beans", autohelp=False)
-def beans_cmd(text: str, nick: str, db) -> str:
+def beans_cmd(text: str, nick: str, bot) -> str:
     """[user] - Check how many beans you or another user has."""
     if text:
         target = text.strip()
     else:
         target = nick
 
-    beans = get_beans(target, db)
-    return f"🌟 {target} has 🫘 {beans:,} beans! 🌟"
+    target = strip_nick(target)
+    balance = get_wallet_balance(bot, target)
+
+    if balance is None:
+        return f"🚫 Could not fetch bean balance for {target}! 🚫"
+
+    return f"🌟 {target} has 🫘 {balance:,} beans! 🌟"
 
 
 @hook.regex(bean_add_re)
-def transfer_beans_cmd(match, nick: str, db, notice, event, conn) -> str | None:
-    """<+amount beans to user> - Transfer beans to another user."""
-    # Check if user is authenticated
-    auth_error = check_user_authenticated(conn, nick)
-    if auth_error:
-        return auth_error
-
+def transfer_beans_cmd(match, nick: str, bot, event) -> str | None:
+    """<+amount beans to user> - Create a transfer link for bean transfer."""
     amount = int(match.group(1))
     target = match.group(2)
 
@@ -169,26 +538,24 @@ def transfer_beans_cmd(match, nick: str, db, notice, event, conn) -> str | None:
     if nick.lower() == target.lower():
         return "🤔 You can't transfer beans to yourself! 🤔"
 
-    # Attempt the transfer
-    success = transfer_beans(nick, target, amount, db)
+    # Create transfer URL
+    transfer_url = create_transfer_url(bot, nick, target, amount)
 
-    if success:
-        sender_beans = get_beans(nick, db)
-        target_beans = get_beans(target, db)
-        return f"🎉 {nick} gave 🫘 {amount} beans to {target}! 🎉 {nick} now has 🫘 {sender_beans} beans, and {target} has 🫘 {target_beans} beans!"
-    else:
-        return f"😢 You don't have enough beans for that transfer. You have 🫘 {get_beans(nick, db)} beans. 😢"
+    return f"🔗 Transfer 🫘 {amount} beans to {target} here: {transfer_url}"
 
 
 @hook.regex(bean_admin_add_re)
-def admin_add_beans(match, nick: str, db, notice, has_permission, event) -> str | None:
-    """<++amount beans to user> - Admin command to create beans and give them to a user."""
+def admin_add_beans(
+    match, nick: str, bot, notice, has_permission, event
+) -> str | None:
+    """<++amount beans to user for description> - Admin command to instantly award beans to a user."""
     if not any(has_permission(per) for per in ["op", "botcontrol"]):
         notice("🚫 You don't have permission to use this command! 🚫")
         return None
 
     amount = int(match.group(1))
     target = match.group(2)
+    title = match.group(3).strip()
 
     # Check if target is a valid nick
     if not event.is_nick_valid(target.lower()):
@@ -198,38 +565,66 @@ def admin_add_beans(match, nick: str, db, notice, has_permission, event) -> str 
     if amount <= 0:
         return "🚫 Amount must be positive! 🚫"
 
-    # Add beans to target
-    add_beans(target, amount, db)
-    target_beans = get_beans(target, db)
+    # Strip nickname
+    target = strip_nick(target)
 
-    return (
-        f"✨ {nick} created 🫘 {amount} beans and gave them to {target}! ✨ {target} now has 🫘 {target_beans} beans!"
-    )
+    # Create harvest
+    harvest_id = create_harvest(bot, title, f"Created by {nick}", amount)
+
+    if harvest_id is None:
+        return "🚫 Failed to create harvest! 🚫"
+
+    # Assign harvest to user
+    assigned = assign_harvest_to_user(bot, harvest_id, target)
+
+    if not assigned:
+        return f"⚠️ Harvest created but failed to assign to {target}! ⚠️"
+
+    # Complete harvest immediately to transfer beans
+    completed = complete_harvest(bot, harvest_id)
+
+    if not completed:
+        return f"⚠️ Harvest assigned to {target} but failed to complete! Beans not transferred yet. ⚠️"
+
+    # Build harvest URL
+    client = BeapinClient(bot)
+    harvest_url = client.build_harvest_url(harvest_id)
+
+    return f"✨ Awarded 🫘 {amount} beans to {target} for: {title} ✨\n🔗 {harvest_url}"
 
 
-def _generate_top_beans_response(top_n: int, db) -> str:
+def _generate_top_beans_response(top_n: int, bot) -> str:
     """Helper function to generate the top beans response."""
-    query = (
-        select([beans_table.c.nick, beans_table.c.beans]).order_by(sqlalchemy.desc(beans_table.c.beans)).limit(top_n)
-    )
-    results = db.execute(query).fetchall()
+    users = get_all_users(bot)
 
-    if not results:
+    if not users:
         return "😢 No one has any beans yet! 😢"
 
-    beans_list = [f"{i+1}. {row['nick']} 🫘 ({row['beans']:,} beans)" for i, row in enumerate(results)]
+    # Sort by bean amount in descending order and limit to top_n
+    sorted_users = sorted(users, key=lambda u: u["bean_amount"], reverse=True)[
+        :top_n
+    ]
+
+    beans_list = [
+        f"{i+1}. {user['username']} 🫘 ({user['bean_amount']:,} beans)"
+        for i, user in enumerate(sorted_users)
+    ]
     return f"🏆 Top {top_n} Bean Holders: " + "\n".join(beans_list)
 
 
 @hook.command("topbeans", "beanstats", autohelp=False)
-def top_beans(text: str, nick: str, chan: str, db, notice, message) -> str | None:
+def top_beans(
+    text: str, nick: str, chan: str, bot, notice, message
+) -> str | None:
     """[number] - Shows the top N users with the most beans (default is 10)."""
     try:
         top_n = int(text.strip()) if text else 10
     except ValueError:
-        return "🚫 Please provide a valid number for the top users to display. 🚫"
+        return (
+            "🚫 Please provide a valid number for the top users to display. 🚫"
+        )
 
-    response = _generate_top_beans_response(top_n, db)
+    response = _generate_top_beans_response(top_n, bot)
     if top_n <= 10:
         return response.replace("\n", " ")
 
@@ -240,54 +635,63 @@ def top_beans(text: str, nick: str, chan: str, db, notice, message) -> str | Non
         message(chunk, nick)
 
 
-def get_total_beans(db) -> int:
-    """Get the total number of beans in circulation."""
-    query = select([sqlalchemy.func.sum(beans_table.c.beans).label("total_beans")])
-    result = db.execute(query).fetchone()
-    return result["total_beans"] if result["total_beans"] is not None else 0
-
-
 @hook.command("totalbeans", autohelp=False)
-def total_beans(db) -> str:
+def total_beans_cmd(bot) -> str:
     """- Shows the total number of beans in circulation."""
-    total_beans = get_total_beans(db)
-    return f"🌍 There are 🫘 {total_beans:,} beans in circulation! 🌍"
+    total = get_total_beans(bot)
+
+    if total is None:
+        return "🚫 Could not fetch total beans! 🚫"
+
+    return f"🌍 There are 🫘 {total:,} beans in circulation! 🌍"
 
 
 @hook.command("exportbeans", autohelp=False)
-def export_beans(db) -> str:
+def export_beans(bot) -> str:
     """Export all bean balances as JSON file"""
-    query = select([beans_table.c.nick, beans_table.c.beans]).order_by(beans_table.c.nick)
-    results = db.execute(query).fetchall()
+    users = get_all_users(bot)
 
-    if not results:
+    if not users:
         return "❌ No bean data to export."
 
-    data = [{"nick": row["nick"], "beans": row["beans"]} for row in results]
+    # Sort by username
+    sorted_users = sorted(users, key=lambda u: u["username"])
+    data = [
+        {"username": user["username"], "beans": user["bean_amount"]}
+        for user in sorted_users
+    ]
     json_data = json.dumps(data, indent=2)
 
     try:
         url = web.paste(json_data, ext="json", raise_on_no_paste=True)
-        return f"📊 Bean data exported ({len(results)} users): {url}"
+        return f"📊 Bean data exported ({len(users)} users): {url}"
     except web.NoPasteException:
         return "❌ Failed to paste data to service."
 
 
-slot_cooldown_cache = TTLCache(maxsize=1000, ttl=3600 * 24 * 2)  # Cache for slot cooldowns
+# ============================================================================
+# SLOT MACHINE
+# ============================================================================
+
+slot_cooldown_cache = TTLCache(
+    maxsize=1000, ttl=3600 * 24 * 2
+)  # Cache for slot cooldowns
 
 
 @hook.command("slots", autohelp=False)
-def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
+def slots(
+    text: str, nick: str, chan: str, reply, db, conn, bot, message
+) -> str:
     """[bet] - Play the slot machine! Default bet is 5 beans. Win big or lose it all!"""
-    # Check if user is authenticated
-    auth_error = check_user_authenticated(conn, nick)
-    if auth_error:
-        return auth_error
-
+    # NOTE: Slots use local DB for user beans (trivia/bets compatibility)
+    # but bot wallet is tracked via external API
     emojis = ["🍒", "🍋", "🍉", "⭐", "🔔", "🍇", "🍊", "🍓"]
 
-    total_beans = get_total_beans(db)
-    bot_beans = get_beans(conn.nick, db)
+    total_beans = get_total_beans_db(db)
+    bot_beans = get_bot_wallet_balance(bot)
+
+    if bot_beans is None:
+        return "🚫 Could not fetch bot wallet balance! Try again later. 🚫"
     bot_market_share = bot_beans / total_beans if total_beans > 0 else 0
 
     min_bet = 3
@@ -328,7 +732,7 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
     cooldown_entry = slot_cooldown_cache[nick]
 
     wait_time = cooldown_entry["cooldown_until"] - current_time
-    cooldown_msg = f"⏳ You need to wait {wait_time} seconds before playing again. Increase your bet to {cooldown_entry['accumulated_bet']} to play now. �����"
+    cooldown_msg = f"⏳ You need to wait {wait_time} seconds before playing again. Increase your bet to {cooldown_entry['accumulated_bet']} to play now. ⏳"
     if wait_time > 0 and bet < cooldown_entry["accumulated_bet"]:
         return cooldown_msg
 
@@ -355,23 +759,26 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
         # User did not increase bet, apply new cooldown
         else:
             cooldown_time = round(
-                cooldown_time_base * cooldown_time_multiplier * cooldown_entry["accumulated_bet"] / min_bet
+                cooldown_time_base
+                * cooldown_time_multiplier
+                * cooldown_entry["accumulated_bet"]
+                / min_bet
             )
             slot_cooldown_cache[nick] = {
                 "remaining_plays": attempts_per_cooldown,
                 "cooldown_until": current_time + cooldown_time,
-                "accumulated_bet": cooldown_entry["accumulated_bet"] * cooldown_bet_multiplier,
+                "accumulated_bet": cooldown_entry["accumulated_bet"]
+                * cooldown_bet_multiplier,
             }
             return f"⏳ You entered a cooldown! You can play again in {cooldown_time:.2f} seconds. Increase your bet to {slot_cooldown_cache[nick]['accumulated_bet']} beans to play now ⏳"
 
     cooldown_entry = slot_cooldown_cache[nick]
-    # reply(f"{cooldown_entry['accumulated_bet']=}")
-    # reply(f"{cooldown_entry['remaining_plays']=}")
-    # reply(f"{cooldown_entry['cooldown_until']=}")
     is_cooldown = wait_time > 0
 
     if is_cooldown:
-        bet_multiplier = max(min(bet / min_bet, (bet) / (cooldown_entry["accumulated_bet"])), 1)
+        bet_multiplier = max(
+            min(bet / min_bet, (bet) / (cooldown_entry["accumulated_bet"])), 1
+        )
 
     user_beans = get_beans(nick, db)
     if user_beans < bet:
@@ -379,9 +786,7 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
 
     max_prize = math.ceil(bet_multiplier * max_prize)
     if bot_beans < max_prize:
-        return (
-            f"The bot doesn't have enough beans to pay out a potential prize of {max_prize:,} beans. Try again later!"
-        )
+        return f"The bot doesn't have enough beans to pay out a potential prize of {max_prize:,} beans. Try again later!"
 
     # Deduct bet from user and add to bot's wallet
     if not transfer_beans(nick, conn.nick, bet, db):
@@ -390,39 +795,75 @@ def slots(text: str, nick: str, chan: str, reply, db, conn) -> str:
     # Generate expected and actual slot values
     expected_slots = [random.choice(emojis) for _ in range(3)]
     actual_slots = [random.choice(emojis) for _ in range(3)]
-    result = " | ".join(f"{e} {a}" for e, a in zip(expected_slots, actual_slots))
+    result = " | ".join(
+        f"{e} {a}" for e, a in zip(expected_slots, actual_slots)
+    )
 
     # Check for win conditions
     matches = sum(e == a for e, a in zip(expected_slots, actual_slots))
     if matches == 3:
-        if not transfer_beans(conn.nick, nick, max_prize, db):
-            return "The bot doesn't have enough beans to pay out the jackpot. Try again later!"
-        return f"{result} JACKPOT! You won {max_prize:,} beans!" + (" ⏳" if is_cooldown else "")
+        # JACKPOT - Use helper function
+        success, error_msg, dm_msg = send_prize_gift_link(
+            bot,
+            nick,
+            max_prize,
+            f"🎰 Slot machine JACKPOT! {result}",
+            message,
+        )
+
+        if not success:
+            return f"{result} 🎰 JACKPOT! But {error_msg}"
+
+        return (
+            f"{result} 🎰 JACKPOT! {dm_msg}"
+            + (" ⏳" if is_cooldown else "")
+        )
     elif matches == 2:
         prize = math.ceil(bet_multiplier * (max_prize / 2))
-        if not transfer_beans(conn.nick, nick, prize, db):
-            return "The bot doesn't have enough beans to pay out your prize. Try again later!"
-        return f"{result} You won {prize:,} beans!" + (" ⏳" if is_cooldown else "")
+
+        # Use helper function for 2-match prize
+        success, error_msg, dm_msg = send_prize_gift_link(
+            bot, nick, prize, f"🎰 Slot machine prize! {result}", message
+        )
+
+        if not success:
+            return f"{result} 🎰 You won! But {error_msg}"
+
+        return (
+            f"{result} 🎰 You won! {dm_msg}" + (" ⏳" if is_cooldown else "")
+        )
     elif matches == 1:
         return f"{result} Almost there! Keep trying! You lost {bet:,} beans."
     else:
         return f"{result} Better luck next time! You lost {bet:,} beans."
 
 
-# Trivia bet functions
-def add_trivia_bet(creator: str, trivia_id: int, bet_amount: int, winner: str, db) -> bool:
+# ============================================================================
+# TRIVIA BET FUNCTIONS
+# ============================================================================
+
+
+def add_trivia_bet(
+    creator: str, trivia_id: int, bet_amount: int, winner: str, db
+) -> bool:
     """Add a bet for a trivia question. Returns True if successful."""
     creator = creator.lower()
     winner = winner.lower()
 
     # Add or update the bet
-    clause = (trivia_bets_table.c.creator == creator) & (trivia_bets_table.c.trivia_id == trivia_id)
-    existing_bet = db.execute(select([trivia_bets_table]).where(clause)).fetchone()
+    clause = (trivia_bets_table.c.creator == creator) & (
+        trivia_bets_table.c.trivia_id == trivia_id
+    )
+    existing_bet = db.execute(
+        select([trivia_bets_table]).where(clause)
+    ).fetchone()
 
     if existing_bet:
         query = (
             trivia_bets_table.update()
-            .values(bet_amount=bet_amount, winner=winner, timestamp=datetime.now())
+            .values(
+                bet_amount=bet_amount, winner=winner, timestamp=datetime.now()
+            )
             .where(clause)
         )
     else:
@@ -441,7 +882,9 @@ def add_trivia_bet(creator: str, trivia_id: int, bet_amount: int, winner: str, d
 
 def get_trivia_bets(trivia_id: int, db):
     """Get all bets for a specific trivia."""
-    query = select([trivia_bets_table]).where(trivia_bets_table.c.trivia_id == trivia_id)
+    query = select([trivia_bets_table]).where(
+        trivia_bets_table.c.trivia_id == trivia_id
+    )
     return db.execute(query).fetchall()
 
 
@@ -462,12 +905,16 @@ def get_recent_trivia_bets(db):
         select(
             [
                 trivia_bets_table.c.trivia_id,
-                sqlalchemy.func.sum(trivia_bets_table.c.bet_amount).label("total_bet_amount"),
+                sqlalchemy.func.sum(trivia_bets_table.c.bet_amount).label(
+                    "total_bet_amount"
+                ),
                 sqlalchemy.func.count().label("bet_count"),
             ]
         )
         .group_by(trivia_bets_table.c.trivia_id)
-        .order_by(sqlalchemy.desc(sqlalchemy.func.max(trivia_bets_table.c.timestamp)))
+        .order_by(
+            sqlalchemy.desc(sqlalchemy.func.max(trivia_bets_table.c.timestamp))
+        )
         .limit(3)
     )
     return db.execute(query).fetchall()
@@ -481,15 +928,21 @@ def delete_trivia_bets(trivia_id: int, db, conn) -> None:
         # Refund the bet amount to the creator
         if not transfer_beans(conn.nick, bet["creator"], bet["bet_amount"], db):
             # If we can't refund, log or handle the error
-            print(f"Failed to refund {bet['bet_amount']} beans to {bet['creator']}")
+            print(
+                f"Failed to refund {bet['bet_amount']} beans to {bet['creator']}"
+            )
 
     # Delete all bets for this trivia
-    query = trivia_bets_table.delete().where(trivia_bets_table.c.trivia_id == trivia_id)
+    query = trivia_bets_table.delete().where(
+        trivia_bets_table.c.trivia_id == trivia_id
+    )
     db.execute(query)
     db.commit()
 
 
-def handle_trivia_win(trivia_id: int, winner_nick: str, db, conn) -> tuple[int, int, list[str]]:
+def handle_trivia_win(
+    trivia_id: int, winner_nick: str, db, conn
+) -> tuple[int, int, list[str]]:
     """
     Handle bets when a trivia is won.
     Returns a tuple with (number of winners, total payout amount, unpaid winners list).
@@ -508,7 +961,9 @@ def handle_trivia_win(trivia_id: int, winner_nick: str, db, conn) -> tuple[int, 
 
     if not winning_bets:
         # No winners, all bets are lost
-        query = trivia_bets_table.delete().where(trivia_bets_table.c.trivia_id == trivia_id)
+        query = trivia_bets_table.delete().where(
+            trivia_bets_table.c.trivia_id == trivia_id
+        )
         db.execute(query)
         db.commit()
         return 0, total_bet_amount, []
@@ -529,14 +984,20 @@ def handle_trivia_win(trivia_id: int, winner_nick: str, db, conn) -> tuple[int, 
             unpaid_winners.append(bet["creator"])
 
     # Delete all bets for this trivia
-    query = trivia_bets_table.delete().where(trivia_bets_table.c.trivia_id == trivia_id)
+    query = trivia_bets_table.delete().where(
+        trivia_bets_table.c.trivia_id == trivia_id
+    )
     db.execute(query)
     db.commit()
 
     return len(winning_bets), total_bet_amount, unpaid_winners
 
 
-# Trivia functions
+# ============================================================================
+# TRIVIA FUNCTIONS
+# ============================================================================
+
+
 def add_trivia(creator: str, question: str, answer: str, prize: int, db) -> int:
     """Add a new trivia question and return its ID."""
     creator = creator.lower()
@@ -579,7 +1040,11 @@ def get_latest_user_trivia(creator: str, db):
 
 def get_latest_trivias(limit: int, db):
     """Get the latest trivia questions."""
-    query = select([trivia_table]).order_by(sqlalchemy.desc(trivia_table.c.timestamp)).limit(limit)
+    query = (
+        select([trivia_table])
+        .order_by(sqlalchemy.desc(trivia_table.c.timestamp))
+        .limit(limit)
+    )
     return db.execute(query).fetchall()
 
 
@@ -603,6 +1068,11 @@ def delete_trivia(trivia_id: int, db, conn) -> bool:
     result = db.execute(query)
     db.commit()
     return result.rowcount > 0
+
+
+# ============================================================================
+# TRIVIA COMMANDS
+# ============================================================================
 
 
 @hook.command("trivia")
@@ -704,7 +1174,9 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
 
         result = ["🎯 Latest Trivia Questions 🎯"]
         for t in trivias:
-            result.append(f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans (by {t['creator']})")
+            result.append(
+                f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans (by {t['creator']})"
+            )
 
         return result
 
@@ -716,7 +1188,9 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
 
         result = [f"🧩 Trivia Questions by {target} 🧩"]
         for t in trivias:
-            result.append(f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans")
+            result.append(
+                f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans"
+            )
 
         return result
 
@@ -761,7 +1235,9 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
 
 
 @hook.regex(re.compile(r"^\s*(\S+)\s*$", re.I))
-def track_trivia_answers(match, event, db, conn, chan) -> list[str] | None | str:
+def track_trivia_answers(
+    match, event, db, conn, chan, bot, message
+) -> list[str] | None | str:
     if event.type is EventType.action:
         return
     if not chan.startswith("#"):
@@ -773,19 +1249,29 @@ def track_trivia_answers(match, event, db, conn, chan) -> list[str] | None | str
     if not trivia:
         return
 
-    # Transfer beans to the winner
-    if not transfer_beans(conn.nick, event.nick, trivia["prize"], db):
-        return "❌ The bot doesn't have enough beans to pay out the prize. Try again later!"
+    # Use helper function to send prize
+    success, error_msg, dm_msg = send_prize_gift_link(
+        bot,
+        event.nick,
+        trivia["prize"],
+        f"🎉 Trivia prize for answering: {trivia['question']}",
+        message,
+    )
+
+    if not success:
+        return error_msg
 
     # Handle any bets on this trivia
-    winners_count, total_bet_amount, unpaid_winners = handle_trivia_win(trivia["id"], event.nick, db, conn)
+    winners_count, total_bet_amount, unpaid_winners = handle_trivia_win(
+        trivia["id"], event.nick, db, conn
+    )
 
     # Delete the trivia question after answering
     delete_trivia(trivia["id"], db, conn)
 
     result = [
         f"🎉 {event.nick} answered correctly! The answer was '{trivia['answer']}'. "
-        f"You won 🫘 {trivia['prize']} beans! 🎉"
+        f"{dm_msg} 🎉"
     ]
 
     if winners_count > 0:
@@ -798,10 +1284,19 @@ def track_trivia_answers(match, event, db, conn, chan) -> list[str] | None | str
             result.append(
                 f" Sorry, couldn't pay {len(unpaid_winners)} winners due to insufficient bot beans: "
                 f"{', '.join(unpaid_winners[:3])}"
-                + (f" and {len(unpaid_winners) - 3} more" if len(unpaid_winners) > 3 else "")
+                + (
+                    f" and {len(unpaid_winners) - 3} more"
+                    if len(unpaid_winners) > 3
+                    else ""
+                )
             )
 
     return result
+
+
+# ============================================================================
+# BETTING COMMANDS
+# ============================================================================
 
 
 @hook.command("bets", "bet")
@@ -891,7 +1386,9 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
         )
 
         for bet in sorted_bets[:3]:  # Limit to 3 recent bets
-            result.append(f"{bet['creator']} bet 🫘 {bet['bet_amount']} beans on {bet['winner']}")
+            result.append(
+                f"{bet['creator']} bet 🫘 {bet['bet_amount']} beans on {bet['winner']}"
+            )
 
         if len(sorted_bets) > 3:
             result.append(f"...and {len(sorted_bets) - 3} more bets")
@@ -964,7 +1461,8 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
     # Check if user already placed a bet on this trivia
     existing_bet = db.execute(
         select([trivia_bets_table]).where(
-            (trivia_bets_table.c.creator == nick.lower()) & (trivia_bets_table.c.trivia_id == trivia_id)
+            (trivia_bets_table.c.creator == nick.lower())
+            & (trivia_bets_table.c.trivia_id == trivia_id)
         )
     ).fetchone()
 
@@ -974,7 +1472,9 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
     # Check if user has enough beans
     user_beans = get_beans(nick, db)
     if user_beans < bet_amount:
-        return f"❌ You don't have enough beans. You have 🫘 {user_beans} beans."
+        return (
+            f"❌ You don't have enough beans. You have 🫘 {user_beans} beans."
+        )
 
     # Deduct beans from user
     if not transfer_beans(nick, conn.nick, bet_amount, db):
