@@ -1,13 +1,10 @@
-import asyncio
 import re
 import time
-from collections import deque
 from datetime import datetime
 from typing import TypeVar
 
 import requests
 from sqlalchemy import (
-    Boolean,
     Column,
     Float,
     PrimaryKeyConstraint,
@@ -74,9 +71,7 @@ MAX_RECV = 1000000
 def get_url_title(url: str) -> str | None:
     """Fetches title of a URL using similar logic to link_announcer.py"""
     try:
-        with get_session().get(
-            url, headers=URL_HEADERS, stream=True, timeout=3
-        ) as response:
+        with get_session().get(url, headers=URL_HEADERS, stream=True, timeout=3) as response:
             if not response.encoding or not response.ok:
                 return None
 
@@ -139,9 +134,7 @@ def track_user_urls(event, db) -> None:
             )
 
             # Clean up old URLs to maintain limit
-            cleanup_old_urls(
-                db, event.conn.name, event.chan.lower(), event.nick.lower()
-            )
+            cleanup_old_urls(db, event.conn.name, event.chan.lower(), event.nick.lower())
 
         except Exception:
             # If duplicate URL (same timestamp), skip it
@@ -188,9 +181,7 @@ def track_seen(event, db):
     """
     # keep private messages private
     now = time.time()
-    if event.chan[:1] == "#" and not re.findall(
-        "^s/.*/.*/$", event.content.lower()
-    ):
+    if event.chan[:1] == "#" and not re.findall("^s/.*/.*/$", event.content.lower()):
         res = db.execute(
             seen_table.update()
             .values(time=now, quote=event.content, host=str(event.mask))
@@ -273,39 +264,25 @@ def lastlink(text: str, chan: str, conn, db) -> str:
             user_urls_table.c.nick,
         ]
     )
-    last_url_query = last_url_query.where(
-        user_urls_table.c.network == conn.name
-    )
-    last_url_query = last_url_query.where(
-        user_urls_table.c.chan == chan.lower()
-    )
+    last_url_query = last_url_query.where(user_urls_table.c.network == conn.name)
+    last_url_query = last_url_query.where(user_urls_table.c.chan == chan.lower())
 
     if search_text:
         # User-specific last link
-        last_url_query = last_url_query.where(
-            user_urls_table.c.nick == target_nick
-        )
+        last_url_query = last_url_query.where(user_urls_table.c.nick == target_nick)
 
-    last_url_query = last_url_query.order_by(
-        desc(user_urls_table.c.timestamp)
-    ).limit(1)
+    last_url_query = last_url_query.order_by(desc(user_urls_table.c.timestamp)).limit(1)
 
     url_result = db.execute(last_url_query).fetchone()
 
     if not url_result:
-        return (
-            "No links found"
-            if not search_text
-            else f"No links found for nick: {search_text}"
-        )
+        return "No links found" if not search_text else f"No links found for nick: {search_text}"
 
     url, title, timestamp, posting_nick = url_result
     url_title = title or "No title available"
 
     # Format timestamp
-    formatted_date = datetime.fromtimestamp(timestamp).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    formatted_date = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
     # Format output with title
     if search_text:
@@ -335,18 +312,12 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
         # User-specific URLs
         url_query = url_query.where(user_urls_table.c.nick == target_nick)
 
-    url_query = url_query.order_by(desc(user_urls_table.c.timestamp)).limit(
-        URLS_PER_PAGE
-    )
+    url_query = url_query.order_by(desc(user_urls_table.c.timestamp)).limit(URLS_PER_PAGE)
 
     page_results = db.execute(url_query).fetchall()
 
     if not page_results:
-        return (
-            "No links found"
-            if not search_text
-            else f"No links found for nick: {search_text}"
-        )
+        return "No links found" if not search_text else f"No links found for nick: {search_text}"
 
     # Get all results for pagination
     if search_text:
@@ -367,9 +338,7 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
             )
         )
 
-    all_url_results = db.execute(
-        total_query.order_by(desc(user_urls_table.c.timestamp))
-    ).fetchall()
+    all_url_results = db.execute(total_query.order_by(desc(user_urls_table.c.timestamp))).fetchall()
 
     # Store all results in queue for pagination
     queue_key = nick if not search_text else search_text
@@ -377,20 +346,14 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
 
     # Format output as 3 lines with titles and URLs
     formatted_lines = []
-    for i, (url, title, timestamp) in enumerate(
-        page_results[:URLS_PER_PAGE], 1
-    ):
+    for i, (url, title, timestamp) in enumerate(page_results[:URLS_PER_PAGE], 1):
         url_title = title or "No title available"
         # Truncate long titles
         if len(url_title) > 50:
             url_title = formatting.truncate(url_title, 47) + "..."
         formatted_lines.append(f"{i}. {url_title} - {url}")
 
-    output_prefix = (
-        f"Recent links for {search_text}: "
-        if search_text
-        else "Recent links in channel: "
-    )
+    output_prefix = f"Recent links for {search_text}: " if search_text else "Recent links in channel: "
 
     if len(all_url_results) > URLS_PER_PAGE:
         output_prefix += f"(showing {URLS_PER_PAGE} of {len(all_url_results)}, use .urlsn for more)"
@@ -427,19 +390,13 @@ def urls_next(text: str, chan: str, conn, nick: str) -> str:
     # Format output
     output_lines = []
     start_number = (len(queued_results) - len(remaining_results)) + 1
-    for i, (url, title, timestamp) in enumerate(
-        next_page_results, start_number
-    ):
+    for i, (url, title, timestamp) in enumerate(next_page_results, start_number):
         url_title = title or "No title available"
         if len(url_title) > 50:
             url_title = formatting.truncate(url_title, 47) + "..."
         output_lines.append(f"{i}. {url_title} - {url}")
 
-    more_links_prefix = (
-        f"More links for {search_text}: "
-        if search_text
-        else "More links in channel: "
-    )
+    more_links_prefix = f"More links for {search_text}: " if search_text else "More links in channel: "
 
     if len(remaining_results) > URLS_PER_PAGE:
         more_links_prefix += f"(showing {URLS_PER_PAGE} more, {len(remaining_results) - URLS_PER_PAGE} remaining)"
@@ -472,12 +429,8 @@ def searchword(text, chan, conn):
         i += 1
         if nick == search_nick or not text or search_nick == "*":
             if text in message:
-                date = datetime.fromtimestamp(message_time).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                message = message.replace("\x01ACTION ", "* ").replace(
-                    "\x01", ""
-                )
+                date = datetime.fromtimestamp(message_time).strftime("%Y-%m-%d %H:%M:%S")
+                message = message.replace("\x01ACTION ", "* ").replace("\x01", "")
                 message = message.replace(text, f"\x02{text}\x02")
                 return f"{date} {nick}: {message}"
 

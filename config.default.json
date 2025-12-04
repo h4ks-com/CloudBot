@@ -134,9 +134,14 @@
             }
         },
         "beapin": {
-            "api_url": "https://beans.h4ks.com",
+            "api_url": "http://localhost:8383",
             "admin_api_key": "",
             "bot_username": "cloudbot"
+        },
+        "openrouter": {
+            "default_model": "openai/gpt-3.5-turbo",
+            "max_history_messages": 50,
+            "timeout": 30
         }
     },
     "webhooks": {
@@ -169,7 +174,8 @@
         "newsapi": "",
         "webshare": "",
         "github": "",
-        "google": ""
+        "google": "",
+        "openrouter": ""
     },
     "database": "sqlite:///cloudbot.db",
     "location_bias_cc": null,
