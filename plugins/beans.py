@@ -814,10 +814,7 @@ def slots(
         if not success:
             return f"{result} 🎰 JACKPOT! But {error_msg}"
 
-        return (
-            f"{result} 🎰 JACKPOT! {dm_msg}"
-            + (" ⏳" if is_cooldown else "")
-        )
+        return f"{result} 🎰 JACKPOT! {dm_msg}" + (" ⏳" if is_cooldown else "")
     elif matches == 2:
         prize = math.ceil(bet_multiplier * (max_prize / 2))
 
@@ -829,9 +826,7 @@ def slots(
         if not success:
             return f"{result} 🎰 You won! But {error_msg}"
 
-        return (
-            f"{result} 🎰 You won! {dm_msg}" + (" ⏳" if is_cooldown else "")
-        )
+        return f"{result} 🎰 You won! {dm_msg}" + (" ⏳" if is_cooldown else "")
     elif matches == 1:
         return f"{result} Almost there! Keep trying! You lost {bet:,} beans."
     else:

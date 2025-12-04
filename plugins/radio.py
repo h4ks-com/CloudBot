@@ -60,7 +60,9 @@ def check_user_authenticated(conn, nick):
     return None
 
 
-def check_queue_rate_limit(conn, nick: str, chan: str) -> tuple[bool, str | None]:
+def check_queue_rate_limit(
+    conn, nick: str, chan: str
+) -> tuple[bool, str | None]:
     """
     Check if user has exceeded queue addition rate limit.
 
@@ -70,7 +72,11 @@ def check_queue_rate_limit(conn, nick: str, chan: str) -> tuple[bool, str | None
     """
     is_authenticated = check_user_authenticated(conn, nick) is None
 
-    limit = QUEUE_RATE_LIMIT_AUTHENTICATED if is_authenticated else QUEUE_RATE_LIMIT_UNAUTHENTICATED
+    limit = (
+        QUEUE_RATE_LIMIT_AUTHENTICATED
+        if is_authenticated
+        else QUEUE_RATE_LIMIT_UNAUTHENTICATED
+    )
     current_time = time.time()
     cutoff_time = current_time - QUEUE_RATE_LIMIT_WINDOW
 
@@ -79,11 +85,17 @@ def check_queue_rate_limit(conn, nick: str, chan: str) -> tuple[bool, str | None
     if key not in queue_additions_tracker:
         queue_additions_tracker[key] = []
 
-    recent_additions = [timestamp for timestamp in queue_additions_tracker[key] if timestamp > cutoff_time]
+    recent_additions = [
+        timestamp
+        for timestamp in queue_additions_tracker[key]
+        if timestamp > cutoff_time
+    ]
     queue_additions_tracker[key] = recent_additions
 
     if len(recent_additions) >= limit:
-        remaining_time = int(recent_additions[0] + QUEUE_RATE_LIMIT_WINDOW - current_time)
+        remaining_time = int(
+            recent_additions[0] + QUEUE_RATE_LIMIT_WINDOW - current_time
+        )
         minutes = remaining_time // 60
         seconds = remaining_time % 60
 
@@ -213,7 +225,9 @@ def fetch_current_metadata(config: dict[str, Any]) -> dict[str, Any] | None:
         headers["Authorization"] = f"Bearer {api_token}"
 
     try:
-        response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=30.0)
+        response = requests.get(
+            f"{api_url}/metadata/now", headers=headers, timeout=30.0
+        )
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
@@ -221,7 +235,9 @@ def fetch_current_metadata(config: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
 
-def format_livestream_message(event_type: str, metadata_response: dict[str, Any], radio_url: str) -> str | None:
+def format_livestream_message(
+    event_type: str, metadata_response: dict[str, Any], radio_url: str
+) -> str | None:
     """Format livestream event with current metadata."""
     source = metadata_response.get("source", "unknown")
     metadata = metadata_response.get("metadata", {})
@@ -261,14 +277,18 @@ def format_livestream_message(event_type: str, metadata_response: dict[str, Any]
         return f"📺 Livestream started | Listen: {radio_url}"
     elif event_type == "livestream_ended":
         if source == "fallback":
-            return f"📻 Livestream ended, back to fallback: ♫ {artist} - {title}"
+            return (
+                f"📻 Livestream ended, back to fallback: ♫ {artist} - {title}"
+            )
         elif source == "user":
             return f"🎵 Livestream ended, now playing: ♫ {artist} - {title}"
         return "📺 Livestream ended"
     return None
 
 
-def send_debounced_message(bot_instance: Any, chan: str, event_type: str) -> None:
+def send_debounced_message(
+    bot_instance: Any, chan: str, event_type: str
+) -> None:
     """Fetch metadata after delay and send message if different from last."""
     config = bot_instance.config.get("plugins", {}).get("radio", {})
     connection_name = config.get("connection", "gobot")
@@ -278,7 +298,9 @@ def send_debounced_message(bot_instance: Any, chan: str, event_type: str) -> Non
         return
 
     radio_url = get_radio_url(config)
-    message = format_livestream_message(event_type, metadata_response, radio_url)
+    message = format_livestream_message(
+        event_type, metadata_response, radio_url
+    )
     if not message:
         return
 
@@ -346,7 +368,9 @@ def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
 
     connection = bot_instance.connections.get(connection_name)
     if not connection or not connection.connected:
-        logger.warning("Connection %s not available for radio webhook", connection_name)
+        logger.warning(
+            "Connection %s not available for radio webhook", connection_name
+        )
         return
 
     # Webhook sends flat structure with "playlist" field
@@ -367,7 +391,9 @@ def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
                 and last_state.get("artist") == current_state["artist"]
                 and last_state.get("event") == event_type
             ):
-                logger.debug("Skipping duplicate immediate message for %s", chan)
+                logger.debug(
+                    "Skipping duplicate immediate message for %s", chan
+                )
                 continue
 
             connection.message(chan, message)
@@ -375,7 +401,9 @@ def handle_radio_webhook(bot_instance: Any, payload: dict[str, Any]) -> None:
             logger.info("Sent immediate message to %s: %s", chan, message)
 
 
-def format_radio_message(event_type: str, payload: dict[str, Any], config: dict[str, Any]) -> str | None:
+def format_radio_message(
+    event_type: str, payload: dict[str, Any], config: dict[str, Any]
+) -> str | None:
     """Format webhook payload into IRC message."""
     if event_type == "song_changed":
         data = payload.get("data", {})
@@ -417,10 +445,16 @@ def format_radio_message(event_type: str, payload: dict[str, Any], config: dict[
 
         minutes = int(duration_seconds // 60)
         seconds = int(duration_seconds % 60)
-        duration_str = f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+        duration_str = (
+            f"{minutes}m {seconds}s" if minutes > 0 else f"{seconds}s"
+        )
 
         api_url = config.get("api_url", "")
-        full_url = f"{api_url}{recording_url}" if api_url and recording_url else recording_url
+        full_url = (
+            f"{api_url}{recording_url}"
+            if api_url and recording_url
+            else recording_url
+        )
 
         return f"💾 Recording saved: ♫ {artist} - {title} ({duration_str}) | {full_url}"
     return None
@@ -440,7 +474,9 @@ def radio_source(bot: Any) -> str:
     if api_token:
         headers["Authorization"] = f"Bearer {api_token}"
 
-    response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=30.0)
+    response = requests.get(
+        f"{api_url}/metadata/now", headers=headers, timeout=30.0
+    )
     response.raise_for_status()
     data = response.json()
 
@@ -471,7 +507,9 @@ def radio(bot: Any) -> str:
     if api_token:
         headers["Authorization"] = f"Bearer {api_token}"
 
-    response = requests.get(f"{api_url}/metadata/now", headers=headers, timeout=30.0)
+    response = requests.get(
+        f"{api_url}/metadata/now", headers=headers, timeout=30.0
+    )
     response.raise_for_status()
     data = response.json()
 
@@ -735,7 +773,9 @@ def add_url_to_queue(
 
 
 @hook.command("queue", "request", "req")
-def queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+def queue_add(
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+) -> str:
     """<url> - Add a song to the user queue"""
     if not text or not text.strip():
         return "Usage: .queue <url> or .request <url> - Add a YouTube/SoundCloud URL to user queue"
@@ -746,7 +786,9 @@ def queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) 
 
 
 @hook.command("adminqueue", "adminrequest", "areq", permissions=["botcontrol"])
-def admin_queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+def admin_queue_add(
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+) -> str:
     """<url> - Add a song to the fallback playlist"""
     if not text or not text.strip():
         return "Usage: .adminqueue <url> or .adminrequest <url> - Add a URL to fallback playlist"
@@ -761,7 +803,9 @@ def admin_queue_add(text: str, event: Any, bot: Any, conn: Any, nick: str, chan:
 
 
 @hook.command("reqyt", autohelp=False)
-def queue_add_youtube(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+def queue_add_youtube(
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+) -> str:
     """[nick] - Add your last YouTube search result (or another user's) to the user queue"""
     target_nick = text.strip() if text and text.strip() else nick
 
@@ -777,7 +821,9 @@ def queue_add_youtube(text: str, event: Any, bot: Any, conn: Any, nick: str, cha
 
 
 @hook.command("reqgse", autohelp=False)
-def queue_add_gse(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+def queue_add_gse(
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+) -> str:
     """[nick] - Add your last Google search result (or another user's) to the user queue"""
     target_nick = text.strip() if text and text.strip() else nick
 
@@ -793,7 +839,9 @@ def queue_add_gse(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: s
 
 
 @hook.command("areqyt", autohelp=False, permissions=["botcontrol"])
-def admin_queue_add_youtube(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+def admin_queue_add_youtube(
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+) -> str:
     """[nick] - Add your last YouTube search result (or another user's) to the fallback playlist"""
     auth_error = check_user_authenticated(conn, nick)
     if auth_error:
@@ -813,7 +861,9 @@ def admin_queue_add_youtube(text: str, event: Any, bot: Any, conn: Any, nick: st
 
 
 @hook.command("areqgse", autohelp=False, permissions=["botcontrol"])
-def admin_queue_add_gse(text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
+def admin_queue_add_gse(
+    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+) -> str:
     """[nick] - Add your last Google search result (or another user's) to the fallback playlist"""
     auth_error = check_user_authenticated(conn, nick)
     if auth_error:
@@ -842,7 +892,9 @@ def random_slop(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
     config = bot.config.get("plugins", {}).get("radio", {})
     n8n_config = config.get("n8n_slop", {})
 
-    webhook_url = n8n_config.get("webhook_url", "https://n8n.t3ks.com/webhook/slopradio")
+    webhook_url = n8n_config.get(
+        "webhook_url", "https://n8n.t3ks.com/webhook/slopradio"
+    )
     header_name = n8n_config.get("header_name")
     header_value = n8n_config.get("header_value")
 
@@ -899,14 +951,18 @@ def subscribe_radio_webhook() -> None:
     api_token = config.get("api_token")
 
     if not api_url:
-        logger.error("Radio plugin not configured: missing api_url in config.json under plugins.radio")
+        logger.error(
+            "Radio plugin not configured: missing api_url in config.json under plugins.radio"
+        )
         return
 
     headers = {}
     if api_token:
         headers["Authorization"] = f"Bearer {api_token}"
 
-    subscriptions = bot_instance.config.get("webhooks", {}).get("subscriptions", [])
+    subscriptions = bot_instance.config.get("webhooks", {}).get(
+        "subscriptions", []
+    )
 
     for sub in subscriptions:
         if sub.get("plugin") == "radio":
