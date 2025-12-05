@@ -1,10 +1,20 @@
 import json
 import logging
+import re
 import time
 
 from cachetools import TTLCache
 from openrouter import OpenRouter
 from openrouter.components.model import Model, ModelTypedDict
+from openrouter.errors import (
+    BadRequestResponseError,
+    ChatError,
+    ForbiddenResponseError,
+    PaymentRequiredResponseError,
+    ResponseValidationError,
+    TooManyRequestsResponseError,
+    UnauthorizedResponseError,
+)
 from sqlalchemy import (
     Column,
     Float,
@@ -20,7 +30,6 @@ from cloudbot.util import database, formatting, web
 
 logger = logging.getLogger("cloudbot.openrouter")
 
-# Database tables
 llm_user_table = Table(
     "llm_user",
     database.metadata,
@@ -40,35 +49,33 @@ llm_chat_history_table = Table(
     Column("chan", String),
     Column("nick", String),
     Column("model", String),
-    Column("messages", String),
+    Column("role", String),
+    Column("content", String),
     Column("created_at", Float),
     PrimaryKeyConstraint("network", "chan", "nick", "created_at"),
 )
 
-# Constants
-DEFAULT_MODEL = "z-ai/glm-4.5-air:free"
+DEFAULT_MODEL = "google/gemini-2.0-flash-exp:free"
 MAX_HISTORY_MESSAGES = 50
+MAX_IRC_LINE_LENGTH = 350
+
+_free_models_cache: TTLCache = TTLCache(maxsize=1, ttl=3600)
 
 
 def get_user_model(db, network: str, chan: str, nick: str) -> str | None:
-    """Get user's selected model from database."""
     result = db.execute(
-        select([llm_user_table.c.selected_model])
+        select(llm_user_table.c.selected_model)
         .where(llm_user_table.c.network == network)
         .where(llm_user_table.c.chan == chan)
         .where(llm_user_table.c.nick == nick)
     ).fetchone()
-
     return result[0] if result else None
 
 
 def set_user_model(db, network: str, chan: str, nick: str, model: str) -> None:
-    """Set user's selected model in database."""
     current_time = time.time()
-
-    # Update existing record or insert new one
     existing = db.execute(
-        select([llm_user_table.c.selected_model, llm_user_table.c.created_at])
+        select(llm_user_table.c.selected_model)
         .where(llm_user_table.c.network == network)
         .where(llm_user_table.c.chan == chan)
         .where(llm_user_table.c.nick == nick)
@@ -96,280 +103,229 @@ def set_user_model(db, network: str, chan: str, nick: str, model: str) -> None:
     db.commit()
 
 
-def safe_float(value: str | None) -> int:
-    """Convert value to int safely, returning 0 on failure."""
-    if value is None:
-        return -1
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        return -1
-
-
 def is_free_model(model: Model | ModelTypedDict) -> bool:
-    """Check if model is free by checking all pricing values are 0."""
-    id = model["id"] if isinstance(model, dict) else model.id
-    return id.endswith(":free")
-    # if isinstance(model, dict):
-    #     pricing = model.get("pricing", {})
-    #     return (
-    #         safe_float(pricing.get("prompt")) == 0
-    #         and safe_float(pricing.get("completion")) == 0
-    #         and safe_float(pricing.get("request")) == 0
-    #         and safe_float(pricing.get("image")) == 0
-    #     )
-    # else:
-    #     pricing = model.pricing
-    #     return (
-    #         safe_float(pricing.prompt) == 0
-    #         and safe_float(pricing.completion) == 0
-    #         and safe_float(pricing.request) == 0
-    #         and safe_float(pricing.image) == 0
-    #     )
-
-
-# TTL cache for free models (1 hour, maxsize=1 for single API key)
-_free_models_cache = TTLCache(maxsize=1, ttl=3600)
+    model_id = model["id"] if isinstance(model, dict) else model.id
+    return model_id.endswith(":free")
 
 
 def get_free_models(api_key: str) -> list[str]:
-    """Fetch list of free models from OpenRouter API with TTL caching."""
-    # Try to get from cache first
-    cache_key = f"free_models_{api_key}"
+    cache_key = "free_models"
     if cache_key in _free_models_cache:
         return _free_models_cache[cache_key]
 
-    # Cache miss, fetch new data
-    try:
-        with OpenRouter(api_key=api_key) as client:
-            models_response = client.models.list()
-            models = models_response.data if hasattr(models_response, "data") else models_response
-            free_models = []
-            for model in models:
-                if is_free_model(model):
-                    free_models.append(model.id)
-
-            # Store in cache
-            _free_models_cache[cache_key] = free_models
-            return free_models
-    except Exception as e:
-        logger.error(f"Error fetching free models: {str(e)}")
-        return [f"Error fetching free models: {str(e)}"]
+    with OpenRouter(api_key=api_key) as client:
+        models_response = client.models.list()
+        models = models_response.data if hasattr(models_response, "data") else models_response
+        free_models = [model.id for model in models if is_free_model(model)]
+        _free_models_cache[cache_key] = free_models
+        return free_models
 
 
-def add_chat_message(db, network: str, chan: str, nick: str, model: str, messages: list[dict]) -> None:
-    """Add chat message to history."""
+def add_chat_message(db, network: str, chan: str, nick: str, model: str, role: str, content: str) -> None:
     current_time = time.time()
 
-    # Get existing history for this user
-    existing_history = db.execute(
-        select([llm_chat_history_table.c.messages])
-        .where(llm_chat_history_table.c.network == network)
-        .where(llm_chat_history_table.c.chan == chan)
-        .where(llm_chat_history_table.c.nick == nick)
-        .order_by(llm_chat_history_table.c.created_at.desc())
-        .limit(MAX_HISTORY_MESSAGES)
-    ).fetchall()
-
-    # Add new message
     db.execute(
         llm_chat_history_table.insert().values(
             network=network,
             chan=chan,
             nick=nick,
             model=model,
-            messages=json.dumps(messages),
+            role=role,
+            content=content,
             created_at=current_time,
         )
     )
 
-    # Clean up old messages if exceeding limit
-    if len(existing_history) >= MAX_HISTORY_MESSAGES:
-        # Get the oldest message to remove
-        oldest_to_remove = len(existing_history) - MAX_HISTORY_MESSAGES + 1
-        old_messages = db.execute(
-            select([llm_chat_history_table.c.created_at])
+    count = db.execute(
+        select(llm_chat_history_table.c.created_at)
+        .where(llm_chat_history_table.c.network == network)
+        .where(llm_chat_history_table.c.chan == chan)
+        .where(llm_chat_history_table.c.nick == nick)
+    ).fetchall()
+
+    if len(count) > MAX_HISTORY_MESSAGES:
+        oldest = db.execute(
+            select(llm_chat_history_table.c.created_at)
             .where(llm_chat_history_table.c.network == network)
             .where(llm_chat_history_table.c.chan == chan)
             .where(llm_chat_history_table.c.nick == nick)
             .order_by(llm_chat_history_table.c.created_at.asc())
-            .limit(oldest_to_remove)
+            .limit(len(count) - MAX_HISTORY_MESSAGES)
         ).fetchall()
 
-        # Delete old messages
-        for old_msg in old_messages:
+        for row in oldest:
             db.execute(
                 delete(llm_chat_history_table)
                 .where(llm_chat_history_table.c.network == network)
                 .where(llm_chat_history_table.c.chan == chan)
                 .where(llm_chat_history_table.c.nick == nick)
-                .where(llm_chat_history_table.c.created_at == old_msg[0])
+                .where(llm_chat_history_table.c.created_at == row[0])
             )
     db.commit()
 
 
 def get_chat_history(db, network: str, chan: str, nick: str) -> list[dict]:
-    """Get user's chat history."""
-    history = db.execute(
-        select([llm_chat_history_table.c.messages, llm_chat_history_table.c.model, llm_chat_history_table.c.created_at])
+    rows = db.execute(
+        select(llm_chat_history_table.c.role, llm_chat_history_table.c.content)
         .where(llm_chat_history_table.c.network == network)
         .where(llm_chat_history_table.c.chan == chan)
         .where(llm_chat_history_table.c.nick == nick)
-        .order_by(llm_chat_history_table.c.created_at.desc())
+        .order_by(llm_chat_history_table.c.created_at.asc())
         .limit(MAX_HISTORY_MESSAGES)
     ).fetchall()
 
-    # Parse JSON messages back to list
-    chat_history = []
-    for row in history:
-        try:
-            messages = json.loads(row[0])
-            if isinstance(messages, list):
-                chat_history.extend(messages)
-        except (json.JSONDecodeError, TypeError):
-            continue
-
-    return chat_history
+    return [{"role": row[0], "content": row[1]} for row in rows]
 
 
 def clear_chat_history(db, network: str, chan: str, nick: str) -> None:
-    """Clear user's chat history."""
     db.execute(
         delete(llm_chat_history_table)
         .where(llm_chat_history_table.c.network == network)
         .where(llm_chat_history_table.c.chan == chan)
         .where(llm_chat_history_table.c.nick == nick)
     )
+    db.commit()
 
 
-def upload_responses(nick: str, messages: list[dict], header: str) -> str:
-    """Upload chat history to pastebin."""
+def format_history_for_paste(nick: str, messages: list[dict], header: str) -> str:
     bar = "-" * 80
-    lb = "\n"
-    text_contents = (
-        header
-        + "\n" * 4
-        + f"{lb}{bar}{lb*2}".join(
-            f"{nick if message.get('role') == 'user' else 'bot'}: {message.get('content', '')}" for message in messages
-        )
-    )
-    return web.paste(text_contents, ext="txt", raise_on_no_paste=True)
+    lines = [header, "", bar, ""]
+    for msg in messages:
+        role = nick if msg["role"] == "user" else "bot"
+        lines.append(f"{role}: {msg['content']}")
+        lines.append("")
+        lines.append(bar)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def handle_openrouter_error(e: Exception) -> str:
+    if isinstance(e, ChatError):
+        # ChatError has message field
+        return f"API error: {e.message}" if hasattr(e, "message") else str(e)
+    if isinstance(e, UnauthorizedResponseError):
+        return "Invalid OpenRouter API key."
+    if isinstance(e, PaymentRequiredResponseError):
+        return "Insufficient API credits."
+    if isinstance(e, TooManyRequestsResponseError):
+        return "Rate limit exceeded. Try again later."
+    if isinstance(e, ForbiddenResponseError):
+        return "Access forbidden to this model."
+    if isinstance(e, BadRequestResponseError):
+        return f"Bad request: {e.message}"
+    if isinstance(e, ResponseValidationError):
+        body = e.body if hasattr(e, "body") else str(e)
+        if "error" in str(body).lower():
+            try:
+                error_data = json.loads(body) if isinstance(body, str) else body
+                if isinstance(error_data, dict) and "error" in error_data:
+                    error_msg = error_data["error"].get("message", str(error_data["error"]))
+                    return f"API error: {error_msg}"
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+        return f"Response error: {body}"
+    return f"Error: {e}"
 
 
 @hook.command("llm", autohelp=False)
-def llm_chat(text: str, chan: str, conn, db, nick: str) -> str:
+def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
     """<message> - Chat with AI using your selected model"""
     if not text:
-        return "Please provide a message to chat with the AI."
+        return "Usage: .llm <message>"
 
-    # Get user's selected model or use default
     user_model = get_user_model(db, conn.name, chan, nick)
     model = user_model or conn.bot.config.get("plugins", {}).get("openrouter", {}).get("default_model", DEFAULT_MODEL)
 
-    # Get API key
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
-        return "OpenRouter API key not configured. Ask bot admin to add 'openrouter' to api_keys in config.json."
+        return "OpenRouter API key not configured."
 
     try:
         with OpenRouter(api_key=api_key) as client:
-            # Get chat history for context
-            chat_history = get_chat_history(db, conn.name, chan, nick)
+            history = get_chat_history(db, conn.name, chan, nick)
+            messages = history[-10:] + [{"role": "user", "content": text}]
 
-            # Prepare messages for API
-            messages = []
-            if chat_history:
-                # Add recent history messages (limit to last 10 for context)
-                for msg in chat_history[-10:]:
-                    if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                        messages.append(msg)
+            response = client.chat.send(model=model, messages=messages)
 
-            # Add current user message
-            messages.append({"role": "user", "content": text})
-
-            # Send to OpenRouter
-            response = client.chat.send(
-                model=model,
-                messages=messages,
-            )
-
-            # Check if response has choices and extract content
             if not hasattr(response, "choices") or not response.choices:
-                return "Error: No response from AI model."
+                return "No response from AI."
 
-            # Store the interaction in history
             choice = response.choices[0]
             if not hasattr(choice, "message") or not hasattr(choice.message, "content"):
-                return "Error: Invalid response format from AI model."
+                return "Invalid response format."
 
-            assistant_message = {"role": "assistant", "content": choice.message.content}
-            add_chat_message(db, conn.name, chan, nick, model, [assistant_message])
+            content = choice.message.content
+            if not content:
+                return "Empty response from AI."
 
-            # Truncate long responses and paste to pastebin
-            response_content = choice.message.content
-            truncated = formatting.truncate_str(response_content, 350)
-            if len(truncated) < len(response_content):
-                # Get full chat history for pastebin
+            # Convert content to string if it's not already
+            if not isinstance(content, str):
+                content = str(content)
+
+            add_chat_message(db, conn.name, chan, nick, model, "user", text)
+            add_chat_message(db, conn.name, chan, nick, model, "assistant", content)
+
+            truncated = formatting.truncate_str(content, MAX_IRC_LINE_LENGTH)
+            if len(truncated) < len(content):
                 full_history = get_chat_history(db, conn.name, chan, nick)
-                paste_url = upload_responses(nick, full_history, f"{nick}'s OpenRouter conversation in {chan}")
-                return [f"{truncated} (full response: {paste_url})"]
+                paste_text = format_history_for_paste(nick, full_history, f"{nick}'s conversation in {chan}")
+                paste_url = web.paste(paste_text, ext="txt", raise_on_no_paste=True)
+                return f"{truncated} (full: {paste_url})"
 
-            return response_content
+            return content
 
-    except Exception as e:
-        error_msg = str(e)
-        logger.error(f"OpenRouter API error: {error_msg}")
-
-        # Handle specific API errors
-        if "Provider returned error" in error_msg:
-            return f"OpenRouter API error: {error_msg}"
-        elif "choices" in error_msg.lower():
-            return f"Response format error: {error_msg}"
-        elif "No response from AI model" in error_msg:
-            return f"No response received from model: {model}"
-        elif "Invalid API key" in error_msg:
-            return "Invalid OpenRouter API key. Please ask bot admin to configure it."
-        elif "Model not found" in error_msg:
-            return "Model not found. Available models: .llmlist"
-        elif "rate limit" in error_msg.lower():
-            return "Rate limit exceeded. Please try again later."
-        elif "insufficient credits" in error_msg.lower():
-            return "Insufficient API credits. Please check your OpenRouter account."
-        else:
-            return f"Error chatting with AI: {error_msg}"
+    except (
+        ChatError,
+        UnauthorizedResponseError,
+        PaymentRequiredResponseError,
+        TooManyRequestsResponseError,
+        ForbiddenResponseError,
+        BadRequestResponseError,
+        ResponseValidationError,
+    ) as e:
+        logger.error(f"OpenRouter API error: {e}")
+        return handle_openrouter_error(e)
 
 
 @hook.command("llmmodel", autohelp=False)
 def llm_set_model(text: str, chan: str, conn, db, nick: str) -> str:
     """<model> - Change your AI model"""
-    if not text:
-        current_model = get_user_model(db, conn.name, chan, nick)
-        if current_model:
-            return f"Your current model: {current_model}. Available models: .llmlist"
-        else:
-            return f"No model set for you. Using default model {conn.bot.config.get('plugins', {}).get('openrouter', {}).get('default_model', DEFAULT_MODEL)}. Available models: .llmlist"
-
-    # Get available free models
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
         return "OpenRouter API key not configured."
 
-    free_models = get_free_models(api_key)
+    if not text:
+        current = get_user_model(db, conn.name, chan, nick)
+        default = conn.bot.config.get("plugins", {}).get("openrouter", {}).get("default_model", DEFAULT_MODEL)
+        model = current or default
+        return f"Current model: {model}. Use .llmlist to see available models."
+
+    try:
+        free_models = get_free_models(api_key)
+    except (
+        ChatError,
+        UnauthorizedResponseError,
+        PaymentRequiredResponseError,
+        TooManyRequestsResponseError,
+        ForbiddenResponseError,
+        BadRequestResponseError,
+        ResponseValidationError,
+    ) as e:
+        logger.error(f"Error fetching models: {e}")
+        return handle_openrouter_error(e)
+
     if not free_models:
-        return "No free models available at the moment."
+        return "No free models available."
 
-    # Check if requested model is in free models
     if text not in free_models:
-        return f"Model '{text}' not available. Free models: {', '.join(free_models[:5])}"
+        return f"Model '{text}' not available. Use .llmlist to see available models."
 
-    # Set user's model preference
     set_user_model(db, conn.name, chan, nick, text)
-
-    return f"Model changed to {text}. Your preference has been saved."
+    return f"Model set to {text}"
 
 
 @hook.command("llmlist", "llmmodels", autohelp=False)
-def llm_list_models(chan: str, conn) -> str:
+def llm_list_models(conn) -> str:
     """List available free AI models"""
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
@@ -377,119 +333,109 @@ def llm_list_models(chan: str, conn) -> str:
 
     try:
         free_models = get_free_models(api_key)
-        if not free_models:
-            return "No free models available at the moment."
+    except (
+        ChatError,
+        UnauthorizedResponseError,
+        PaymentRequiredResponseError,
+        TooManyRequestsResponseError,
+        ForbiddenResponseError,
+        BadRequestResponseError,
+        ResponseValidationError,
+    ) as e:
+        logger.error(f"Error listing models: {e}")
+        return handle_openrouter_error(e)
 
-        if len(free_models) <= 10:
-            model_list = ", ".join(free_models)
-            return f"Available free models: {model_list}"
+    if not free_models:
+        return "No free models available."
 
-        # Paste all models to pastebin and show first 10 + paste URL
-        models_text = "\n".join(free_models)
-        paste_url = web.paste(models_text, ext="txt", raise_on_no_paste=True)
+    if len(free_models) <= 10:
+        return f"Free models: {', '.join(free_models)}"
 
-        first_10 = ", ".join(free_models[:10])
-        return f"Available free models: {first_10} (and {len(free_models) - 10} more) - Full list: {paste_url}"
-    except Exception as e:
-        logger.error(f"Error listing models: {str(e)}")
-        return f"Error listing models: {str(e)}"
+    models_text = "\n".join(free_models)
+    paste_url = web.paste(models_text, ext="txt", raise_on_no_paste=True)
+    first_models = ", ".join(free_models[:5])
+    return f"Free models: {first_models} (+{len(free_models) - 5} more): {paste_url}"
 
 
 @hook.command("llmapp", autohelp=False)
 def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
-    """<app_description> - Create and share AI app"""
+    """<description> - Create an HTML app"""
     if not text:
-        return "Please provide a description for the app you want to create."
+        return "Usage: .llmapp <app description>"
 
-    # Get user's selected model or use default
     user_model = get_user_model(db, conn.name, chan, nick)
     model = user_model or conn.bot.config.get("plugins", {}).get("openrouter", {}).get("default_model", DEFAULT_MODEL)
 
-    # Get API key
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
         return "OpenRouter API key not configured."
 
+    app_prompt = (
+        f"{text}\n\n"
+        "Create a single HTML file with all CSS and JavaScript inline. "
+        "The app should be fully functional and self-contained. "
+        "Return only the HTML code in a single code block."
+    )
+
     try:
         with OpenRouter(api_key=api_key) as client:
-            # Get chat history for context
-            chat_history = get_chat_history(db, conn.name, chan, nick)
+            history = get_chat_history(db, conn.name, chan, nick)
+            messages = history[-10:] + [{"role": "user", "content": app_prompt}]
 
-            # Prepare messages for API
-            messages = []
-            if chat_history:
-                # Add recent history messages (limit to last 10 for context)
-                for msg in chat_history[-10:]:
-                    if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                        messages.append(msg)
+            response = client.chat.send(model=model, messages=messages, temperature=0.7, max_tokens=4000)
 
-            # Add app creation prompt
-            app_prompt = (
-                text + "\n\nCreate a single HTML file with all CSS and JavaScript inline. "
-                "The app should be fully functional and self-contained. "
-                "Return only the HTML code in a single code block, no explanations."
-            )
+            if not hasattr(response, "choices") or not response.choices:
+                return "No response from AI."
 
-            messages.append({"role": "user", "content": app_prompt})
-
-            # Send to OpenRouter
-            response = client.chat.send(
-                model=model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=2000,
-            )
-
-            # Extract HTML from response
             content = response.choices[0].message.content
+            if not content:
+                return "Empty response from AI."
 
-            # Look for HTML code blocks
-            import re
+            # Convert content to string if it's not already
+            if not isinstance(content, str):
+                content = str(content)
 
-            code_block_pattern = re.compile(r"```html\n?(.*?)\n?```", re.DOTALL)
-            match = code_block_pattern.search(content)
-
-            if match:
-                html_content = match.group(1).strip()
+            html_match = re.search(r"```html\n?(.*?)\n?```", content, re.DOTALL)
+            if html_match:
+                html_content = html_match.group(1).strip()
             else:
-                # Fallback: try to extract any code block
-                generic_code_pattern = re.compile(r"```\n?(.*?)\n?```", re.DOTALL)
-                generic_match = generic_code_pattern.search(content)
-                if generic_match:
-                    html_content = generic_match.group(1).strip()
-                else:
-                    html_content = content
+                generic_match = re.search(r"```\n?(.*?)\n?```", content, re.DOTALL)
+                html_content = generic_match.group(1).strip() if generic_match else content
 
-            # Upload to pastebin
             html_url = web.paste(html_content, ext="html", raise_on_no_paste=True)
-            paste_url = html_url.removesuffix(".html") + "/p"
 
-            # Store the interaction in history
-            assistant_message = {"role": "assistant", "content": f"Created app: {paste_url}"}
-            add_chat_message(db, conn.name, chan, nick, model, [assistant_message])
+            add_chat_message(db, conn.name, chan, nick, model, "user", app_prompt)
+            add_chat_message(db, conn.name, chan, nick, model, "assistant", f"Created app: {html_url}")
 
-            return f"App created: {paste_url} - Try online: {html_url}"
+            return f"App created: {html_url}"
 
-    except Exception as e:
-        return f"Error creating app: {str(e)}"
+    except (
+        ChatError,
+        UnauthorizedResponseError,
+        PaymentRequiredResponseError,
+        TooManyRequestsResponseError,
+        ForbiddenResponseError,
+        BadRequestResponseError,
+        ResponseValidationError,
+    ) as e:
+        logger.error(f"OpenRouter API error: {e}")
+        return handle_openrouter_error(e)
 
 
 @hook.command("llmpaste", autohelp=False)
 def llm_paste_history(chan: str, conn, db, nick: str) -> str:
     """Share your chat history"""
-    # Get user's chat history
-    chat_history = get_chat_history(db, conn.name, chan, nick)
-    if not chat_history:
-        return "No chat history to share."
+    history = get_chat_history(db, conn.name, chan, nick)
+    if not history:
+        return "No chat history."
 
-    # Upload to pastebin
-    paste_url = upload_responses(nick, chat_history, f"{nick}'s OpenRouter conversation in {chan}")
-
-    return f"Chat history ({len(chat_history)} messages): {paste_url}"
+    paste_text = format_history_for_paste(nick, history, f"{nick}'s conversation in {chan}")
+    paste_url = web.paste(paste_text, ext="txt", raise_on_no_paste=True)
+    return f"Chat history ({len(history)} messages): {paste_url}"
 
 
 @hook.command("llmclear", autohelp=False)
 def llm_clear_history(chan: str, conn, db, nick: str) -> str:
     """Clear your chat history"""
     clear_chat_history(db, conn.name, chan, nick)
-    return "Chat history cleared. Your model preference has been kept."
+    return "Chat history cleared."

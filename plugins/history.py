@@ -1,7 +1,6 @@
 import re
 import time
 from datetime import datetime
-from typing import TypeVar
 
 import requests
 from sqlalchemy import (
@@ -21,8 +20,6 @@ from cloudbot.event import EventType
 from cloudbot.util import database, formatting, queue, timeformat
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
-
-T = TypeVar("T")
 
 seen_table = Table(
     "seen_user",
