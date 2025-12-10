@@ -48,6 +48,15 @@ REPLACEMENT_COMMANDS = {
         ],
         "flags": re.MULTILINE | re.IGNORECASE,
     },
+    "bub": {
+        "pattern": r"\s+",
+        "replacements": [
+            "\x02, but GI Joe is so good\x02 ",
+            " \x02and Minecraft and\x02 ",
+            " \x02and Dzogchen and\x02 ",
+        ],
+        "flags": re.MULTILINE | re.IGNORECASE,
+    },
 }
 
 
