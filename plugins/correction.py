@@ -85,16 +85,19 @@ def create_replacement_command(command_name: str):
     config = REPLACEMENT_COMMANDS[command_name]
 
     def replacement_func(
-        bot, reply, text: str, chan: str, nick: str, conn
+        bot, reply, text: str, chan: str, nick: str, conn, stdin=None
     ) -> str:
-        if not text:
-            return f"Usage: {command_name} <nick>"
+        if stdin:
+            line = stdin
+        else:
+            if not text:
+                return f"Usage: {command_name} <nick>"
 
-        target_nick = text.split()[0]
-        line = get_latest_line(None, conn, chan, target_nick)
+            target_nick = text.split()[0]
+            line = get_latest_line(None, conn, chan, target_nick)
 
-        if line is None:
-            return f"Nothing found in recent history for {target_nick}"
+            if line is None:
+                return f"Nothing found in recent history for {target_nick}"
 
         replacements = config["replacements"]
         replacement_cycle = cycle(replacements)

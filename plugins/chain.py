@@ -145,13 +145,14 @@ def is_hook_allowed(_hook):
     return bool(allow_cache.get(name))
 
 
-def wrap_event(_hook, event, cmd, args):
+def wrap_event(_hook, event, cmd, args, stdin=None):
     cmd_event = CommandEvent(
         base_event=event,
         text=args.strip(),
         triggered_command=cmd,
         hook=_hook,
         cmd_prefix="",
+        stdin=stdin,
     )
     return cmd_event
 
@@ -234,9 +235,15 @@ async def chain(text, bot, event):
 
     while cmds:
         cmd, _hook, args = cmds.pop(0)
-        args += (" " if args else "") + buffer
+
+        stdin_val = None
+        if "stdin" in _hook.required_args:
+            stdin_val = buffer
+        else:
+            args += (" " if args else "") + buffer
+
         buffer = ""
-        cmd_event = wrap_event(_hook, event, cmd, args)
+        cmd_event = wrap_event(_hook, event, cmd, args, stdin=stdin_val)
         cmd_event.message = message
         cmd_event.reply = reply
         cmd_event.action = action
