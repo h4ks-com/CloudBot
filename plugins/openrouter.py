@@ -200,9 +200,38 @@ def format_history_for_paste(nick: str, messages: list[dict], header: str) -> st
 
 
 def handle_openrouter_error(e: Exception) -> str:
+    logger.debug(f"Full error object: {repr(e)}")
+    logger.debug(f"Error attributes: {dir(e)}")
+
     if isinstance(e, ChatError):
-        # ChatError has message field
-        return f"API error: {e.message}" if hasattr(e, "message") else str(e)
+        error_msg = None
+        if hasattr(e, "body"):
+            try:
+                body = e.body
+                logger.debug(f"ChatError body: {body}")
+                if isinstance(body, str):
+                    body_data = json.loads(body)
+                else:
+                    body_data = body
+                if isinstance(body_data, dict) and "error" in body_data:
+                    error_info = body_data["error"]
+                    if isinstance(error_info, dict):
+                        if "metadata" in error_info and isinstance(error_info["metadata"], dict):
+                            error_msg = error_info["metadata"].get("raw")
+                        if not error_msg:
+                            error_msg = error_info.get("message", str(error_info))
+                    else:
+                        error_msg = str(error_info)
+            except (json.JSONDecodeError, TypeError, AttributeError, KeyError) as parse_err:
+                logger.debug(f"Error parsing ChatError body: {parse_err}")
+
+        if not error_msg and hasattr(e, "message"):
+            error_msg = e.message
+
+        if error_msg:
+            return f"API error: {error_msg}"
+        return f"API error: {str(e)}"
+
     if isinstance(e, UnauthorizedResponseError):
         return "Invalid OpenRouter API key."
     if isinstance(e, PaymentRequiredResponseError):
@@ -212,18 +241,55 @@ def handle_openrouter_error(e: Exception) -> str:
     if isinstance(e, ForbiddenResponseError):
         return "Access forbidden to this model."
     if isinstance(e, BadRequestResponseError):
-        return f"Bad request: {e.message}"
+        error_msg = None
+        if hasattr(e, "body"):
+            try:
+                body = e.body
+                logger.debug(f"BadRequestResponseError body: {body}")
+                if isinstance(body, str):
+                    body_data = json.loads(body)
+                else:
+                    body_data = body
+                if isinstance(body_data, dict) and "error" in body_data:
+                    error_info = body_data["error"]
+                    if isinstance(error_info, dict):
+                        if "metadata" in error_info and isinstance(error_info["metadata"], dict):
+                            error_msg = error_info["metadata"].get("raw")
+                        if not error_msg:
+                            error_msg = error_info.get("message", str(error_info))
+                    else:
+                        error_msg = str(error_info)
+            except (json.JSONDecodeError, TypeError, AttributeError, KeyError) as parse_err:
+                logger.debug(f"Error parsing BadRequestResponseError body: {parse_err}")
+
+        if not error_msg and hasattr(e, "message"):
+            error_msg = e.message
+
+        if error_msg:
+            return f"Bad request: {error_msg}"
+        return f"Bad request: {str(e)}"
+
     if isinstance(e, ResponseValidationError):
         body = e.body if hasattr(e, "body") else str(e)
+        logger.debug(f"ResponseValidationError body: {body}")
         if "error" in str(body).lower():
             try:
                 error_data = json.loads(body) if isinstance(body, str) else body
                 if isinstance(error_data, dict) and "error" in error_data:
-                    error_msg = error_data["error"].get("message", str(error_data["error"]))
+                    error_info = error_data["error"]
+                    if isinstance(error_info, dict):
+                        if "metadata" in error_info and isinstance(error_info["metadata"], dict):
+                            error_msg = error_info["metadata"].get("raw")
+                        else:
+                            error_msg = error_info.get("message", str(error_info))
+                    else:
+                        error_msg = str(error_info)
                     return f"API error: {error_msg}"
-            except (json.JSONDecodeError, TypeError, AttributeError):
-                pass
+            except (json.JSONDecodeError, TypeError, AttributeError, KeyError) as parse_err:
+                logger.debug(f"Error parsing ResponseValidationError: {parse_err}")
         return f"Response error: {body}"
+
+    logger.debug(f"Unhandled error type: {type(e)}")
     return f"Error: {e}"
 
 
@@ -283,7 +349,10 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
         BadRequestResponseError,
         ResponseValidationError,
     ) as e:
-        logger.error(f"OpenRouter API error: {e}")
+        error_type = type(e).__name__
+        error_body = getattr(e, "body", None)
+        error_msg = getattr(e, "message", str(e))
+        logger.error(f"OpenRouter API error: type={error_type}, message={error_msg}, body={error_body}")
         return handle_openrouter_error(e)
 
 
@@ -311,7 +380,10 @@ def llm_set_model(text: str, chan: str, conn, db, nick: str) -> str:
         BadRequestResponseError,
         ResponseValidationError,
     ) as e:
-        logger.error(f"Error fetching models: {e}")
+        error_type = type(e).__name__
+        error_body = getattr(e, "body", None)
+        error_msg = getattr(e, "message", str(e))
+        logger.error(f"Error fetching models: type={error_type}, message={error_msg}, body={error_body}")
         return handle_openrouter_error(e)
 
     if not free_models:
@@ -342,7 +414,10 @@ def llm_list_models(conn) -> str:
         BadRequestResponseError,
         ResponseValidationError,
     ) as e:
-        logger.error(f"Error listing models: {e}")
+        error_type = type(e).__name__
+        error_body = getattr(e, "body", None)
+        error_msg = getattr(e, "message", str(e))
+        logger.error(f"Error listing models: type={error_type}, message={error_msg}, body={error_body}")
         return handle_openrouter_error(e)
 
     if not free_models:
@@ -418,7 +493,10 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
         BadRequestResponseError,
         ResponseValidationError,
     ) as e:
-        logger.error(f"OpenRouter API error: {e}")
+        error_type = type(e).__name__
+        error_body = getattr(e, "body", None)
+        error_msg = getattr(e, "message", str(e))
+        logger.error(f"OpenRouter API error: type={error_type}, message={error_msg}, body={error_body}")
         return handle_openrouter_error(e)
 
 
