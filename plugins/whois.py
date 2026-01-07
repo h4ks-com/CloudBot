@@ -3,48 +3,52 @@ whois.py
 Provides a command to allow users to look up information on domain names.
 """
 
-import sys
 from contextlib import suppress
+from datetime import datetime
+
+import asyncwhois
 
 from cloudbot import hook
-
-if sys.version_info < (3, 10, 0):
-    import pythonwhois
-else:
-    pythonwhois = None
 
 
 @hook.command
 def whois(text, reply):
     """<domain> - Does a whois query on <domain>."""
-    if pythonwhois is None:
-        return (
-            "The pythonwhois library does not work on this version of Python."
-        )
-
     domain = text.strip().lower()
 
     try:
-        data = pythonwhois.get_whois(domain, normalized=True)
-    except pythonwhois.shared.WhoisException:
-        reply("Invalid input.")
+        _, data = asyncwhois.whois(domain)
+    except Exception as e:
+        reply(f"Invalid input or domain not found: {e}")
         raise
 
     info = []
 
     # We suppress errors here because different domains provide different data fields
-    with suppress(KeyError):
-        info.append(("Registrar", data["registrar"][0]))
+    with suppress(KeyError, TypeError, IndexError):
+        registrar = data.get("registrar")
+        if isinstance(registrar, list):
+            registrar = registrar[0]
+        if registrar:
+            info.append(("Registrar", registrar))
 
-    with suppress(KeyError):
-        info.append(
-            ("Registered", data["creation_date"][0].strftime("%d-%m-%Y"))
-        )
+    with suppress(KeyError, TypeError, IndexError):
+        creation_date = data.get("created")
+        if isinstance(creation_date, list):
+            creation_date = creation_date[0]
+        if isinstance(creation_date, datetime):
+            info.append(
+                ("Registered", creation_date.strftime("%d-%m-%Y"))
+            )
 
-    with suppress(KeyError):
-        info.append(
-            ("Expires", data["expiration_date"][0].strftime("%d-%m-%Y"))
-        )
+    with suppress(KeyError, TypeError, IndexError):
+        expiration_date = data.get("expires")
+        if isinstance(expiration_date, list):
+            expiration_date = expiration_date[0]
+        if isinstance(expiration_date, datetime):
+            info.append(
+                ("Expires", expiration_date.strftime("%d-%m-%Y"))
+            )
 
     if not info:
         return "No information returned."

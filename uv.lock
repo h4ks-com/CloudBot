@@ -21,6 +21,7 @@ dependencies = [
     { name = "astroid" },
     { name = "async-timeout" },
     { name = "asyncio-dgram" },
+    { name = "asyncwhois" },
     { name = "attrs" },
     { name = "beautifulsoup4" },
     { name = "brotli" },
@@ -151,6 +152,7 @@ requires-dist = [
     { name = "astroid", specifier = "==3.1.0" },
     { name = "async-timeout", specifier = "==4.0.2" },
     { name = "asyncio-dgram", specifier = "==2.1.2" },
+    { name = "asyncwhois", specifier = ">=1.1.9" },
     { name = "attrs", specifier = "==21.2.0" },
     { name = "beautifulsoup4", specifier = "==4.10.0" },
     { name = "brotli", specifier = "==1.0.9" },
@@ -382,6 +384,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b8/ae/af5fe668d16e82a05b85855a065ecc239ed2274e6a0d60bca6d1337de7c6/asyncio-dgram-2.1.2.tar.gz", hash = "sha256:bc28a90bc0523009fb0da16ca983c1400ff403a315754d86e037910563697f91", size = 11155, upload-time = "2022-02-04T17:50:13.581Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cf/f0/f75c5455d89d2ad55d797b44b9da8efb45cfa9c00e34b4fd106659112ab1/asyncio_dgram-2.1.2-py3-none-any.whl", hash = "sha256:9ef55fc760f93c8212709329a1e28a1cf1c1f0fc8222f1be0227c2b7606a10a2", size = 7155, upload-time = "2022-02-04T17:50:11.796Z" },
+]
+
+[[package]]
+name = "asyncwhois"
+version = "1.1.12"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "python-socks", extra = ["asyncio"] },
+    { name = "tldextract" },
+    { name = "whodap" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/62/9e/ce16eabc9a3eacd9eb07efc31ab0f1b4b3370c3b7bf6a6891696558b202f/asyncwhois-1.1.12.tar.gz", hash = "sha256:d8b28682100714dd5afdbf8a0826be96255f2a85ee5a9a7efe61fff7525dc88f", size = 78246, upload-time = "2025-10-31T12:59:53.425Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/49/aeecf79bbb89b47b49186455422f040efbacd8199542b45a1db23f5d03cd/asyncwhois-1.1.12-py3-none-any.whl", hash = "sha256:8211d7effe319332b48fd79a0ce84f2c538f6f83f7b500226d15fc0751014403", size = 41995, upload-time = "2025-10-31T12:59:52.245Z" },
 ]
 
 [[package]]
@@ -2239,6 +2256,20 @@ wheels = [
 ]
 
 [[package]]
+name = "python-socks"
+version = "2.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/07/cfdd6a846ac859e513b4e68bb6c669a90a74d89d8d405516fba7fc9c6f0c/python_socks-2.8.0.tar.gz", hash = "sha256:340f82778b20a290bdd538ee47492978d603dff7826aaf2ce362d21ad9ee6f1b", size = 273130, upload-time = "2025-12-09T12:17:05.433Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/10/e2b575faa32d1d32e5e6041fc64794fa9f09526852a06b25353b66f52cae/python_socks-2.8.0-py3-none-any.whl", hash = "sha256:57c24b416569ccea493a101d38b0c82ed54be603aa50b6afbe64c46e4a4e4315", size = 55075, upload-time = "2025-12-09T12:17:03.269Z" },
+]
+
+[package.optional-dependencies]
+asyncio = [
+    { name = "async-timeout", marker = "python_full_version < '3.11'" },
+]
+
+[[package]]
 name = "python-youtube"
 version = "0.9.5"
 source = { registry = "https://pypi.org/simple" }
@@ -2343,6 +2374,18 @@ wheels = [
 [package.optional-dependencies]
 socks = [
     { name = "pysocks" },
+]
+
+[[package]]
+name = "requests-file"
+version = "3.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3c/f8/5dc70102e4d337063452c82e1f0d95e39abfe67aa222ed8a5ddeb9df8de8/requests_file-3.0.1.tar.gz", hash = "sha256:f14243d7796c588f3521bd423c5dea2ee4cc730e54a3cac9574d78aca1272576", size = 6967, upload-time = "2025-10-20T18:56:42.279Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e1/d5/de8f089119205a09da657ed4784c584ede8381a0ce6821212a6d4ca47054/requests_file-3.0.1-py2.py3-none-any.whl", hash = "sha256:d0f5eb94353986d998f80ac63c7f146a307728be051d4d1cd390dbdb59c10fa2", size = 4514, upload-time = "2025-10-20T18:56:41.184Z" },
 ]
 
 [[package]]
@@ -2551,6 +2594,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b1/73/41591c525680cd460a6becf56c9b17468d3711b1df242c53d2c7b2183d16/tiktoken-0.9.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8b3d80aad8d2c6b9238fc1a5524542087c52b860b10cbf952429ffb714bc1136", size = 1197535, upload-time = "2025-02-14T06:02:18.595Z" },
     { url = "https://files.pythonhosted.org/packages/7d/7c/1069f25521c8f01a1a182f362e5c8e0337907fae91b368b7da9c3e39b810/tiktoken-0.9.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:b2a21133be05dc116b1d0372af051cd2c6aa1d2188250c9b553f9fa49301b336", size = 1259548, upload-time = "2025-02-14T06:02:20.729Z" },
     { url = "https://files.pythonhosted.org/packages/6f/07/c67ad1724b8e14e2b4c8cca04b15da158733ac60136879131db05dda7c30/tiktoken-0.9.0-cp311-cp311-win_amd64.whl", hash = "sha256:11a20e67fdf58b0e2dea7b8654a288e481bb4fc0289d3ad21291f8d0849915fb", size = 893895, upload-time = "2025-02-14T06:02:22.67Z" },
+]
+
+[[package]]
+name = "tldextract"
+version = "5.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "filelock" },
+    { name = "idna" },
+    { name = "requests" },
+    { name = "requests-file" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/65/7b/644fbbb49564a6cb124a8582013315a41148dba2f72209bba14a84242bf0/tldextract-5.3.1.tar.gz", hash = "sha256:a72756ca170b2510315076383ea2993478f7da6f897eef1f4a5400735d5057fb", size = 126105, upload-time = "2025-12-28T23:58:05.532Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6d/42/0e49d6d0aac449ca71952ec5bae764af009754fcb2e76a5cc097543747b3/tldextract-5.3.1-py3-none-any.whl", hash = "sha256:6bfe36d518de569c572062b788e16a659ccaceffc486d243af0484e8ecf432d9", size = 105886, upload-time = "2025-12-28T23:58:04.071Z" },
 ]
 
 [[package]]
@@ -2784,6 +2842,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0b/02/ae6ceac1baeda530866a85075641cec12989bd8d31af6d5ab4a3e8c92f47/webencodings-0.5.1.tar.gz", hash = "sha256:b36a1c245f2d304965eb4e0a82848379241dc04b865afcc4aab16748587e1923", size = 9721, upload-time = "2017-04-05T20:21:34.189Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/24/2a3e3df732393fed8b3ebf2ec078f05546de641fe1b667ee316ec1dcf3b7/webencodings-0.5.1-py2.py3-none-any.whl", hash = "sha256:a0af1213f3c2226497a97e2b3aa01a7e4bee4f403f95be16fc9acd2947514a78", size = 11774, upload-time = "2017-04-05T20:21:32.581Z" },
+]
+
+[[package]]
+name = "whodap"
+version = "0.1.14"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/01/37/f9e37c3ed591a506e77fade0ec6be280c09edad1c932b5cfe6219e9cea6d/whodap-0.1.14.tar.gz", hash = "sha256:21ff21d90ac226ab284046dd3f6ce0fd22823d637983159b22b3d90e00cba88b", size = 21798, upload-time = "2025-12-20T17:34:10.916Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/2e/c7e7f72d007472b430fd499a0230c6d07ab716ea064ce0322951c8ea5fe5/whodap-0.1.14-py3-none-any.whl", hash = "sha256:87ee370744a513c0decf67ea45e2665ef36efd18c74df1ef8c7c6327a15e03a0", size = 16401, upload-time = "2025-12-20T17:34:09.569Z" },
 ]
 
 [[package]]
