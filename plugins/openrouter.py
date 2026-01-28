@@ -115,13 +115,19 @@ def get_free_models(api_key: str) -> list[str]:
 
     with OpenRouter(api_key=api_key) as client:
         models_response = client.models.list()
-        models = models_response.data if hasattr(models_response, "data") else models_response
+        models = (
+            models_response.data
+            if hasattr(models_response, "data")
+            else models_response
+        )
         free_models = [model.id for model in models if is_free_model(model)]
         _free_models_cache[cache_key] = free_models
         return free_models
 
 
-def add_chat_message(db, network: str, chan: str, nick: str, model: str, role: str, content: str) -> None:
+def add_chat_message(
+    db, network: str, chan: str, nick: str, model: str, role: str, content: str
+) -> None:
     current_time = time.time()
 
     db.execute(
@@ -187,7 +193,9 @@ def clear_chat_history(db, network: str, chan: str, nick: str) -> None:
     db.commit()
 
 
-def format_history_for_paste(nick: str, messages: list[dict], header: str) -> str:
+def format_history_for_paste(
+    nick: str, messages: list[dict], header: str
+) -> str:
     bar = "-" * 80
     lines = [header, "", bar, ""]
     for msg in messages:
@@ -216,13 +224,22 @@ def handle_openrouter_error(e: Exception) -> str:
                 if isinstance(body_data, dict) and "error" in body_data:
                     error_info = body_data["error"]
                     if isinstance(error_info, dict):
-                        if "metadata" in error_info and isinstance(error_info["metadata"], dict):
+                        if "metadata" in error_info and isinstance(
+                            error_info["metadata"], dict
+                        ):
                             error_msg = error_info["metadata"].get("raw")
                         if not error_msg:
-                            error_msg = error_info.get("message", str(error_info))
+                            error_msg = error_info.get(
+                                "message", str(error_info)
+                            )
                     else:
                         error_msg = str(error_info)
-            except (json.JSONDecodeError, TypeError, AttributeError, KeyError) as parse_err:
+            except (
+                json.JSONDecodeError,
+                TypeError,
+                AttributeError,
+                KeyError,
+            ) as parse_err:
                 logger.debug(f"Error parsing ChatError body: {parse_err}")
 
         if not error_msg and hasattr(e, "message"):
@@ -253,14 +270,25 @@ def handle_openrouter_error(e: Exception) -> str:
                 if isinstance(body_data, dict) and "error" in body_data:
                     error_info = body_data["error"]
                     if isinstance(error_info, dict):
-                        if "metadata" in error_info and isinstance(error_info["metadata"], dict):
+                        if "metadata" in error_info and isinstance(
+                            error_info["metadata"], dict
+                        ):
                             error_msg = error_info["metadata"].get("raw")
                         if not error_msg:
-                            error_msg = error_info.get("message", str(error_info))
+                            error_msg = error_info.get(
+                                "message", str(error_info)
+                            )
                     else:
                         error_msg = str(error_info)
-            except (json.JSONDecodeError, TypeError, AttributeError, KeyError) as parse_err:
-                logger.debug(f"Error parsing BadRequestResponseError body: {parse_err}")
+            except (
+                json.JSONDecodeError,
+                TypeError,
+                AttributeError,
+                KeyError,
+            ) as parse_err:
+                logger.debug(
+                    f"Error parsing BadRequestResponseError body: {parse_err}"
+                )
 
         if not error_msg and hasattr(e, "message"):
             error_msg = e.message
@@ -278,15 +306,26 @@ def handle_openrouter_error(e: Exception) -> str:
                 if isinstance(error_data, dict) and "error" in error_data:
                     error_info = error_data["error"]
                     if isinstance(error_info, dict):
-                        if "metadata" in error_info and isinstance(error_info["metadata"], dict):
+                        if "metadata" in error_info and isinstance(
+                            error_info["metadata"], dict
+                        ):
                             error_msg = error_info["metadata"].get("raw")
                         else:
-                            error_msg = error_info.get("message", str(error_info))
+                            error_msg = error_info.get(
+                                "message", str(error_info)
+                            )
                     else:
                         error_msg = str(error_info)
                     return f"API error: {error_msg}"
-            except (json.JSONDecodeError, TypeError, AttributeError, KeyError) as parse_err:
-                logger.debug(f"Error parsing ResponseValidationError: {parse_err}")
+            except (
+                json.JSONDecodeError,
+                TypeError,
+                AttributeError,
+                KeyError,
+            ) as parse_err:
+                logger.debug(
+                    f"Error parsing ResponseValidationError: {parse_err}"
+                )
         return f"Response error: {body}"
 
     logger.debug(f"Unhandled error type: {type(e)}")
@@ -300,7 +339,9 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
         return "Usage: .llm <message>"
 
     user_model = get_user_model(db, conn.name, chan, nick)
-    model = user_model or conn.bot.config.get("plugins", {}).get("openrouter", {}).get("default_model", DEFAULT_MODEL)
+    model = user_model or conn.bot.config.get("plugins", {}).get(
+        "openrouter", {}
+    ).get("default_model", DEFAULT_MODEL)
 
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
@@ -317,7 +358,9 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
                 return "No response from AI."
 
             choice = response.choices[0]
-            if not hasattr(choice, "message") or not hasattr(choice.message, "content"):
+            if not hasattr(choice, "message") or not hasattr(
+                choice.message, "content"
+            ):
                 return "Invalid response format."
 
             content = choice.message.content
@@ -329,13 +372,19 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
                 content = str(content)
 
             add_chat_message(db, conn.name, chan, nick, model, "user", text)
-            add_chat_message(db, conn.name, chan, nick, model, "assistant", content)
+            add_chat_message(
+                db, conn.name, chan, nick, model, "assistant", content
+            )
 
             truncated = formatting.truncate_str(content, MAX_IRC_LINE_LENGTH)
             if len(truncated) < len(content):
                 full_history = get_chat_history(db, conn.name, chan, nick)
-                paste_text = format_history_for_paste(nick, full_history, f"{nick}'s conversation in {chan}")
-                paste_url = web.paste(paste_text, ext="txt", raise_on_no_paste=True)
+                paste_text = format_history_for_paste(
+                    nick, full_history, f"{nick}'s conversation in {chan}"
+                )
+                paste_url = web.paste(
+                    paste_text, ext="txt", raise_on_no_paste=True
+                )
                 return f"{truncated} (full: {paste_url})"
 
             return content
@@ -352,7 +401,9 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
         error_type = type(e).__name__
         error_body = getattr(e, "body", None)
         error_msg = getattr(e, "message", str(e))
-        logger.error(f"OpenRouter API error: type={error_type}, message={error_msg}, body={error_body}")
+        logger.error(
+            f"OpenRouter API error: type={error_type}, message={error_msg}, body={error_body}"
+        )
         return handle_openrouter_error(e)
 
 
@@ -365,7 +416,11 @@ def llm_set_model(text: str, chan: str, conn, db, nick: str) -> str:
 
     if not text:
         current = get_user_model(db, conn.name, chan, nick)
-        default = conn.bot.config.get("plugins", {}).get("openrouter", {}).get("default_model", DEFAULT_MODEL)
+        default = (
+            conn.bot.config.get("plugins", {})
+            .get("openrouter", {})
+            .get("default_model", DEFAULT_MODEL)
+        )
         model = current or default
         return f"Current model: {model}. Use .llmlist to see available models."
 
@@ -383,7 +438,9 @@ def llm_set_model(text: str, chan: str, conn, db, nick: str) -> str:
         error_type = type(e).__name__
         error_body = getattr(e, "body", None)
         error_msg = getattr(e, "message", str(e))
-        logger.error(f"Error fetching models: type={error_type}, message={error_msg}, body={error_body}")
+        logger.error(
+            f"Error fetching models: type={error_type}, message={error_msg}, body={error_body}"
+        )
         return handle_openrouter_error(e)
 
     if not free_models:
@@ -417,7 +474,9 @@ def llm_list_models(conn) -> str:
         error_type = type(e).__name__
         error_body = getattr(e, "body", None)
         error_msg = getattr(e, "message", str(e))
-        logger.error(f"Error listing models: type={error_type}, message={error_msg}, body={error_body}")
+        logger.error(
+            f"Error listing models: type={error_type}, message={error_msg}, body={error_body}"
+        )
         return handle_openrouter_error(e)
 
     if not free_models:
@@ -439,7 +498,9 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
         return "Usage: .llmapp <app description>"
 
     user_model = get_user_model(db, conn.name, chan, nick)
-    model = user_model or conn.bot.config.get("plugins", {}).get("openrouter", {}).get("default_model", DEFAULT_MODEL)
+    model = user_model or conn.bot.config.get("plugins", {}).get(
+        "openrouter", {}
+    ).get("default_model", DEFAULT_MODEL)
 
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
@@ -457,7 +518,9 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
             history = get_chat_history(db, conn.name, chan, nick)
             messages = history[-10:] + [{"role": "user", "content": app_prompt}]
 
-            response = client.chat.send(model=model, messages=messages, temperature=0.7, max_tokens=4000)
+            response = client.chat.send(
+                model=model, messages=messages, temperature=0.7, max_tokens=4000
+            )
 
             if not hasattr(response, "choices") or not response.choices:
                 return "No response from AI."
@@ -474,13 +537,29 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
             if html_match:
                 html_content = html_match.group(1).strip()
             else:
-                generic_match = re.search(r"```\n?(.*?)\n?```", content, re.DOTALL)
-                html_content = generic_match.group(1).strip() if generic_match else content
+                generic_match = re.search(
+                    r"```\n?(.*?)\n?```", content, re.DOTALL
+                )
+                html_content = (
+                    generic_match.group(1).strip() if generic_match else content
+                )
 
-            html_url = web.paste(html_content, ext="html", raise_on_no_paste=True)
+            html_url = web.paste(
+                html_content, ext="html", raise_on_no_paste=True
+            )
 
-            add_chat_message(db, conn.name, chan, nick, model, "user", app_prompt)
-            add_chat_message(db, conn.name, chan, nick, model, "assistant", f"Created app: {html_url}")
+            add_chat_message(
+                db, conn.name, chan, nick, model, "user", app_prompt
+            )
+            add_chat_message(
+                db,
+                conn.name,
+                chan,
+                nick,
+                model,
+                "assistant",
+                f"Created app: {html_url}",
+            )
 
             return f"App created: {html_url}"
 
@@ -496,7 +575,9 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
         error_type = type(e).__name__
         error_body = getattr(e, "body", None)
         error_msg = getattr(e, "message", str(e))
-        logger.error(f"OpenRouter API error: type={error_type}, message={error_msg}, body={error_body}")
+        logger.error(
+            f"OpenRouter API error: type={error_type}, message={error_msg}, body={error_body}"
+        )
         return handle_openrouter_error(e)
 
 
@@ -507,7 +588,9 @@ def llm_paste_history(chan: str, conn, db, nick: str) -> str:
     if not history:
         return "No chat history."
 
-    paste_text = format_history_for_paste(nick, history, f"{nick}'s conversation in {chan}")
+    paste_text = format_history_for_paste(
+        nick, history, f"{nick}'s conversation in {chan}"
+    )
     paste_url = web.paste(paste_text, ext="txt", raise_on_no_paste=True)
     return f"Chat history ({len(history)} messages): {paste_url}"
 

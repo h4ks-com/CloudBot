@@ -37,18 +37,14 @@ def whois(text, reply):
         if isinstance(creation_date, list):
             creation_date = creation_date[0]
         if isinstance(creation_date, datetime):
-            info.append(
-                ("Registered", creation_date.strftime("%d-%m-%Y"))
-            )
+            info.append(("Registered", creation_date.strftime("%d-%m-%Y")))
 
     with suppress(KeyError, TypeError, IndexError):
         expiration_date = data.get("expires")
         if isinstance(expiration_date, list):
             expiration_date = expiration_date[0]
         if isinstance(expiration_date, datetime):
-            info.append(
-                ("Expires", expiration_date.strftime("%d-%m-%Y"))
-            )
+            info.append(("Expires", expiration_date.strftime("%d-%m-%Y")))
 
     if not info:
         return "No information returned."

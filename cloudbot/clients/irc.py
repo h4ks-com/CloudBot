@@ -8,13 +8,14 @@ import traceback
 from functools import partial
 from itertools import chain
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Tuple, Union, cast
+from typing import Mapping, Optional, Tuple, Union, cast
 
 from irclib.parser import Message
 
 from cloudbot.client import Client, ClientConnectError, client
 from cloudbot.event import Event, EventType, IrcOutEvent
 from cloudbot.util import async_util, colors
+from cloudbot.util.multiline import send_batch_multiline, supports_multiline
 
 logger = logging.getLogger("cloudbot")
 
@@ -146,7 +147,7 @@ class IrcClient(Client):
 
         self._connecting = False
 
-        self._channel_keys: Dict[str, str] = {}
+        self._channel_keys: dict[str, str] = {}
 
     def set_channel_key(
         self, channel: str, key: str, *, override: bool = True
@@ -319,11 +320,15 @@ class IrcClient(Client):
         if self._protocol:
             self._protocol.close()
 
-    def message(self, target, *messages):
-        for text in messages:
-            self.cmd("PRIVMSG", target, text)
+    def message(self, target: str, *messages: str) -> None:
+        """Send one or more messages, using BATCH multiline if supported"""
+        if len(messages) > 1 and supports_multiline(self):
+            send_batch_multiline(self, target, list(messages))
+        else:
+            for text in messages:
+                self.cmd("PRIVMSG", target, text)
 
-    def admin_log(self, text, console=True):
+    def admin_log(self, text: str, console: bool = True) -> None:
         log_chan = self.config.get("log_channel")
         if log_chan:
             self.message(log_chan, text)

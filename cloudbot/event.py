@@ -225,7 +225,9 @@ class Event(Mapping[str, Any]):
         """sends a message to a specific or current channel/user"""
         if target is None:
             if self.chan is None:
-                raise ValueError("Target must be specified when chan is not assigned")
+                raise ValueError(
+                    "Target must be specified when chan is not assigned"
+                )
 
             target = self.chan
 
@@ -248,7 +250,9 @@ class Event(Mapping[str, Any]):
         reply_ping = self.conn.config.get("reply_ping", True)
         if target is None:
             if self.chan is None:
-                raise ValueError("Target must be specified when chan is not assigned")
+                raise ValueError(
+                    "Target must be specified when chan is not assigned"
+                )
 
             target = self.chan
 
@@ -259,7 +263,9 @@ class Event(Mapping[str, Any]):
         if target == self.nick or not reply_ping:
             self.conn.message(target, *messages)
         else:
-            self.conn.message(target, f"({self.nick}) {messages[0]}", *messages[1:])
+            self.conn.message(
+                target, f"({self.nick}) {messages[0]}", *messages[1:]
+            )
 
     def action(self, message, target=None):
         """sends an action to the current channel/user
@@ -267,7 +273,9 @@ class Event(Mapping[str, Any]):
         """
         if target is None:
             if self.chan is None:
-                raise ValueError("Target must be specified when chan is not assigned")
+                raise ValueError(
+                    "Target must be specified when chan is not assigned"
+                )
 
             target = self.chan
 
@@ -277,7 +285,9 @@ class Event(Mapping[str, Any]):
         """sends an ctcp to the current channel/user or a specific channel/user"""
         if target is None:
             if self.chan is None:
-                raise ValueError("Target must be specified when chan is not assigned")
+                raise ValueError(
+                    "Target must be specified when chan is not assigned"
+                )
 
             target = self.chan
 
@@ -292,7 +302,9 @@ class Event(Mapping[str, Any]):
         avoid_notices = self.conn.config.get("avoid_notices", False)
         if target is None:
             if self.nick is None:
-                raise ValueError("Target must be specified when nick is not assigned")
+                raise ValueError(
+                    "Target must be specified when nick is not assigned"
+                )
 
             target = self.nick
 
@@ -307,7 +319,9 @@ class Event(Mapping[str, Any]):
         if not self.mask:
             raise ValueError("has_permission requires mask is not assigned")
 
-        return self.conn.permissions.has_perm_mask(self.mask, permission, notice=notice)
+        return self.conn.permissions.has_perm_mask(
+            self.mask, permission, notice=notice
+        )
 
     async def check_permission(self, permission, notice=True):
         """returns whether or not the current user has a given permission"""
@@ -315,7 +329,9 @@ class Event(Mapping[str, Any]):
             return True
 
         for perm_hook in self.bot.plugin_manager.perm_hooks[permission]:
-            ok, res = await self.bot.plugin_manager.internal_launch(perm_hook, Event(base_event=self, hook=perm_hook))
+            ok, res = await self.bot.plugin_manager.internal_launch(
+                perm_hook, Event(base_event=self, hook=perm_hook)
+            )
             if ok and res:
                 return True
 
@@ -411,9 +427,13 @@ class CommandEvent(Event):
             raise ValueError("Triggered command not set on this event")
 
         if self.hook.doc is None:
-            message = "{}{} requires additional arguments.".format(self.triggered_prefix, self.triggered_command)
+            message = "{}{} requires additional arguments.".format(
+                self.triggered_prefix, self.triggered_command
+            )
         else:
-            message = "{}{} {}".format(self.triggered_prefix, self.triggered_command, self.hook.doc)
+            message = "{}{} {}".format(
+                self.triggered_prefix, self.triggered_command, self.hook.doc
+            )
 
         self.notice(message, target=target)
 
@@ -487,7 +507,9 @@ class IrcOutEvent(Event):
             try:
                 self.parsed_line = Message.parse(self.line)
             except Exception:
-                logger.exception("Unable to parse line requested by hook %s", self.hook)
+                logger.exception(
+                    "Unable to parse line requested by hook %s", self.hook
+                )
                 self.parsed_line = None
 
     def prepare_threaded(self):
@@ -497,7 +519,9 @@ class IrcOutEvent(Event):
             try:
                 self.parsed_line = Message.parse(self.line)
             except Exception:
-                logger.exception("Unable to parse line requested by hook %s", self.hook)
+                logger.exception(
+                    "Unable to parse line requested by hook %s", self.hook
+                )
                 self.parsed_line = None
 
     @property
