@@ -175,8 +175,11 @@
         "webshare": "",
         "github": "",
         "google": "",
-        "openrouter": ""
+        "openrouter": "",
+        "z_ai": ""
     },
+    "z_ai_endpoint": "https://api.z.ai/api/coding/paas/v4/chat/completions",
+    "z_ai_model": "glm-4.7",
     "database": "sqlite:///cloudbot.db",
     "location_bias_cc": null,
     "plugin_loading": {

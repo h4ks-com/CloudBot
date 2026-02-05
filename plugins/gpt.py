@@ -2,12 +2,14 @@ import copy
 import importlib
 import re
 import tempfile
+import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Deque, Literal
 from urllib.parse import urlparse
 
+import jwt
 import pywikibot
 import requests
 from markitdown import MarkItDown
@@ -69,19 +71,61 @@ class Message:
         }
 
 
+def generate_z_ai_token(apikey: str, exp_seconds: int = 3600) -> str:
+    try:
+        api_id, secret = apikey.split(".")
+    except Exception as e:
+        raise ValueError(f"Invalid Z.ai API key format: {e}")
+
+    payload = {
+        "api_key": api_id,
+        "exp": int(round(time.time() * 1000)) + exp_seconds * 1000,
+        "timestamp": int(round(time.time() * 1000)),
+    }
+
+    return jwt.encode(
+        payload,
+        secret,
+        algorithm="HS256",
+        headers={"alg": "HS256", "sign_type": "SIGN"},
+    )
+
+
 def get_completion(messages: list[Message]) -> str:
-    headers = {
-        "accept": "application/json",
-        "Content-Type": "application/json",
-    }
+    z_ai_key = bot.config.get_api_key("z_ai")
 
-    json_data = {
-        "messages": [message.as_dict() for message in messages],
-    }
+    if z_ai_key:
+        z_ai_endpoint = bot.config.get("z_ai_endpoint", "https://api.z.ai/api/paas/v4/chat/completions")
+        z_ai_model = bot.config.get("z_ai_model", "glm-4.7")
 
-    response = get_session().post(API_URL, headers=headers, json=json_data)
-    response.raise_for_status()
-    return response.json()["completion"]
+        token = generate_z_ai_token(z_ai_key)
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        }
+
+        json_data = {
+            "model": z_ai_model,
+            "messages": [message.as_dict() for message in messages],
+        }
+
+        response = get_session().post(z_ai_endpoint, headers=headers, json=json_data)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+    else:
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        json_data = {
+            "messages": [message.as_dict() for message in messages],
+        }
+
+        response = get_session().post(API_URL, headers=headers, json=json_data)
+        response.raise_for_status()
+        return response.json()["completion"]
 
 
 def upload_responses(nick: str, messages: list[Message], header: str) -> str:
