@@ -1,4 +1,5 @@
 import base64
+import logging
 import tempfile
 import time
 from collections import deque
@@ -58,8 +59,34 @@ def _call_gemini(api_key, parts, chan, nick):
         return f"Request failed: {e}"
 
     data = response.json()
-    candidates = data.get("candidates", [{}])
-    for part in candidates[0].get("content", {}).get("parts", []):
+    logger = logging.getLogger("cloudbot")
+    candidates = data.get("candidates", [])
+
+    if not candidates:
+        logger.warning("[gemini] No candidates in response: %s", data)
+        if "promptFeedback" in data:
+            feedback = data["promptFeedback"]
+            if feedback.get("blockReason"):
+                return f"Gemini blocked: {feedback['blockReason']}"
+        return "Gemini returned no results. Check logs for details."
+
+    candidate = candidates[0]
+    logger.info("[gemini] Candidate: %s", {k: v for k, v in candidate.items() if k != "content"})
+
+    if "finishReason" in candidate:
+        reason = candidate["finishReason"]
+        if reason != "STOP":
+            logger.warning("[gemini] Unusual finish reason: %s", reason)
+            if "finishMessage" in candidate:
+                msg = candidate["finishMessage"].replace("[send feedback]", "").replace("(https://ai.google.dev/gemini-api/docs/troubleshooting)", "").strip()
+                return msg
+            if reason in ("SAFETY", "RECITATION", "PROHIBITED_CONTENT"):
+                return f"Gemini refused to generate: {reason}"
+
+    parts = candidate.get("content", {}).get("parts", [])
+    text_parts = []
+
+    for part in parts:
         if "inlineData" in part:
             image_bytes = base64.b64decode(part["inlineData"]["data"])
             mime = part["inlineData"].get("mimeType", "image/png")
@@ -68,8 +95,15 @@ def _call_gemini(api_key, parts, chan, nick):
                 f.write(image_bytes)
                 f.flush()
                 return FileIrcResponseWrapper.upload_file(f.name, chan or nick)
+        if "text" in part:
+            text_parts.append(part["text"])
 
-    return "No image in Gemini response."
+    logger.warning("[gemini] No image in response. Parts: %s", [list(p.keys()) for p in parts])
+    if text_parts:
+        text = " ".join(text_parts)[:150]
+        return f"Gemini returned text only: {text}..."
+
+    return "Gemini returned no image. Try a different prompt."
 
 
 def _fetch_image(url):
