@@ -51,7 +51,7 @@ dependencies = [
     "isort==5.8.0",
     "jinja2>=3.1.6",
     "joblib==1.0.1",
-    "lazy-object-proxy==1.6.0",
+    "lazy-object-proxy>=1.9.0",
     "lightstreamer-client-lib>=2.0.0",
     "lxml==4.9.1",
     "markitdown>=0.1.2",
