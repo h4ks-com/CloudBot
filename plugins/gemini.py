@@ -1,6 +1,8 @@
 import base64
 import logging
 import tempfile
+import time
+from collections import deque
 
 from requests import HTTPError, RequestException
 
@@ -10,6 +12,25 @@ from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
+MAX_RPM = 8
+MAX_RPH = 62
+
+_request_times = deque()
+
+
+def _check_ratelimit():
+    now = time.monotonic()
+    while _request_times and now - _request_times[0] > 3600:
+        _request_times.popleft()
+
+    recent = sum(1 for t in _request_times if now - t <= 60)
+    if recent >= MAX_RPM:
+        return "Rate limited. Try again in a minute."
+    if len(_request_times) >= MAX_RPH:
+        return "Hourly limit reached. Try again later."
+
+    _request_times.append(now)
+    return None
 
 
 @hook.command("gemimg")
@@ -22,6 +43,10 @@ def gemimg_command(text, chan, nick):
     prompt = text.strip()
     if not prompt:
         return "Usage: .gemimg <prompt>"
+
+    limit_msg = _check_ratelimit()
+    if limit_msg:
+        return limit_msg
 
     session = get_session()
     try:
@@ -40,13 +65,7 @@ def gemimg_command(text, chan, nick):
         return f"Request failed: {e}"
 
     data = response.json()
-    logger = logging.getLogger("cloudbot")
-    logger.info("[gemini] response: %s", {k: v for k, v in data.items() if k != "candidates"})
     candidates = data.get("candidates", [{}])
-    if candidates:
-        logger.info("[gemini] candidate keys: %s", list(candidates[0].keys()))
-        content = candidates[0].get("content", {})
-        logger.info("[gemini] parts: %s", [{k: v for k, v in p.items() if k != "data"} for p in content.get("parts", [])])
     for part in candidates[0].get("content", {}).get("parts", []):
         if "inlineData" in part:
             image_bytes = base64.b64decode(part["inlineData"]["data"])
