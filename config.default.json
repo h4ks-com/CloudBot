@@ -176,7 +176,8 @@
         "github": "",
         "google": "",
         "openrouter": "",
-        "z_ai": ""
+        "z_ai": "",
+        "gemini": ""
     },
     "z_ai_endpoint": "https://api.z.ai/api/coding/paas/v4/chat/completions",
     "z_ai_model": "glm-4.7",
