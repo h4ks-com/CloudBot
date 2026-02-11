@@ -13,16 +13,51 @@ from cloudbot.util import formatting
 from cloudbot.util.web import TimeoutSession
 from plugins.huggingface import FileIrcResponseWrapper
 
-IMAGE_API = "https://image.pollinations.ai"
-TEXT_API = "https://text.pollinations.ai"
+GEN_API = "https://gen.pollinations.ai"
 MAX_HISTORY_LENGTH = 20
 
-VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+VOICES = [
+    "alloy",
+    "echo",
+    "fable",
+    "onyx",
+    "nova",
+    "shimmer",
+    "ash",
+    "ballad",
+    "coral",
+    "sage",
+    "verse",
+    "rachel",
+    "domi",
+    "bella",
+    "elli",
+    "charlotte",
+    "dorothy",
+    "sarah",
+    "emily",
+    "lily",
+    "matilda",
+    "adam",
+    "antoni",
+    "arnold",
+    "josh",
+    "sam",
+    "daniel",
+    "charlie",
+    "james",
+    "fin",
+    "callum",
+    "liam",
+    "george",
+    "brian",
+    "bill",
+]
 
 
 @dataclass
 class Message:
-    role: str  # "user" or "assistant"
+    role: str
     content: str
     timestamp: float = datetime.timestamp(datetime.now())
 
@@ -55,62 +90,95 @@ class Model:
 
 
 class PollinationsClient:
-    def __init__(self):
+    def __init__(self, api_key: str | None = None):
+        self.api_key = api_key
+        self.base_url = GEN_API
         self.session = TimeoutSession()
         self.session.headers.update({"Content-Type": "application/json"})
+        if api_key:
+            self.session.headers["Authorization"] = f"Bearer {api_key}"
 
-    def get_image_models(self) -> list[str]:
-        response = self.session.get(f"{IMAGE_API}/models")
+    def get_text_models(self) -> list[dict]:
+        response = self.session.get(f"{self.base_url}/v1/models")
+        response.raise_for_status()
+        return response.json()["data"]
+
+    def get_image_models(self) -> list[dict]:
+        response = self.session.get(f"{self.base_url}/image/models")
         response.raise_for_status()
         return response.json()
 
-    def get_text_models(self) -> list[Model]:
-        response = self.session.get(f"{TEXT_API}/models")
-        response.raise_for_status()
-        return [Model(**m) for m in response.json()]
-
-    def generate_image(
-        self, prompt: str, model: str | None = None
-    ) -> requests.Response:
-        url = f"{IMAGE_API}/prompt/{prompt}"
-        if model:
-            url = f"{url}?model={model}"
-        response = self.session.get(url, stream=True)
-        response.raise_for_status()
-        return response
-
-    def generate_audio(
-        self, request: str, voice: str | None = None
-    ) -> requests.Response:
-        url = f"{TEXT_API}/{request}"
-        params = {
-            "model": "openai-audio",
-            "voice": voice or "alloy",
-        }
-        response = self.session.get(url, params=params)
-        return response
-
-    def generate_text_openai(
-        self, messages: list[dict], model: str | None = None
-    ) -> dict:
-        url = f"{TEXT_API}/openai"
-        data = {
-            "messages": messages,
-            "model": model or "openai",
-            "private": True,
-        }
+    def generate_text(self, messages: list[dict], model: str = "openai") -> dict:
+        url = f"{self.base_url}/v1/chat/completions"
+        data = {"model": model, "messages": messages, "stream": False}
         response = self.session.post(url, json=data)
         response.raise_for_status()
         return response.json()
 
+    def generate_image(
+        self, prompt: str, model: str | None = None
+    ) -> requests.Response:
+        url = f"{self.base_url}/image/{prompt}"
+        params = {}
+        if model:
+            params["model"] = model
+        response = self.session.get(url, params=params, stream=True)
+        response.raise_for_status()
+        return response
 
-# Global state
+    def generate_audio(self, text: str, voice: str = "alloy") -> requests.Response:
+        url = f"{self.base_url}/audio/{text}"
+        params = {"model": "elevenlabs", "voice": voice}
+        response = self.session.get(url, params=params)
+        response.raise_for_status()
+        return response
+
+    def generate_music(
+        self, prompt: str, duration: int = 30, instrumental: bool = True
+    ) -> requests.Response:
+        url = f"{self.base_url}/audio/{prompt}"
+        params = {
+            "model": "elevenmusic",
+            "duration": str(duration),
+            "instrumental": "true" if instrumental else "false",
+        }
+        response = self.session.get(url, params=params)
+        response.raise_for_status()
+        return response
+
+    def transcribe_audio(
+        self, audio_file_path: str, model: str = "whisper-large-v3"
+    ) -> dict:
+        url = f"{self.base_url}/v1/audio/transcriptions"
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        with open(audio_file_path, "rb") as f:
+            files = {"file": ("audio.mp3", f, "audio/mpeg")}
+            data = {"model": model, "response_format": "json"}
+            response = requests.post(url, headers=headers, files=files, data=data)
+        response.raise_for_status()
+        return response.json()
+
+    def get_balance(self) -> dict:
+        url = f"{self.base_url}/account/balance"
+        response = self.session.get(url)
+        response.raise_for_status()
+        return response.json()
+
+
 pollinations_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
+user_models: dict[tuple[str, str], str] = {}
+
+
+def get_pollinations_config(bot) -> str | None:
+    return bot.config.get("api_keys", {}).get("pollinations")
 
 
 @lru_cache
-def get_client():
-    return PollinationsClient()
+def get_client(api_key: str | None = None):
+    return PollinationsClient(api_key)
 
 
 def upload_responses(nick: str, messages: list[Message], header: str) -> str:
@@ -119,7 +187,7 @@ def upload_responses(nick: str, messages: list[Message], header: str) -> str:
     text_contents = (
         header
         + "\n" * 4
-        + f"{lb}{bar}{lb*2}".join(
+        + f"{lb}{bar}{lb * 2}".join(
             f"{nick if message.role == 'user' else 'bot'}: {message.content}"
             for message in messages
         )
@@ -134,16 +202,11 @@ def upload_responses(nick: str, messages: list[Message], header: str) -> str:
 def parse_args(
     text: str, available_options: list[str] | None = None
 ) -> tuple[str | None, str]:
-    """Parse first argument as option if it matches available_options, otherwise treat everything as prompt"""
     parts = text.strip().split(maxsplit=1)
     option = None
     prompt = text.strip()
 
-    if (
-        len(parts) > 1
-        and available_options
-        and parts[0].lower() in available_options
-    ):
+    if len(parts) > 1 and available_options and parts[0].lower() in available_options:
         option = parts[0].lower()
         prompt = parts[1]
 
@@ -151,32 +214,111 @@ def parse_args(
 
 
 def detect_code_blocks(markdown_text: str) -> list[str]:
-    """Extract code blocks from markdown text"""
     code_block_pattern = re.compile(r"```\S*(.*)```", re.DOTALL)
     return code_block_pattern.findall(markdown_text)
 
 
 @hook.on_start()
 def on_start():
-    global pollinations_messages_cache
+    global pollinations_messages_cache, user_models
     pollinations_messages_cache = {}
+    user_models = {}
+
+
+@hook.command("plbalance", autohelp=False)
+def plbalance_command(bot, notice) -> str:
+    """Check your Pollinations pollen balance."""
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
+    client = get_client(api_key)
+
+    try:
+        balance_data = client.get_balance()
+        balance = balance_data.get("balance", 0)
+        return f"Pollen balance: {balance:.2f}"
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            return "Error: Invalid API key"
+        return f"Error: {e.response.status_code}"
+
+
+@hook.command("plmodels", autohelp=False)
+def plmodels_command(bot, notice) -> str:
+    """List available text generation models."""
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
+    client = get_client(api_key)
+
+    try:
+        models = client.get_text_models()
+        model_ids = [m["id"] for m in models]
+        return "Available models: " + ", ".join(model_ids)
+    except requests.HTTPError as e:
+        return f"Error: {e.response.status_code}"
+
+
+@hook.command("plmodel", autohelp=False)
+def plmodel_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """[model] - Show or set text generation model for this channel."""
+    global user_models
+
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
+    current_model = user_models.get((chan, nick), "openai")
+
+    if not text.strip():
+        return (
+            f"Current model: {current_model}. Use '.plmodels' to list available models."
+        )
+
+    new_model = text.strip()
+    client = get_client(api_key)
+
+    try:
+        models = client.get_text_models()
+        model_ids = [m["id"] for m in models]
+
+        if new_model not in model_ids:
+            return f"Invalid model '{new_model}'. Use '.plmodels' to list available models."
+
+        user_models[(chan, nick)] = new_model
+        return f"Model set to '{new_model}' for {nick} in {chan}."
+
+    except requests.HTTPError as e:
+        return f"Error: {e.response.status_code}"
 
 
 @hook.command("plimage")
-def plimage_command(text: str, nick: str, chan: str) -> str:
-    """<[model] prompt> - Generate an image using Pollinations.AI. Use '.plimage list' to see available models."""
-    client = get_client()
+def plimage_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<[model] prompt> - Generate an image. Use '.plimage list' to see available models."""
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
+    client = get_client(api_key)
 
     if text.strip().lower() == "list":
         try:
             models = client.get_image_models()
-            return "Available models: " + ", ".join(models)
-        except Exception as e:
-            return f"Error getting models: {e}"
+            free_models = [m["name"] for m in models if not m.get("paid_only", False)]
+            return "Available free models: " + ", ".join(free_models)
+        except requests.HTTPError as e:
+            return f"Error: {e.response.status_code}"
 
     try:
         models = client.get_image_models()
-        model, prompt = parse_args(text, models)
+        free_model_names = [m["name"] for m in models if not m.get("paid_only", False)]
+        model, prompt = parse_args(text, free_model_names)
     except Exception:
         model, prompt = None, text.strip()
 
@@ -189,36 +331,122 @@ def plimage_command(text: str, nick: str, chan: str) -> str:
             f.flush()
             image_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
         return f"Image for '{prompt}': {image_url}"
-    except Exception as e:
-        return f"Error generating image: {e}"
+    except requests.HTTPError as e:
+        if e.response.status_code == 402:
+            return "Error: Insufficient pollen balance"
+        elif e.response.status_code == 403:
+            return "Error: Model not available on your plan"
+        return f"Error: {e.response.status_code}"
 
 
 @hook.command("plaudio")
-def plaudio_command(text: str, nick: str, chan: str) -> str:
-    """<[voice] prompt> - Generate audio from text using Pollinations.AI. Use '.plaudio list' to see available voices."""
+def plaudio_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<[voice] text> - Generate TTS audio. Use '.plaudio list' to see available voices."""
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
     if text.strip().lower() == "list":
         return "Available voices: " + ", ".join(VOICES)
 
     voice, prompt = parse_args(text, VOICES)
 
-    client = get_client()
+    client = get_client(api_key)
 
-    audio_response = client.generate_audio(prompt, voice)
-    if audio_response.status_code != 200:
-        return f"Error generating audio: {audio_response.text}"
+    try:
+        audio_response = client.generate_audio(prompt, voice or "alloy")
+        audio_bytes = audio_response.content
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(audio_bytes)
+            f.flush()
+            audio_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
+        return f"Audio for '{prompt}': {audio_url}"
+    except requests.HTTPError as e:
+        if e.response.status_code == 402:
+            return "Error: Insufficient pollen balance"
+        elif e.response.status_code == 403:
+            return "Error: Voice not available"
+        return f"Error: {e.response.status_code}"
 
-    audio_bytes = audio_response.content
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-        f.write(audio_bytes)
-        f.flush()
-        audio_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
-    return f"Audio for '{prompt}': {audio_url}"
+
+@hook.command("plmusic")
+def plmusic_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<prompt> [duration] - Generate instrumental music (3-300 seconds, default: 30)."""
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
+    parts = text.strip().split()
+    if not parts:
+        return "Usage: .plmusic <prompt> [duration]"
+
+    duration = 30
+    if parts[-1].isdigit():
+        duration = int(parts[-1])
+        prompt = " ".join(parts[:-1])
+        if duration < 3 or duration > 300:
+            return "Duration must be between 3 and 300 seconds."
+    else:
+        prompt = text.strip()
+
+    client = get_client(api_key)
+
+    try:
+        music_response = client.generate_music(prompt, duration, instrumental=True)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(music_response.content)
+            f.flush()
+            music_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
+        return f"Music for '{prompt}' ({duration}s): {music_url}"
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 402:
+            return "Error: Insufficient pollen balance"
+        elif e.response.status_code == 403:
+            return "Error: Music generation not available"
+        return f"Error: {e.response.status_code}"
+
+
+@hook.command("pltranscribe")
+def pltranscribe_command(text: str, bot, notice) -> str:
+    """<url> - Transcribe audio from URL to text using Whisper."""
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
+    url = text.strip()
+    if not url:
+        return "Usage: .pltranscribe <audio_url>"
+
+    client = get_client(api_key)
+
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(response.content)
+            f.flush()
+
+            result = client.transcribe_audio(f.name)
+            return f"Transcription: {result['text']}"
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 402:
+            return "Error: Insufficient pollen balance"
+        elif e.response.status_code == 403:
+            return "Error: Transcription not available"
+        return f"Error: {e.response.status_code}"
+    except requests.Timeout:
+        return "Error: Download timeout"
 
 
 def process_text_response(
     response_text: str, nick: str, chan: str, messages: Deque[Message]
 ) -> str:
-    """Process and format text response from API"""
     truncated = formatting.truncate_str(response_text, 350)
     if len(truncated) < len(response_text):
         paste_url = upload_responses(
@@ -231,54 +459,56 @@ def process_text_response(
 
 
 @hook.command("pltext")
-def pltext_command(text: str, nick: str, chan: str) -> str:
-    """<[model] prompt> - Generate text using Pollinations.AI. Use '.pltext list' to see available models."""
-    global pollinations_messages_cache
-    client = get_client()
+def pltext_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<text> - Generate text using Pollinations AI. Use '.plmodel' to change model."""
+    global pollinations_messages_cache, user_models
 
-    if text.strip().lower() == "list":
-        try:
-            models = client.get_text_models()
-            return "Available models: " + ", ".join([m.name for m in models])
-        except Exception as e:
-            return f"Error getting models: {e}"
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
 
-    try:
-        models = client.get_text_models()
-        model, prompt = parse_args(text, [m.name for m in models])
-    except Exception:
-        model, prompt = None, text.strip()
+    model = user_models.get((chan, nick), "openai")
+    client = get_client(api_key)
 
     channick = (chan, nick)
     if channick not in pollinations_messages_cache:
         pollinations_messages_cache[channick] = deque(maxlen=MAX_HISTORY_LENGTH)
 
-    pollinations_messages_cache[channick].append(
-        Message(role="user", content=prompt)
-    )
+    pollinations_messages_cache[channick].append(Message(role="user", content=text))
 
     try:
-        messages = [
-            msg.as_dict() for msg in pollinations_messages_cache[channick]
-        ]
-        response = client.generate_text_openai(messages, model)
+        messages = [msg.as_dict() for msg in pollinations_messages_cache[channick]]
+        response = client.generate_text(messages, model)
         response_text = response["choices"][0]["message"]["content"]
         pollinations_messages_cache[channick].append(
             Message(role="assistant", content=response_text)
         )
 
-        return process_text_response(
+        formatted = process_text_response(
             response_text, nick, chan, pollinations_messages_cache[channick]
         )
-    except Exception as e:
-        return f"Error generating text: {e}"
+        return f"[{model}] {formatted}"
+    except requests.HTTPError as e:
+        if e.response.status_code == 402:
+            return "Error: Insufficient pollen balance"
+        elif e.response.status_code == 403:
+            return f"Error: Model '{model}' not available on your plan"
+        return f"Error: {e.response.status_code}"
 
 
 @hook.command("plapp")
-def plapp_command(text: str, nick: str, chan: str) -> str:
-    """<prompt> - Create a single page HTML web app on the fly with Pollinations.AI"""
-    global pollinations_messages_cache
-    client = get_client()
+def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<prompt> - Create a single page HTML web app on the fly with Pollinations AI."""
+    global pollinations_messages_cache, user_models
+
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
+    model = user_models.get((chan, nick), "openai")
+    client = get_client(api_key)
 
     channick = (chan, nick)
     if channick not in pollinations_messages_cache:
@@ -294,16 +524,13 @@ def plapp_command(text: str, nick: str, chan: str) -> str:
     )
 
     try:
-        messages = [
-            msg.as_dict() for msg in pollinations_messages_cache[channick]
-        ]
-        response = client.generate_text_openai(messages)
+        messages = [msg.as_dict() for msg in pollinations_messages_cache[channick]]
+        response = client.generate_text(messages, model)
         response_text = response["choices"][0]["message"]["content"]
         pollinations_messages_cache[channick].append(
             Message(role="assistant", content=response_text)
         )
 
-        # Extract code blocks
         code_blocks = detect_code_blocks(response_text)
 
         if not code_blocks:
@@ -314,9 +541,13 @@ def plapp_command(text: str, nick: str, chan: str) -> str:
                 file.write(code_blocks[0].encode("utf-8").strip())
             html_url = FileIrcResponseWrapper.upload_file(f.name, "pl")
             paste_url = html_url.removesuffix(".html") + "/p"
-            return f"{paste_url}. Try online: {html_url}"
-    except Exception as e:
-        return f"Error generating web app: {e}"
+            return f"[{model}] {paste_url}. Try online: {html_url}"
+    except requests.HTTPError as e:
+        if e.response.status_code == 402:
+            return "Error: Insufficient pollen balance"
+        elif e.response.status_code == 403:
+            return f"Error: Model '{model}' not available on your plan"
+        return f"Error: {e.response.status_code}"
 
 
 @hook.command("plpaste", "pollipaste", autohelp=False)

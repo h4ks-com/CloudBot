@@ -192,7 +192,8 @@
         "webshare": "",
         "github": "",
         "google": "",
-        "openrouter": ""
+        "openrouter": "",
+        "pollinations": ""
     },
     "database": "sqlite:///cloudbot.db",
     "location_bias_cc": null,

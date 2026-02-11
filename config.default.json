@@ -177,7 +177,8 @@
         "google": "",
         "openrouter": "",
         "z_ai": "",
-        "gemini": ""
+        "gemini": "",
+        "pollinations": ""
     },
     "z_ai_endpoint": "https://api.z.ai/api/coding/paas/v4/chat/completions",
     "z_ai_model": "glm-4.7",
