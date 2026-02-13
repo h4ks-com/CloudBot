@@ -339,6 +339,37 @@ def plimage_command(text: str, nick: str, chan: str, bot, notice) -> str:
         return f"Error: {e.response.status_code}"
 
 
+@hook.command("plvideo")
+def plvideo_command(text: str, nick: str, chan: str, bot, notice) -> str | None:
+    """<prompt> - Generate a video using video models"""
+    api_key = get_pollinations_config(bot)
+    if not api_key:
+        notice("Pollinations API key not configured.")
+        return
+
+    prompt = text.strip()
+    if not prompt:
+        return "Usage: .plvideo <prompt>"
+
+    client = get_client(api_key)
+
+    try:
+        response = client.generate_image(prompt, "grok-video")
+        with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+            f.flush()
+            video_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
+        return f"Video for '{prompt}': {video_url}"
+    except requests.HTTPError as e:
+        if e.response.status_code == 402:
+            return "Error: Insufficient pollen balance"
+        elif e.response.status_code == 403:
+            return "Error: Model not available on your plan"
+        return f"Error: {e.response.status_code}"
+
+
 @hook.command("plaudio")
 def plaudio_command(text: str, nick: str, chan: str, bot, notice) -> str:
     """<[voice] text> - Generate TTS audio. Use '.plaudio list' to see available voices."""
