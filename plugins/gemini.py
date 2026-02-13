@@ -108,9 +108,13 @@ def _call_gemini(api_key, parts, chan, nick):
 
 def _fetch_image(url):
     """Download URL and validate it's an image."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; CloudBot/1.0)",
+        "Accept": "image/*,*/*;q=0.8",
+    }
     session = get_session()
     try:
-        resp = session.get(url, timeout=30)
+        resp = session.get(url, headers=headers, timeout=30)
         resp.raise_for_status()
     except RequestException as e:
         return None, None, f"Failed to download image: {e}"
