@@ -14,7 +14,7 @@ def lichess(text: str) -> list[str] | str:
             return "Usage: .chess [time-limit]"
         time_limit = int(text) * 60
         if time_limit < 180:
-            return "Time limit must be greater than 3 minutes"
+            return "Time limit must be at least 3 minutes"
         data["clock.limit"] = time_limit
         data["clock.increment"] = 1
 
@@ -27,7 +27,10 @@ def lichess(text: str) -> list[str] | str:
                 "Content-Type": "application/x-www-form-urlencoded",
             },
         )
+        response.raise_for_status()
     except requests.HTTPError as e:
+        return f"HTTP error: {e}"
+    except requests.RequestException as e:
         return f"Error: {e}"
 
     body = response.json()
