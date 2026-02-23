@@ -77,6 +77,7 @@ dependencies = [
     { name = "nltk" },
     { name = "numpy" },
     { name = "oauthlib" },
+    { name = "objgraph" },
     { name = "opencv-python" },
     { name = "openrouter" },
     { name = "orjson" },
@@ -90,6 +91,7 @@ dependencies = [
     { name = "pyenchant" },
     { name = "pygithub" },
     { name = "pymediawiki" },
+    { name = "pympler" },
     { name = "pyocr" },
     { name = "pyowm" },
     { name = "pypdf" },
@@ -208,6 +210,7 @@ requires-dist = [
     { name = "nltk", specifier = "==3.6.6" },
     { name = "numpy", specifier = "==2.2.6" },
     { name = "oauthlib", specifier = "==3.1.0" },
+    { name = "objgraph", specifier = "==3.6.1" },
     { name = "opencv-python", specifier = "==4.6.0.66" },
     { name = "openrouter", specifier = ">=0.0.19" },
     { name = "orjson", specifier = "==3.10.3" },
@@ -221,6 +224,7 @@ requires-dist = [
     { name = "pyenchant", specifier = "==3.2.2" },
     { name = "pygithub", specifier = "==2.4.0" },
     { name = "pymediawiki", specifier = "==0.7.1" },
+    { name = "pympler", specifier = "==1.0.1" },
     { name = "pyocr", specifier = "==0.8.3" },
     { name = "pyowm", specifier = "==3.3.0" },
     { name = "pypdf", specifier = "==4.3.1" },
@@ -1604,6 +1608,15 @@ wheels = [
 ]
 
 [[package]]
+name = "objgraph"
+version = "3.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/c4/bd177f5a3c2730f939d0ee5949cb0a6a12402863bf3d482cb9e79f296b57/objgraph-3.6.1.tar.gz", hash = "sha256:fe96c74147bbcaae8665b396e5388bdcc3197deebba4e6381f05202ee5b453a7", size = 759513, upload-time = "2024-02-26T10:08:39.693Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2e/1c/2bb1823795911dc928b4085c9cb97e50e95da664d2eb8a375b28f511a22e/objgraph-3.6.1-py2.py3-none-any.whl", hash = "sha256:21c6bc62df0e7b77cc0a31d96feec04c965f09ec2e3d78b816b516a604f0defd", size = 17654, upload-time = "2024-02-26T10:08:35.701Z" },
+]
+
+[[package]]
 name = "onnxruntime"
 version = "1.22.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2067,6 +2080,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/61/33/497dd649b44e1e68392bfceb9b97e51b58a10a4f58929a3f8aab10a77676/pymediawiki-0.7.1.tar.gz", hash = "sha256:df628ab4080daede16af159dbb044aafa2245e00cc9eca8b14970be9c4aa5d03", size = 23628, upload-time = "2021-10-19T03:47:37.613Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dd/3b/22e9218412b83e82427593c729a8cea92334608939e3d362e3327dd3c18a/pymediawiki-0.7.1-py3-none-any.whl", hash = "sha256:6178e26a35682bc155efb166e2a30d714366ba6a02cc19c32045834dbecc2a85", size = 23320, upload-time = "2021-10-19T03:47:35.272Z" },
+]
+
+[[package]]
+name = "pympler"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/b7/9d17fbb2fde0b035dbd27e5d82dfbcd3fa990cf5a469cef8e89712d16113/Pympler-1.0.1.tar.gz", hash = "sha256:993f1a3599ca3f4fcd7160c7545ad06310c9e12f70174ae7ae8d4e25f6c5d3fa", size = 676983, upload-time = "2021-12-22T16:55:19.036Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/42/41e1469ed0b37b9c8532cb8074bea179f7d85ee7e82a59b5b6c289ed6045/Pympler-1.0.1-py3-none-any.whl", hash = "sha256:d260dda9ae781e1eab6ea15bacb84015849833ba5555f141d2d9b7b7473b307d", size = 164809, upload-time = "2021-12-22T16:55:15.539Z" },
 ]
 
 [[package]]

@@ -6,37 +6,17 @@ import threading
 import traceback
 from collections import Counter
 
+import objgraph
 import psutil
+import pympler
+import pympler.muppy
+import pympler.summary
+import pympler.tracker
 
 from cloudbot import hook
 from cloudbot.util import web
 
-PYMPLER_ENABLED = False
-
-if PYMPLER_ENABLED:
-    try:
-        import pympler
-        import pympler.muppy
-        import pympler.summary
-        import pympler.tracker
-    except ImportError:
-        pympler = None
-else:
-    pympler = None
-try:
-    import objgraph
-except ImportError:
-    objgraph = None
-
-
-def create_tracker():
-    if pympler is None:
-        return None
-
-    return pympler.tracker.SummaryTracker()
-
-
-tr = create_tracker()
+tr = pympler.tracker.SummaryTracker()
 
 
 def get_name(thread_id):
@@ -92,8 +72,6 @@ async def threaddump_command():
 @hook.command("objtypes", autohelp=False, permissions=["botcontrol"])
 def show_types():
     """- Print object type data to the console"""
-    if objgraph is None:
-        return "objgraph not installed"
     objgraph.show_most_common_types(limit=20)
     return "Printed to console"
 
@@ -101,8 +79,6 @@ def show_types():
 @hook.command("objgrowth", autohelp=False, permissions=["botcontrol"])
 def show_growth():
     """- Print object growth data to the console"""
-    if objgraph is None:
-        return "objgraph not installed"
     objgraph.show_growth(limit=10)
     return "Printed to console"
 
@@ -110,8 +86,6 @@ def show_growth():
 @hook.command("pymsummary", autohelp=False, permissions=["botcontrol"])
 def pympler_summary():
     """- Print object summary data to the console"""
-    if pympler is None:
-        return "pympler not installed / not enabled"
     all_objects = pympler.muppy.get_objects()
     summ = pympler.summary.summarize(all_objects)
     pympler.summary.print_(summ)
@@ -121,8 +95,6 @@ def pympler_summary():
 @hook.command("pymdiff", autohelp=False, permissions=["botcontrol"])
 def pympler_diff():
     """- Print object diff data to the console"""
-    if pympler is None:
-        return "pympler not installed / not enabled"
     tr.print_diff()
     return "Printed to console"
 
@@ -338,6 +310,96 @@ def memory_trace(bot):
     lines.append("")
     lines.append("=" * 80)
     lines.append(f"Total objects tracked by gc: {len(all_objects):,}")
+
+    return web.paste("\n".join(lines), ext="txt")
+
+
+@hook.command("meminspect", autohelp=False, permissions=["botcontrol"])
+def memory_inspect():
+    """- Deep inspection of largest dictionaries and lists"""
+    lines = []
+    lines.append("DEEP MEMORY INSPECTION")
+    lines.append("=" * 80)
+    lines.append("")
+
+    gc.collect()
+    all_objects = gc.get_objects()
+
+    # Find largest dicts and inspect their keys
+    large_dicts = []
+    large_lists = []
+
+    for obj in all_objects:
+        try:
+            size = sys.getsizeof(obj)
+            if size > 50000:  # > 50 KB
+                if isinstance(obj, dict):
+                    # Sample keys
+                    keys_sample = list(obj.keys())[:10] if obj else []
+                    keys_types = [type(k).__name__ for k in keys_sample]
+
+                    # Sample values
+                    values_sample = list(obj.values())[:3] if obj else []
+                    values_types = [type(v).__name__ for v in values_sample]
+
+                    large_dicts.append(
+                        {
+                            "size": size,
+                            "len": len(obj),
+                            "keys_sample": keys_sample,
+                            "keys_types": set(keys_types),
+                            "values_types": set(values_types),
+                            "id": id(obj),
+                        }
+                    )
+                elif isinstance(obj, list):
+                    # Sample list items
+                    items_sample = obj[:5] if obj else []
+                    items_types = [type(i).__name__ for i in items_sample]
+
+                    large_lists.append(
+                        {
+                            "size": size,
+                            "len": len(obj),
+                            "items_types": set(items_types),
+                            "id": id(obj),
+                        }
+                    )
+        except:
+            pass
+
+    # Sort by size
+    large_dicts.sort(key=lambda x: x["size"], reverse=True)
+    large_lists.sort(key=lambda x: x["size"], reverse=True)
+
+    # Report large dicts
+    lines.append("LARGE DICTIONARIES (>50 KB)")
+    lines.append("-" * 80)
+    for i, d in enumerate(large_dicts[:10], 1):
+        lines.append(f"\n#{i} - {d['size'] / 1024 / 1024:.2f} MB, {d['len']:,} entries")
+        lines.append(f"  Object ID: {d['id']}")
+        lines.append(f"  Key types: {', '.join(d['keys_types'])}")
+        lines.append(f"  Value types: {', '.join(d['values_types'])}")
+        lines.append(f"  Sample keys: {d['keys_sample'][:5]}")
+
+    lines.append("")
+    lines.append("")
+
+    # Report large lists
+    lines.append("LARGE LISTS (>50 KB)")
+    lines.append("-" * 80)
+    for i, lst in enumerate(large_lists[:10], 1):
+        lines.append(
+            f"\n#{i} - {lst['size'] / 1024 / 1024:.2f} MB, {lst['len']:,} items"
+        )
+        lines.append(f"  Object ID: {lst['id']}")
+        lines.append(f"  Item types: {', '.join(lst['items_types'])}")
+
+    lines.append("")
+    lines.append("=" * 80)
+    lines.append(
+        f"Found {len(large_dicts)} large dicts, {len(large_lists)} large lists"
+    )
 
     return web.paste("\n".join(lines), ext="txt")
 
