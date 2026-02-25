@@ -116,12 +116,13 @@ class PollinationsClient:
         return response.json()
 
     def generate_image(
-        self, prompt: str, model: str | None = None
+        self, prompt: str, model: str | None = None, **kwargs
     ) -> requests.Response:
         url = f"{self.base_url}/image/{prompt}"
         params = {}
         if model:
             params["model"] = model
+        params.update(kwargs)
         response = self.session.get(url, params=params, stream=True)
         response.raise_for_status()
         return response
@@ -339,9 +340,15 @@ def plimage_command(text: str, nick: str, chan: str, bot, notice) -> str:
         return f"Error: {e.response.status_code}"
 
 
+VIDEO_MODELS = {
+    "veo": {"max_duration": 8, "default_duration": 6},
+    "seedance": {"max_duration": 10, "default_duration": 10},
+}
+
+
 @hook.command("plvideo")
 def plvideo_command(text: str, nick: str, chan: str, bot, notice) -> str | None:
-    """<prompt> - Generate a video using video models"""
+    """<[model] prompt> [duration] - Generate video. Models: veo (max 8s), seedance (max 10s, default)"""
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
@@ -349,19 +356,41 @@ def plvideo_command(text: str, nick: str, chan: str, bot, notice) -> str | None:
 
     prompt = text.strip()
     if not prompt:
-        return "Usage: .plvideo <prompt>"
+        return "Usage: .plvideo <[model] prompt> [duration]"
+
+    model = "seedance"
+    duration = VIDEO_MODELS[model]["default_duration"]
+    parts = prompt.split()
+
+    if len(parts) > 0 and parts[0].lower() in VIDEO_MODELS:
+        model = parts[0].lower()
+        prompt = " ".join(parts[1:])
+        duration = VIDEO_MODELS[model]["default_duration"]
+        parts = prompt.split()
+
+    if len(parts) > 0 and parts[-1].isdigit():
+        requested_duration = int(parts[-1])
+        max_duration = VIDEO_MODELS[model]["max_duration"]
+        if 1 <= requested_duration <= max_duration:
+            duration = requested_duration
+            prompt = " ".join(parts[:-1])
+        else:
+            return f"Error: Duration must be between 1 and {max_duration} seconds for {model}"
+
+    if not prompt.strip():
+        return "Error: Prompt cannot be empty"
 
     client = get_client(api_key)
 
     try:
-        response = client.generate_image(prompt, "grok-video")
+        response = client.generate_image(prompt, model=model, duration=duration)
         with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
             f.flush()
             video_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
-        return f"Video for '{prompt}': {video_url}"
+        return f"[{model}] Video for '{prompt}' ({duration}s): {video_url}"
     except requests.HTTPError as e:
         if e.response.status_code == 402:
             return "Error: Insufficient pollen balance"
