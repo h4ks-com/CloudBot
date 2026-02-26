@@ -48,11 +48,17 @@ def etymology(text, reply):
 
     soup = parse_soup(response.text)
 
-    block = soup.find("div", class_=re.compile("word--.+"))
+    prose_section = soup.find("section", class_=re.compile("prose"))
 
-    etym = " ".join(e.text for e in block.div)
+    if not prose_section:
+        return f"No etymology found for {text} :("
 
-    etym = " ".join(etym.splitlines())
+    paragraphs = prose_section.find_all("p")
+
+    if not paragraphs:
+        return f"No etymology found for {text} :("
+
+    etym = " ".join(p.get_text() for p in paragraphs)
 
     etym = " ".join(etym.split())
 

@@ -1,6 +1,3 @@
-from curl_cffi import requests
-from curl_cffi.requests.exceptions import HTTPError
-
 from cloudbot import hook
 from cloudbot.util import formatting
 from cloudbot.util.web import get_session
@@ -15,11 +12,10 @@ def bible(text, reply):
         r = get_session().get(
             "https://labs.bible.org/api/",
             params=params,
-            impersonate="chrome124",
         )
         r.raise_for_status()
         response = r.json()[0]
-    except HTTPError as e:
+    except Exception as e:
         reply(
             formatting.truncate(
                 "Something went wrong, either you entered an invalid passage or the API is down",

@@ -1,6 +1,7 @@
 import re
 import time
 from datetime import datetime
+from urllib.parse import urlparse
 
 import requests
 from sqlalchemy import (
@@ -14,6 +15,7 @@ from sqlalchemy import (
     desc,
     select,
 )
+from urllib3.exceptions import LocationParseError
 
 from cloudbot import hook
 from cloudbot.event import EventType
@@ -65,8 +67,28 @@ URL_HEADERS = {
 MAX_RECV = 1000000
 
 
+def is_valid_url(url: str) -> bool:
+    """Check if URL is valid and can be fetched"""
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return False
+        if len(parsed.netloc) > 253:
+            return False
+        labels = parsed.netloc.split(".")
+        for label in labels:
+            if not label or len(label) > 63:
+                return False
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
 def get_url_title(url: str) -> str | None:
     """Fetches title of a URL using similar logic to link_announcer.py"""
+    if not is_valid_url(url):
+        return None
+
     try:
         with get_session().get(
             url, headers=URL_HEADERS, stream=True, timeout=3
@@ -80,19 +102,18 @@ def get_url_title(url: str) -> str | None:
         requests.RequestException,
         requests.Timeout,
         requests.ConnectionError,
+        LocationParseError,
     ):
-        # Expected: network issues, timeouts, invalid URLs
         return None
 
     try:
         html = parse_soup(content, from_encoding=encoding)
         if html.title and html.title.text:
             title = html.title.text.strip()
-            if len(title) > 100:  # Truncate very long titles
+            if len(title) > 100:
                 title = title[:100] + " ... [trunc]"
             return title
     except (ValueError, TypeError):
-        # Expected: malformed HTML, encoding issues
         pass
 
     return None
@@ -182,9 +203,7 @@ def track_seen(event, db):
     """
     # keep private messages private
     now = time.time()
-    if event.chan[:1] == "#" and not re.findall(
-        "^s/.*/.*/$", event.content.lower()
-    ):
+    if event.chan[:1] == "#" and not re.findall("^s/.*/.*/$", event.content.lower()):
         res = db.execute(
             seen_table.update()
             .values(time=now, quote=event.content, host=str(event.mask))
@@ -267,22 +286,14 @@ def lastlink(text: str, chan: str, conn, db) -> str:
             user_urls_table.c.nick,
         ]
     )
-    last_url_query = last_url_query.where(
-        user_urls_table.c.network == conn.name
-    )
-    last_url_query = last_url_query.where(
-        user_urls_table.c.chan == chan.lower()
-    )
+    last_url_query = last_url_query.where(user_urls_table.c.network == conn.name)
+    last_url_query = last_url_query.where(user_urls_table.c.chan == chan.lower())
 
     if search_text:
         # User-specific last link
-        last_url_query = last_url_query.where(
-            user_urls_table.c.nick == target_nick
-        )
+        last_url_query = last_url_query.where(user_urls_table.c.nick == target_nick)
 
-    last_url_query = last_url_query.order_by(
-        desc(user_urls_table.c.timestamp)
-    ).limit(1)
+    last_url_query = last_url_query.order_by(desc(user_urls_table.c.timestamp)).limit(1)
 
     url_result = db.execute(last_url_query).fetchone()
 
@@ -297,9 +308,7 @@ def lastlink(text: str, chan: str, conn, db) -> str:
     url_title = title or "No title available"
 
     # Format timestamp
-    formatted_date = datetime.fromtimestamp(timestamp).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+    formatted_date = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
     # Format output with title
     if search_text:
@@ -344,8 +353,14 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
 
     # Get all results for pagination
     if search_text:
-        # Get total count for user
-        total_query = select([user_urls_table.c.url]).where(
+        # Get all results for user
+        total_query = select(
+            [
+                user_urls_table.c.url,
+                user_urls_table.c.title,
+                user_urls_table.c.timestamp,
+            ]
+        ).where(
             and_(
                 user_urls_table.c.network == conn.name,
                 user_urls_table.c.chan == chan.lower(),
@@ -353,8 +368,14 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
             )
         )
     else:
-        # Get total count for channel
-        total_query = select([user_urls_table.c.url]).where(
+        # Get all results for channel
+        total_query = select(
+            [
+                user_urls_table.c.url,
+                user_urls_table.c.title,
+                user_urls_table.c.timestamp,
+            ]
+        ).where(
             and_(
                 user_urls_table.c.network == conn.name,
                 user_urls_table.c.chan == chan.lower(),
@@ -371,9 +392,7 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
 
     # Format output as 3 lines with titles and URLs
     formatted_lines = []
-    for i, (url, title, timestamp) in enumerate(
-        page_results[:URLS_PER_PAGE], 1
-    ):
+    for i, (url, title, timestamp) in enumerate(page_results[:URLS_PER_PAGE], 1):
         url_title = title or "No title available"
         # Truncate long titles
         if len(url_title) > 50:
@@ -387,7 +406,9 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
     )
 
     if len(all_url_results) > URLS_PER_PAGE:
-        output_prefix += f"(showing {URLS_PER_PAGE} of {len(all_url_results)}, use .urlsn for more)"
+        output_prefix += (
+            f"(showing {URLS_PER_PAGE} of {len(all_url_results)}, use .urlsn for more)"
+        )
 
     return output_prefix + "\n" + "\n".join(formatted_lines)
 
@@ -421,18 +442,14 @@ def urls_next(text: str, chan: str, conn, nick: str) -> str:
     # Format output
     output_lines = []
     start_number = (len(queued_results) - len(remaining_results)) + 1
-    for i, (url, title, timestamp) in enumerate(
-        next_page_results, start_number
-    ):
+    for i, (url, title, timestamp) in enumerate(next_page_results, start_number):
         url_title = title or "No title available"
         if len(url_title) > 50:
             url_title = formatting.truncate(url_title, 47) + "..."
         output_lines.append(f"{i}. {url_title} - {url}")
 
     more_links_prefix = (
-        f"More links for {search_text}: "
-        if search_text
-        else "More links in channel: "
+        f"More links for {search_text}: " if search_text else "More links in channel: "
     )
 
     if len(remaining_results) > URLS_PER_PAGE:
@@ -469,9 +486,7 @@ def searchword(text, chan, conn):
                 date = datetime.fromtimestamp(message_time).strftime(
                     "%Y-%m-%d %H:%M:%S"
                 )
-                message = message.replace("\x01ACTION ", "* ").replace(
-                    "\x01", ""
-                )
+                message = message.replace("\x01ACTION ", "* ").replace("\x01", "")
                 message = message.replace(text, f"\x02{text}\x02")
                 return f"{date} {nick}: {message}"
 
