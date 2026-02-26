@@ -323,6 +323,9 @@ def plimage_command(text: str, nick: str, chan: str, bot, notice) -> str:
     except Exception:
         model, prompt = None, text.strip()
 
+    if model is None:
+        model = "flux"
+
     try:
         response = client.generate_image(prompt, model)
         with tempfile.NamedTemporaryFile(suffix=".jpg") as f:

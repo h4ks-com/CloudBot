@@ -6,7 +6,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 
-TYPING_TIMEOUT = 40
+TYPING_TIMEOUT = 180
 TYPING_INTERVAL = 5
 
 
