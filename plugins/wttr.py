@@ -98,7 +98,7 @@ def time_command(text: str) -> str:
 
 
 @hook.command("astronomy", "ast")
-def astronomy(text: str) -> list[str] | str:
+def astronomy(text: str) -> str:
     """<location> - Get sunrise, sunset, and moon phase information for <location>."""
     if not text or not text.strip():
         return "Please provide a location. Usage: .ast <location>"
@@ -165,14 +165,14 @@ def astronomy(text: str) -> list[str] | str:
 
         phase_name, phase_emoji = get_moon_phase()
 
-        return [
-            f"\x02{simple_name}\x02 - Astronomy Info:",
-            f"\x02Sunrise\x02: {sunrise_local.strftime('%H:%M:%S %Z')}",
-            f"\x02Sunset\x02: {sunset_local.strftime('%H:%M:%S %Z')}",
-            f"\x02Solar Noon\x02: {solar_noon_local.strftime('%H:%M:%S %Z')}",
-            f"\x02Day Length\x02: {hours}h {minutes}m",
-            f"\x02Moon Phase\x02: {phase_emoji} {phase_name}",
-        ]
+        return (
+            f"\x02{simple_name}\x02 - "
+            f"\x02Sunrise\x02: {sunrise_local.strftime('%H:%M:%S %Z')}, "
+            f"\x02Sunset\x02: {sunset_local.strftime('%H:%M:%S %Z')}, "
+            f"\x02Solar Noon\x02: {solar_noon_local.strftime('%H:%M:%S %Z')}, "
+            f"\x02Day Length\x02: {hours}h {minutes}m, "
+            f"\x02Moon\x02: {phase_emoji} {phase_name}"
+        )
 
     except requests.exceptions.Timeout:
         return "Request timed out. Please try again."
