@@ -13,10 +13,10 @@ from cloudbot import hook
 from cloudbot.util import queue
 from cloudbot.util.web import get_session
 
-BASE_URL = "https://store.playstation.com/"
+BASE_URL = "https://store.playstation.com"
 LANG = "en-us"
-SEARCH_URL = BASE_URL + "{}/search/{}"
-GAME_URL = BASE_URL + "{}/product/{}"
+SEARCH_URL = BASE_URL + "/{}/search/{}"
+GAME_URL = BASE_URL + "/{}/product/{}"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:103.0) Gecko/20100101 Firefox/103.0",
 }
@@ -61,30 +61,35 @@ def search_game(query: str, lang: str) -> List[Game]:
     games = []
     i = 0
     for game in grid.find_all("li") or []:
-        section = game.find("section")
-        name = section.find(
+        name_elem = game.find(
             "span", {"data-qa": f"search#productTile{i}#product-name"}
-        ).text.strip()
-        price = section.find(
+        )
+        price_elem = game.find(
             "span", {"data-qa": f"search#productTile{i}#price#display-price"}
-        ).text.strip()
-        description = section.find(
+        )
+        if not name_elem or not price_elem:
+            i += 1
+            continue
+
+        name = name_elem.text.strip()
+        price = price_elem.text.strip()
+
+        desc_elem = game.find(
             "span",
             {"data-qa": f"search#productTile{i}#service-upsell#descriptorText"},
         )
-        if description:
-            description = description.text.strip()
-        else:
-            description = ""
+        description = desc_elem.text.strip() if desc_elem else ""
 
-        p_type = section.find(
+        ptype_elem = game.find(
             "span", {"data-qa": f"search#productTile{i}#product-type"}
         )
-        if p_type:
-            description = p_type.text.strip() + description
+        if ptype_elem:
+            description = ptype_elem.text.strip() + " " + description
 
-        url = BASE_URL + game.find("a")["href"]
-        games.append(Game(name, price, url, description))
+        link = game.find("a")
+        href = link.get("href", "") if link else ""
+        url = BASE_URL + (href if isinstance(href, str) else "")
+        games.append(Game(name, price, url, description.strip()))
         i += 1
     return games
 

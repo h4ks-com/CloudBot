@@ -1,9 +1,9 @@
+import json
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import List, Optional
 from urllib.parse import quote
 
-import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
@@ -21,42 +21,45 @@ NUMBER_OF_RESULTS = 3
 @dataclass
 class SearchResult:
     url: str
-    title: str
+    title: Optional[str]
     platform: Optional[str]
-    release_date: str
-    meta_score: str
-    user_score: str
+    release_date: Optional[str]
+    meta_score: Optional[str]
+    user_score: Optional[str]
 
     @classmethod
     def from_url(cls, url: str) -> "SearchResult":
         response = get_session().get(url, headers=HEADERS)
         soup = BeautifulSoup(response.content, "html.parser")
 
-        def get_item(selector, body):
-            result = body.select_one(selector)
-            if result:
-                return result.text.strip()
-            return None
+        title_elem = soup.select_one("h1")
+        title = title_elem.text.strip() if title_elem else None
+
+        # Metascore and release date come from JSON-LD structured data
+        meta_score = None
+        release_date = None
+        for script in soup.select('script[type="application/ld+json"]'):
+            try:
+                ld = json.loads(script.string or "")
+                if ld.get("aggregateRating"):
+                    meta_score = str(ld["aggregateRating"].get("ratingValue"))
+                if ld.get("datePublished"):
+                    release_date = ld["datePublished"]
+                break
+            except (json.JSONDecodeError, KeyError, ValueError):
+                continue
+
+        # User score: first occurrence is the main user score
+        user_elem = soup.select_one("div.c-siteReviewScore_background-user")
+        user_score = user_elem.text.strip() if user_elem else None
 
         return SearchResult(
             url=url,
-            title=get_item("div.c-productHero_title h1", soup),
-            platform=get_item(
-                "div.c-productHero_score-container div.c-ProductHeroGamePlatformInfo title",
-                soup,
-            ),
-            release_date=get_item(
-                "div.c-productHero_score-container div.g-text-xsmall span.u-text-uppercase",
-                soup,
-            ),
-            meta_score=get_item(
-                "div.c-productScoreInfo_scoreNumber div.c-siteReviewScore_background-critic_medium span",
-                soup,
-            ),
-            user_score=get_item(
-                "div.c-productScoreInfo_scoreNumber div.c-siteReviewScore_background-user span",
-                soup,
-            ),
+            title=title,
+            platform=None,
+            release_date=release_date,
+            meta_score=meta_score,
+            user_score=user_score,
         )
 
 
@@ -95,7 +98,7 @@ def metan(text, chan, nick):
         return "No [more] results found for " + nick
 
     results = [
-        SearchResult.from_url(urls.pop()) for _ in range(NUMBER_OF_RESULTS)
+        SearchResult.from_url(urls.pop()) for _ in range(min(NUMBER_OF_RESULTS, len(urls)))
     ]
 
     return [
