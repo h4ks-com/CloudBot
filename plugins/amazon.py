@@ -1,6 +1,5 @@
 import re
 
-import requests
 from bs4 import BeautifulSoup
 from requests import HTTPError
 
@@ -12,8 +11,7 @@ SEARCH_URL = "http://www.amazon.{}/s/"
 REGION = "com"
 
 AMAZON_RE = re.compile(
-    """.*ama?zo?n\\.(com|co\\.uk|com\\.au|de|fr|ca|cn|es|it)/.*/(?:exec/obidos/ASIN/|o/|gp/product/|
-(?:(?:[^"\'/]*)/)?dp/|)(B[A-Z0-9]{9})""",
+    r""".*ama?zo?n\.(com|co\.uk|com\.au|de|fr|ca|cn|es|it)/.*/(?:exec/obidos/ASIN/|o/|gp/product/|(?:(?:[^"'/]*)/)?dp/|)(B[A-Z0-9]{9})""",
     re.I,
 )
 
@@ -21,6 +19,13 @@ AMAZON_RE = re.compile(
 # Or leave it in to support CloudBot, it's up to you!
 # requsted to remove it by network
 AFFILIATE_TAG = ""
+
+FREE_SHIPPING_RE = re.compile(
+    r"(Kostenlose Lieferung|Livraison gratuite|FREE Shipping|Envío GRATIS|Spedizione gratuita)",
+    re.I,
+)
+
+RATING_RE = re.compile(r"([0-9]+(?:[.,][0-9])?) out of")
 
 
 @hook.regex(AMAZON_RE)
@@ -31,7 +36,7 @@ def amazon_url(match, reply):
 
 
 @hook.command("amazon", "az")
-def amazon(text, reply, _parsed=False):
+def amazon(text, reply, _parsed: bool | str = False):
     """<query> -- Searches Amazon for query"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, "
@@ -40,7 +45,6 @@ def amazon(text, reply, _parsed=False):
     }
     params = {"url": "search-alias", "field-keywords": text.strip()}
     if _parsed:
-        # input is from a link parser, we need a specific URL
         request = get_session().get(
             SEARCH_URL.format(_parsed), params=params, headers=headers
         )
@@ -55,85 +59,67 @@ def amazon(text, reply, _parsed=False):
         reply("Amazon API error occurred.")
         raise
 
-    soup = BeautifulSoup(request.text)
+    soup = BeautifulSoup(request.text, "lxml")
 
-    # check if there are any results on the amazon page
-    results = soup.find("div", {"id": "atfResults"})
+    results = soup.find_all("div", attrs={"data-component-type": "s-search-result"})
     if not results:
         if not _parsed:
             return "No results found."
-        else:
-            return
+        return None
 
-    # get the first item from the results on the amazon page
-    results = results.find("ul", {"id": "s-results-list-atf"}).find_all(
-        "li", {"class": "s-result-item"}
-    )
     item = results[0]
-    asin = item["data-asin"]
+    asin = item.get("data-asin", "")
 
-    # here we use dirty html scraping to get everything we need
-    title = formatting.truncate(
-        item.find("h2", {"class": "s-access-title"}).text, 60
-    )
+    h2 = item.find("h2")
+    title_span = h2.find("span") if h2 else None
+    if not title_span:
+        if not _parsed:
+            return "Could not parse result."
+        return None
+
+    title = formatting.truncate(title_span.get_text(strip=True), 60)
+
     tags = []
-
-    # tags!
-    if item.find("i", {"class": "a-icon-prime"}):
+    if item.find("i", class_="a-icon-prime"):
         tags.append("$(b)Prime$(b)")
-
-    if item.find("i", {"class": "sx-bestseller-badge-primary"}):
+    if item.find("span", attrs={"aria-label": "Best Seller"}):
         tags.append("$(b)Bestseller$(b)")
-
-    # we use regex because we need to recognise text for this part
-    # the other parts detect based on html tags, not text
-    if re.search(
-        r"(Kostenlose Lieferung|Livraison gratuite|FREE Shipping|Envío GRATIS"
-        r"|Spedizione gratuita)",
-        item.text,
-        re.I,
-    ):
+    if FREE_SHIPPING_RE.search(item.get_text()):
         tags.append("$(b)Free Shipping$(b)")
 
-    try:
-        price = item.find("span", {"class": ["s-price", "a-color-price"]}).text
-    except AttributeError:
-        for i in item.find_all("sup", class_="sx-price-fractional"):
-            i.string.replace_with("." + i.string)
-        price = item.find("span", {"class": "sx-price"}).text
-
-    # use a whole lot of BS4 and regex to get the ratings
-    try:
-        # get the rating
-        rating = (
-            item.find("i", {"class": "a-icon-star"})
-            .find("span", {"class": "a-icon-alt"})
-            .text
-        )
-        rating = (
-            re.search(r"([0-9]+(?:[.,][0-9])?).*5", rating)
-            .group(1)
-            .replace(",", ".")
-        )
-        # get the rating count
-        pattern = re.compile(r"(product-reviews|#customerReviews)")
-        num_ratings = item.find("a", {"href": pattern}).text.replace(".", ",")
-        # format the rating and count into a nice string
-        rating_str = f"{rating}/5 stars ({num_ratings} ratings)"
-    except AttributeError:
-        rating_str = "No Ratings"
-
-    # generate a short url
-    if AFFILIATE_TAG:
-        url = "http://www.amazon.com/dp/" + asin + "/?tag=" + AFFILIATE_TAG
+    price_sym = item.find("span", class_="a-price-symbol")
+    price_whole = item.find("span", class_="a-price-whole")
+    price_frac = item.find("span", class_="a-price-fraction")
+    if price_whole:
+        sym = price_sym.get_text(strip=True) if price_sym else ""
+        whole = price_whole.get_text(strip=True).rstrip(".")
+        frac = price_frac.get_text(strip=True) if price_frac else "00"
+        price = f"{sym}{whole}.{frac}"
     else:
-        url = "http://www.amazon.com/dp/" + asin + "/"
+        price = "N/A"
+
+    # span.a-icon-alt contains text like "4.8 out of 5 stars"
+    rating_str = "No Ratings"
+    rating_span = item.find("span", class_="a-icon-alt")
+    if rating_span:
+        m = RATING_RE.search(rating_span.get_text(strip=True))
+        if m:
+            rating = m.group(1).replace(",", ".")
+            review_link = item.find(
+                "a", href=re.compile(r"(customerReviews|product-reviews)")
+            )
+            # Amazon wraps the count in parens, e.g. "(2.1K)"
+            count = review_link.get_text(strip=True).strip("()") if review_link else ""
+            rating_str = f"{rating}/5 stars ({count} ratings)" if count else f"{rating}/5 stars"
+
+    if AFFILIATE_TAG:
+        url = f"http://www.amazon.com/dp/{asin}/?tag={AFFILIATE_TAG}"
+    else:
+        url = f"http://www.amazon.com/dp/{asin}/"
     url = web.try_shorten(url)
 
-    # join all the tags into a string
     tag_str = " - " + ", ".join(tags) if tags else ""
 
-    # finally, assemble everything into the final string, and return it!
     if not _parsed:
         return colors.parse(
             "".join(
