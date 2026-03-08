@@ -579,7 +579,7 @@ def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     app_prompt = (
         text
-        + "\nMake sure to put everything in a single html file so it can be a single code block meant to be directly used in a browser as it is. Do not explain, just show the code."
+        + "\nMake sure to put everything in a single html file so it can be a single code block meant to be directly used in a browser as it is. Do not explain, just show the code formatted inside a markdown code block"
     )
 
     pollinations_messages_cache[channick].append(
