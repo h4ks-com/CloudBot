@@ -245,6 +245,25 @@ def gpt_paste_command(nick: str, chan: str, text: str) -> str:
     )
 
 
+@hook.command("gptcopy")
+def gpt_copy_command(text: str, nick: str, chan: str) -> str:
+    """<user> - Copy another user's conversation history into yours, replacing your own."""
+    global gpt_messages_cache
+
+    target = text.strip()
+    if not target:
+        return "Usage: .gptcopy <user>"
+
+    target_channick = (chan, target)
+    if target_channick not in gpt_messages_cache:
+        return f"No conversation history found for {target}."
+
+    gpt_messages_cache[(chan, nick)] = deque(
+        gpt_messages_cache[target_channick], maxlen=MAX_USER_HISTORY_LENGTH
+    )
+    return f"Copied {target}'s conversation history into yours ({len(gpt_messages_cache[(chan, nick)])} messages)."
+
+
 @hook.command("gptclear", autohelp=False)
 def gpt_clear_command(nick: str, chan: str) -> str:
     """Clear the conversation cache."""

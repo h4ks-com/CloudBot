@@ -241,6 +241,25 @@ def ai_paste_command(nick: str, chan: str, text: str) -> str:
     return f"No conversation history for {nick}. Start a conversation with .ai."
 
 
+@hook.command("aicopy")
+def ai_copy_command(text: str, nick: str, chan: str) -> str:
+    """<user> - Copy another user's conversation history into yours, replacing your own."""
+    global ollama_messages_cache
+
+    target = text.strip()
+    if not target:
+        return "Usage: .aicopy <user>"
+
+    target_channick = (chan, target)
+    if target_channick not in ollama_messages_cache:
+        return f"No conversation history found for {target}."
+
+    ollama_messages_cache[(chan, nick)] = deque(
+        ollama_messages_cache[target_channick], maxlen=MAX_USER_HISTORY_LENGTH
+    )
+    return f"Copied {target}'s conversation history into yours ({len(ollama_messages_cache[(chan, nick)])} messages)."
+
+
 @hook.command("aiclear", autohelp=False)
 def ai_clear_command(nick: str, chan: str) -> str:
     """Clear the conversation cache."""

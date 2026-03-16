@@ -615,7 +615,7 @@ def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
 @hook.command("plpaste", "pollipaste", autohelp=False)
 def plpaste_command(nick: str, chan: str, text: str) -> str:
-    """[nick] - Pastes the Pollinations conversation history with nick if specified."""
+    """[nick] - Pastes the Pollinations conversation history with nick if specified fy."""
     global pollinations_messages_cache
 
     text = text.strip()
@@ -630,6 +630,25 @@ def plpaste_command(nick: str, chan: str, text: str) -> str:
             f"{nick}'s Pollinations conversation in {chan}",
         )
     return f"No conversation history for {nick}. Start a conversation with .pltext or .plapp."
+
+
+@hook.command("plcopy")
+def plcopy_command(text: str, nick: str, chan: str) -> str:
+    """<user> - Copy another user's conversation history into yours, replacing your own."""
+    global pollinations_messages_cache
+
+    target = text.strip()
+    if not target:
+        return "Usage: .plcopy <user>"
+
+    target_channick = (chan, target)
+    if target_channick not in pollinations_messages_cache:
+        return f"No conversation history found for {target}."
+
+    pollinations_messages_cache[(chan, nick)] = deque(
+        pollinations_messages_cache[target_channick], maxlen=MAX_HISTORY_LENGTH
+    )
+    return f"Copied {target}'s conversation history into yours ({len(pollinations_messages_cache[(chan, nick)])} messages)."
 
 
 @hook.command("plclear", autohelp=False)
