@@ -96,7 +96,7 @@ def get_completion(messages: list[Message]) -> str:
 
     if z_ai_key:
         z_ai_endpoint = bot.config.get("z_ai_endpoint", "https://api.z.ai/api/paas/v4/chat/completions")
-        z_ai_model = bot.config.get("z_ai_model", "glm-5.0")
+        z_ai_model = bot.config.get("z_ai_model", "glm-5")
 
         token = generate_z_ai_token(z_ai_key)
 
