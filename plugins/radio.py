@@ -554,6 +554,7 @@ def radio(bot: Any) -> str:
 
     radio_url = get_radio_url(config)
     parts.append(f"🔗 {radio_url}")
+    parts.append(f" {radio_url}/radio")
 
     return " | ".join(parts)
 
