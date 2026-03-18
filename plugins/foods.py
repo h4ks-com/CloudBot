@@ -32,6 +32,7 @@ BASIC_FOOD = (
     BasicFood("nugget", "nuggets"),
     BasicFood("pie", "pie"),
     BasicFood("brekkie", "brekkie", "brekkie", "brekky"),
+    BasicFood("banana", "a banana"),
     BasicFood("icecream", "icecream"),
     BasicFood("doobie", "a doobie"),
     BasicFood("wine", "wine"),
