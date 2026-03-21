@@ -1,11 +1,15 @@
-"""h4kmally game server status plugin.
+"""sigmally — h4kmally agar.io clone server plugin.
 
-Reports ping and active player count by connecting to the h4kmally WebSocket
-server and speaking the SIG 0.0.2 binary protocol.
+Commands:
+  .sigmally              — server overview: ping, players, bots
+  .sigmally who          — real players online with scores
+  .sigmally top          — top player by score
+  .sigmally bots         — bots currently on the server
+  .sigmally watch        — spectators
+  .sigmally skins        — skins manifest summary by rarity
 """
 
 import asyncio
-import struct
 import time
 from typing import Optional
 
@@ -13,112 +17,204 @@ import aiohttp
 
 from cloudbot import hook
 
-_SERVER_URL = "wss://api.sigmally.h4ks.com/ws/"
+_BASE_URL = "https://api.sigmally.h4ks.com"
+_WS_URL = "wss://api.sigmally.h4ks.com/ws/"
 _HANDSHAKE = b"SIG 0.0.2\x00"
 _TIMEOUT = 8.0
 
-# SIG 0.0.2 logical opcodes (both sides use 254 for ping/reply)
 _OP_BORDER = 64
-_OP_LEADERBOARD = 49
 _OP_PING = 254
 
 
-async def _probe() -> dict:
-    """Connect to h4kmally, return ping_ms (float|None) and players (int|None).
+def _fmt_score(score: int) -> str:
+    if score >= 1_000_000:
+        return f"{score / 1_000_000:.1f}M"
+    if score >= 10_000:
+        return f"{round(score / 1_000)}K"
+    if score >= 1_000:
+        return f"{score / 1_000:.1f}K"
+    return str(score)
 
-    Protocol flow:
-      1. Send handshake string
-      2. Receive version + 256-byte shuffle table
-      3. Wait for BORDER (server ready signal), then send PING
-      4. Collect PING_REPLY (latency) and LEADERBOARD (player count)
-    """
+
+async def _fetch_status() -> dict:
     timeout = aiohttp.ClientTimeout(total=_TIMEOUT)
-    headers = {"Origin": "https://one.sigmally.com"}
-
-    async with aiohttp.ClientSession() as session:
-        async with session.ws_connect(
-            _SERVER_URL, headers=headers, timeout=timeout
-        ) as ws:
-            await ws.send_bytes(_HANDSHAKE)
-
-            msg = await asyncio.wait_for(ws.receive(), timeout=5.0)
-            if msg.type != aiohttp.WSMsgType.BINARY:
-                raise ConnectionError(f"Expected binary frame, got {msg.type}")
-
-            raw: bytes = msg.data
-            null_pos = raw.index(b"\x00")
-            shuffle_start = null_pos + 1
-            if len(raw) < shuffle_start + 256:
-                raise ConnectionError("Handshake too short: missing shuffle table")
-
-            # Server sends forward shuffle table: wire_byte = forward[logical_op].
-            # Client decodes received opcodes via inverse: logical_op = inverse[wire_byte].
-            forward = raw[shuffle_start : shuffle_start + 256]
-            inverse = bytearray(256)
-            for i, b in enumerate(forward):
-                inverse[b] = i
-
-            ping_sent_at: Optional[float] = None
-            ping_ms: Optional[float] = None
-            leaderboard_count: Optional[int] = None
-            deadline = time.monotonic() + _TIMEOUT
-
-            while time.monotonic() < deadline:
-                remaining = deadline - time.monotonic()
-                try:
-                    msg = await asyncio.wait_for(
-                        ws.receive(), timeout=max(0.1, remaining)
-                    )
-                except asyncio.TimeoutError:
-                    break
-
-                if msg.type != aiohttp.WSMsgType.BINARY or not msg.data:
-                    break
-
-                data: bytes = msg.data
-                logical_op = inverse[data[0]]
-                payload = data[1:]
-
-                if logical_op == _OP_BORDER and ping_sent_at is None:
-                    # BORDER is the server's ready signal; send our ping now
-                    ping_sent_at = time.monotonic()
-                    await ws.send_bytes(bytes([forward[_OP_PING]]))
-
-                elif logical_op == _OP_PING and ping_sent_at is not None:
-                    ping_ms = (time.monotonic() - ping_sent_at) * 1000
-
-                elif logical_op == _OP_LEADERBOARD and len(payload) >= 4:
-                    leaderboard_count = struct.unpack_from("<I", payload, 0)[0]
-
-                if ping_ms is not None and leaderboard_count is not None:
-                    break
-
-    return {"ping_ms": ping_ms, "players": leaderboard_count}
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get(f"{_BASE_URL}/api/status") as resp:
+            resp.raise_for_status()
+            return await resp.json()
 
 
-@hook.command("sigmally", "h4kmally", "agar", autohelp=False)
-async def h4kmally_status(reply):
-    """- shows h4kmally agar.io server status: ping and active player count"""
+async def _probe_ping() -> Optional[float]:
+    """WebSocket ping via SIG 0.0.2 protocol. Returns ms or None on any failure."""
+    timeout = aiohttp.ClientTimeout(total=_TIMEOUT)
+    headers = {"Origin": "https://sigmally.h4ks.com"}
     try:
-        stats = await _probe()
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(_WS_URL, headers=headers, timeout=timeout) as ws:
+                await ws.send_bytes(_HANDSHAKE)
+
+                msg = await asyncio.wait_for(ws.receive(), timeout=5.0)
+                if msg.type != aiohttp.WSMsgType.BINARY:
+                    return None
+
+                raw: bytes = msg.data
+                null_pos = raw.index(b"\x00")
+                shuffle_start = null_pos + 1
+                if len(raw) < shuffle_start + 256:
+                    return None
+
+                forward = raw[shuffle_start: shuffle_start + 256]
+                inverse = bytearray(256)
+                for i, b in enumerate(forward):
+                    inverse[b] = i
+
+                ping_sent_at: Optional[float] = None
+                deadline = time.monotonic() + _TIMEOUT
+
+                while time.monotonic() < deadline:
+                    remaining = deadline - time.monotonic()
+                    try:
+                        msg = await asyncio.wait_for(ws.receive(), timeout=max(0.1, remaining))
+                    except asyncio.TimeoutError:
+                        break
+                    if msg.type != aiohttp.WSMsgType.BINARY or not msg.data:
+                        break
+                    logical_op = inverse[msg.data[0]]
+                    if logical_op == _OP_BORDER and ping_sent_at is None:
+                        ping_sent_at = time.monotonic()
+                        await ws.send_bytes(bytes([forward[_OP_PING]]))
+                    elif logical_op == _OP_PING and ping_sent_at is not None:
+                        return (time.monotonic() - ping_sent_at) * 1000
+    except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError, ValueError):
+        pass
+    return None
+
+
+async def _fetch_skins() -> str:
+    timeout = aiohttp.ClientTimeout(total=_TIMEOUT)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(f"{_BASE_URL}/api/skins") as resp:
+                resp.raise_for_status()
+                skins = await resp.json()
     except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
-        reply(f"\x02h4kmally\x02: Unable to connect: {e}")
-        raise
+        return f"\x02sigmally skins\x02: API error: {e}"
 
-    ping = stats["ping_ms"]
-    players = stats["players"]
+    if not isinstance(skins, list):
+        return "\x02sigmally skins\x02: Unexpected API response."
 
-    ping_str = f"{ping:.0f}ms" if ping is not None else "timeout"
-    if players is None:
-        player_str = "unknown"
-    elif players == 1:
-        player_str = "1 player"
-    else:
-        player_str = f"{players} players"
+    total = len(skins)
+    rarities: dict[str, int] = {}
+    for s in skins:
+        r = s.get("rarity", "?")
+        rarities[r] = rarities.get(r, 0) + 1
 
-    parts = [
-        "\x02Online\x02: https://sigmally.h4ks.com",
-        f"\x02Ping\x02: {ping_str}",
-        f"\x02Players\x02: {player_str}",
-    ]
-    return "\x0f" + " | ".join(parts)
+    rarity_str = " | ".join(f"{k}: {v}" for k, v in sorted(rarities.items()))
+    summary = f" ({rarity_str})" if rarity_str else ""
+    return f"\x02Skins ({total})\x02{summary} — https://sigmally.h4ks.com"
+
+
+@hook.command("sigmally", "agar", autohelp=False)
+async def sigmally_cmd(text, reply):
+    """[who|top|bots|watch|skins] - sigmally agar.io server info"""
+    sub = (text or "").strip().lower()
+
+    if sub == "skins":
+        return await _fetch_skins()
+
+    if sub and sub not in ("who", "top", "bots", "watch"):
+        return f"\x02sigmally\x02: Unknown subcommand '{sub}'. Try: who, top, bots, watch, skins"
+
+    # All other subcommands (and no-arg) need the HTTP status
+    ping_task = None
+    if not sub:
+        # Kick off WS ping concurrently only for the overview
+        ping_task = asyncio.create_task(_probe_ping())
+
+    try:
+        status = await _fetch_status()
+    except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
+        if ping_task:
+            ping_task.cancel()
+        reply(f"\x02sigmally\x02: Unable to connect: {e}")
+        return
+
+    if not sub:
+        assert ping_task is not None
+        ping_ms = await ping_task
+        ping_str = f"{ping_ms:.0f}ms" if ping_ms is not None else "timeout"
+
+        player_count = status.get("playerCount", 0)
+        bot_count = status.get("botCount", 0)
+        spec_count = status.get("spectatorCount", 0)
+
+        filled = min(player_count, 10)
+        bar = "■" * filled + "□" * (10 - filled)
+
+        parts = [
+            "\x02Online\x02: https://sigmally.h4ks.com",
+            f"\x02Ping\x02: {ping_str}",
+            f"\x02Players\x02: {player_count} [{bar}]",
+            f"\x02Bots\x02: {bot_count}",
+            f"\x02Spectators\x02: {spec_count}",
+        ]
+        return "\x0f" + " | ".join(parts)
+
+    match sub:
+        case "who":
+            players = [p for p in status.get("players", []) if not p.get("isBot")]
+            if not players:
+                return "\x02sigmally\x02: No players online right now."
+            ranked = sorted(players, key=lambda p: p.get("score", 0), reverse=True)
+            parts = []
+            for p in ranked:
+                name = p["name"]
+                score = _fmt_score(p.get("score", 0))
+                clan = p.get("clan", "")
+                tag = f"[{clan}] " if clan else ""
+                parts.append(f"{tag}\x02{name}\x02 ({score})")
+            return "\x02Players\x02: " + " | ".join(parts)
+
+        case "top":
+            players = [p for p in status.get("players", []) if not p.get("isBot")]
+            if not players:
+                return "\x02sigmally\x02: No players online right now."
+            top = max(players, key=lambda p: p.get("score", 0))
+            name = top["name"]
+            score = _fmt_score(top.get("score", 0))
+            cells = top.get("cells", 1)
+            skin = top.get("skin", "")
+            effect = top.get("effect", "")
+            clan = top.get("clan", "")
+            total = status.get("playerCount", len(players))
+
+            extras = []
+            if clan:
+                extras.append(f"clan: \x02{clan}\x02")
+            if skin:
+                extras.append(f"skin: {skin}")
+            if effect:
+                extras.append(f"effect: {effect}")
+            if cells > 1:
+                extras.append(f"{cells} cells")
+            extra_str = " — " + ", ".join(extras) if extras else ""
+
+            return f"\x02#1\x02 \x02{name}\x02: {score} pts out of {total} players{extra_str}"
+
+        case "bots":
+            bots = status.get("bots", [])
+            count = status.get("botCount", len(bots))
+            if not bots:
+                return f"\x02sigmally\x02: {count} bot(s) online."
+            names = [b["name"] for b in bots]
+            shown = names[:8]
+            suffix = f" (+{len(names) - 8} more)" if len(names) > 8 else ""
+            return f"\x02Bots ({count})\x02: {', '.join(shown)}{suffix}"
+
+        case "watch":
+            specs = status.get("spectators", [])
+            count = status.get("spectatorCount", len(specs))
+            if not specs:
+                return f"\x02sigmally\x02: {count} spectator(s), none listed."
+            names = [s.get("name", "?") for s in specs]
+            return f"\x02Spectators ({count})\x02: {', '.join(names)}"
