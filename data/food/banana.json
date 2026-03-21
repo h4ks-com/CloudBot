@@ -1,0 +1,49 @@
+{
+    "templates": [
+        "gives {user} {size} {ripeness} banana{extra}."
+    ],
+    "parts": {
+        "size": [
+            "a tiny",
+            "a small",
+            "a regular",
+            "a large",
+            "an enormous",
+            "a colossal",
+            "a bite-sized",
+            "a perfectly-sized"
+        ],
+        "ripeness": [
+            "green",
+            "slightly underripe",
+            "perfectly ripe",
+            "spotted",
+            "golden",
+            "overripe",
+            "brown-spotted",
+            "mushy"
+        ],
+        "extra": [
+            "",
+            " from Ecuador",
+            " from Costa Rica",
+            " from Colombia",
+            " from the Philippines",
+            " from Honduras",
+            " organic",
+            " fair trade certified",
+            " straight from the tree",
+            " still in its peel",
+            " pre-sliced",
+            " frozen",
+            " dipped in chocolate",
+            " topped with whipped cream",
+            " alongside some peanut butter",
+            " with a side of yogurt",
+            " in a fruit salad",
+            " wrapped in bacon",
+            " caramelized",
+            " flambeed"
+        ]
+    }
+}

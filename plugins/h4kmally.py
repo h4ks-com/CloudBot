@@ -96,7 +96,7 @@ async def _probe() -> dict:
     return {"ping_ms": ping_ms, "players": leaderboard_count}
 
 
-@hook.command("h4kmally", "agar", autohelp=False)
+@hook.command("sigmally", "h4kmally", "agar", autohelp=False)
 async def h4kmally_status(reply):
     """- shows h4kmally agar.io server status: ping and active player count"""
     try:
@@ -117,7 +117,7 @@ async def h4kmally_status(reply):
         player_str = f"{players} players"
 
     parts = [
-        "\x02Online\x02: h4kmally.h4ks.com",
+        "\x02Online\x02: https://sigmally.h4ks.com",
         f"\x02Ping\x02: {ping_str}",
         f"\x02Players\x02: {player_str}",
     ]
