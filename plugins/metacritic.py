@@ -1,9 +1,11 @@
 import json
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import List, Optional
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
+import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
@@ -13,8 +15,11 @@ from cloudbot.util.web import get_session
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
 }
-URL = "https://www.metacritic.com/search"
+BASE_URL = "https://www.metacritic.com"
+# Metacritic's own search page is Cloudflare-protected; use DuckDuckGo instead.
 CATEGORY_MAP = {"all": None, "games": 13, "movies": 2, "shows": 1, "people": 3}
+# Category slugs used in Metacritic URLs, for filtering DDG results
+CATEGORY_SLUG = {"games": "/game/", "movies": "/movie/", "shows": "/tv/", "people": "/person/"}
 NUMBER_OF_RESULTS = 3
 
 
@@ -63,21 +68,47 @@ class SearchResult:
         )
 
 
-def search_metacritic(query, category=None) -> List[str]:
-    encoded_query = quote(query)
-    url = f"{URL}/{encoded_query}"
-    if category:
-        url += f"?category={category}"
+def search_metacritic(query: str, category: Optional[int] = None) -> List[str]:
+    """Search Metacritic via DuckDuckGo HTML (Metacritic's own search is Cloudflare-protected)."""
+    # Determine the URL slug to filter by category
+    cat_slug = None
+    for cat_name, cat_id in CATEGORY_MAP.items():
+        if cat_id == category:
+            cat_slug = CATEGORY_SLUG.get(cat_name)
+            break
 
-    response = get_session().get(url, headers=HEADERS)
-    soup = BeautifulSoup(response.content, "html.parser")
+    ddg_query = f"site:metacritic.com {query}"
+    if cat_slug:
+        ddg_query = f"site:metacritic.com{cat_slug} {query}"
 
-    results = soup.select("div.c-pageSiteSearch-results a[href]")
-    result_urls = [
-        f"https://www.metacritic.com{link['href']}" for link in results
-    ]
+    try:
+        r = get_session().get(
+            f"https://html.duckduckgo.com/html/?q={quote(ddg_query)}",
+            headers=HEADERS,
+            timeout=10,
+        )
+        if not r.ok:
+            return []
 
-    return result_urls
+        # DDG wraps result URLs as: //duckduckgo.com/l/?uddg=ENCODED_URL&rut=...
+        # Extract and decode the actual destination URLs
+        raw = re.findall(r'uddg=(https%3A%2F%2Fwww\.metacritic\.com[^&"]+)', r.text)
+        seen: set[str] = set()
+        result_urls = []
+        for encoded in raw:
+            url = unquote(encoded).split("?")[0].rstrip("/")
+            if url in seen:
+                continue
+            # Skip review sub-pages; keep main title pages only
+            path = url.replace(BASE_URL, "").strip("/")
+            parts = path.split("/")
+            if len(parts) < 2 or any(p in parts for p in ("critic-reviews", "user-reviews", "details", "faq")):
+                continue
+            seen.add(url)
+            result_urls.append(url)
+        return result_urls[:10]
+    except requests.RequestException:
+        return []
 
 
 @lru_cache
@@ -109,7 +140,7 @@ def metan(text, chan, nick):
 
 
 @hook.command("metacritic", "meta")
-def metacritic(text, reply, chan, nick):
+def metacritic(text, chan, nick):
     """[list|all|games|movies|shows|people] <title> - gets rating for <title> from
     metacritic on the specified catetory"""
     results_queue = get_queue()
@@ -132,9 +163,7 @@ def metacritic(text, reply, chan, nick):
 
 if __name__ == "__main__":
     query = "Final Fantasy"
-    category = CATEGORY_MAP.get(
-        "games"
-    )  # Change this to test different categories
+    category = CATEGORY_MAP.get("games")
     urls = search_metacritic(query, category)
     for url in urls:
         result = SearchResult.from_url(url)

@@ -144,10 +144,15 @@
             "timeout": 30
         }
     },
+    "browserless": {
+        "api_url": "https://chrome.browserless.io",
+        "api_token": "your-browserless-token-here"
+    },
     "webhooks": {
         "base_url": "http://localhost:8080"
     },
     "api_keys": {
+        "omdb": "",
         "openweathermap": "",
         "tvdb": "",
         "bing_azure": "",

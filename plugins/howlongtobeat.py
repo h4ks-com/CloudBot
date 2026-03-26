@@ -4,13 +4,25 @@
 
 import json
 import re
+import time
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import requests
 
 from cloudbot import hook
 from cloudbot.util.queue import Queue
 from cloudbot.util.web import get_session
+
+BASE_URL = "https://howlongtobeat.com"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": BASE_URL,
+    "Referer": BASE_URL + "/",
+}
 
 
 @dataclass
@@ -27,29 +39,171 @@ class Game:
 
 results_queue = Queue()
 
-# Try different potential API endpoints
-SEARCH_ENDPOINTS = [
-    "https://howlongtobeat.com/api/search",
-    "https://howlongtobeat.com/api/find",
-]
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Content-Type": "application/json",
-    "Accept": "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Origin": "https://howlongtobeat.com",
-    "Referer": "https://howlongtobeat.com/",
-    "DNT": "1",
-}
+def _format_hours(seconds) -> str:
+    if not seconds:
+        return "N/A"
+    hours = float(seconds) / 3600
+    return f"{int(hours)} Hours" if hours == int(hours) else f"{hours:.1f} Hours"
+
+
+def _get_token() -> str | None:
+    """Fetch a short-lived auth token required by the /api/finder endpoint."""
+    try:
+        r = get_session().get(
+            f"{BASE_URL}/api/finder/init",
+            params={"t": int(time.time() * 1000)},
+            headers=HEADERS,
+            timeout=8,
+        )
+        if r.ok:
+            return r.json().get("token")
+    except (requests.RequestException, ValueError, KeyError):
+        pass
+    return None
+
+
+def _parse_items(items: list) -> list[Game]:
+    games = []
+    for item in items[:5]:
+        try:
+            games.append(Game(
+                name=item.get("game_name", "Unknown"),
+                url=f"{BASE_URL}/game/{item.get('game_id', '')}",
+                main_story=_format_hours(item.get("comp_main")),
+                main_extras=_format_hours(item.get("comp_plus")),
+                completionist=_format_hours(item.get("comp_100")),
+            ))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return games
+
+
+def try_api_search(game_name: str) -> list[Game] | None:
+    """Search via the official HLTB API (requires token from /api/finder/init)."""
+    token = _get_token()
+    if not token:
+        return None
+
+    payload = {
+        "searchType": "games",
+        "searchTerms": game_name.split(),
+        "searchPage": 1,
+        "size": 20,
+        "searchOptions": {
+            "games": {
+                "userId": 0,
+                "platform": "",
+                "sortCategory": "popular",
+                "rangeCategory": "main",
+                "rangeTime": {"min": 0, "max": 0},
+                "gameplay": {"perspective": "", "flow": "", "genre": "", "difficulty": ""},
+                "rangeYear": {"min": "", "max": ""},
+                "modifier": "",
+            },
+            "users": {"sortCategory": "postcount"},
+            "lists": {"sortCategory": "follows"},
+            "filter": "",
+            "sort": 0,
+            "randomizer": 0,
+        },
+        "useCache": True,
+    }
+
+    try:
+        r = get_session().post(
+            f"{BASE_URL}/api/finder",
+            headers={**HEADERS, "Content-Type": "application/json", "x-auth-token": token},
+            json=payload,
+            timeout=10,
+        )
+        if r.ok and r.content:
+            data = r.json()
+            items = data.get("data", [])
+            if items:
+                return _parse_items(items)
+    except (requests.RequestException, ValueError, KeyError):
+        pass
+    return None
+
+
+def _extract_from_next_data(html: str) -> Game | None:
+    """Extract game data from __NEXT_DATA__ JSON embedded in the page."""
+    try:
+        m = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
+            html,
+            re.DOTALL,
+        )
+        if not m:
+            return None
+        data = json.loads(m.group(1))
+        items = (
+            data.get("props", {})
+            .get("pageProps", {})
+            .get("game", {})
+            .get("data", {})
+            .get("game", [])
+        )
+        if not items:
+            return None
+        g = items[0]
+        return Game(
+            name=g.get("game_name", "Unknown"),
+            url=f"{BASE_URL}/game/{g.get('game_id', '')}",
+            main_story=_format_hours(g.get("comp_main")),
+            main_extras=_format_hours(g.get("comp_plus")),
+            completionist=_format_hours(g.get("comp_100")),
+        )
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+        return None
+
+
+def scrape_hltb_search(game_name: str) -> list[Game] | None:
+    """Fallback: find HLTB game IDs via DuckDuckGo, then scrape each game page."""
+    search_query = f"{game_name} site:howlongtobeat.com/game"
+    search_headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; bot)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+    game_ids: list[str] = []
+    for search_url in [
+        f"https://duckduckgo.com/lite/?q={quote(search_query)}",
+        f"https://www.startpage.com/sp/search?query={quote(search_query)}",
+    ]:
+        try:
+            r = get_session().get(search_url, headers=search_headers, timeout=5)
+            if r.ok:
+                ids = list(dict.fromkeys(re.findall(r"howlongtobeat\.com/game/(\d+)", r.text)))[:5]
+                if ids:
+                    game_ids = ids
+                    break
+        except (requests.RequestException, requests.Timeout):
+            continue
+
+    if not game_ids:
+        return None
+
+    games = []
+    for game_id in game_ids:
+        try:
+            game_url = f"{BASE_URL}/game/{game_id}"
+            r = get_session().get(game_url, headers=HEADERS, timeout=8)
+            if not r.ok:
+                continue
+            game = _extract_from_next_data(r.text)
+            if game:
+                games.append(game)
+        except (requests.RequestException, requests.Timeout):
+            continue
+
+    return games or None
 
 
 @hook.command("hltbn", "hltb_next", autohelp=False)
 def hltbn(text, nick, chan):
     """Displays next game in queue for nick."""
-    global results_queue
-
     if text:
         nick = text.strip().split()[0]
         if nick not in results_queue[chan]:
@@ -62,242 +216,16 @@ def hltbn(text, nick, chan):
     return str(game)
 
 
-def try_api_search(game_name):
-    """Try the API search with multiple endpoints"""
-    search_payload = {
-        "searchType": "games",
-        "searchTerms": [game_name],
-        "searchPage": 1,
-        "size": 20,
-        "searchOptions": {
-            "games": {
-                "userId": 0,
-                "platform": "",
-                "sortCategory": "popular",
-                "rangeCategory": "main",
-                "rangeTime": {"min": None, "max": None},
-                "gameplay": {"perspective": "", "flow": "", "genre": ""},
-                "rangeYear": {"min": "", "max": ""},
-                "modifier": "",
-            }
-        },
-    }
-
-    # Try different potential endpoints
-    endpoints = [
-        "https://howlongtobeat.com/api/search",
-        "https://www.howlongtobeat.com/api/search",
-        "https://howlongtobeat.com/search",
-        "https://www.howlongtobeat.com/search",
-    ]
-
-    for endpoint in endpoints:
-        try:
-            response = get_session().post(
-                endpoint, headers=headers, json=search_payload, timeout=10
-            )
-            if response.ok and response.content:
-                data = response.json()
-                if data and "data" in data:
-                    return parse_api_response(data["data"])
-        except (requests.RequestException, ValueError, KeyError):
-            continue
-
-    return None
-
-
-def parse_api_response(data):
-    """Parse API response data into Game objects"""
-    games = []
-    for item in data[:5]:  # Limit to 5 results
-        try:
-            game = Game(
-                name=item.get("game_name", "Unknown"),
-                url=f"https://howlongtobeat.com/game/{item.get('game_id', '')}",
-                main_story=(
-                    f"{float(item.get('comp_main', 0)) / 3600:.1f} Hours"
-                    if item.get("comp_main")
-                    else "N/A"
-                ),
-                main_extras=(
-                    f"{float(item.get('comp_plus', 0)) / 3600:.1f} Hours"
-                    if item.get("comp_plus")
-                    else "N/A"
-                ),
-                completionist=(
-                    f"{float(item.get('comp_100', 0)) / 3600:.1f} Hours"
-                    if item.get("comp_100")
-                    else "N/A"
-                ),
-            )
-            games.append(game)
-        except (KeyError, TypeError, ValueError):
-            continue
-    return games
-
-
-def extract_game_data_from_json(html):
-    """Extract game data from the __NEXT_DATA__ JSON embedded in the page"""
-    try:
-        # Find the __NEXT_DATA__ script tag
-        json_match = re.search(
-            r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
-            html,
-            re.DOTALL,
-        )
-        if not json_match:
-            return None
-
-        data = json.loads(json_match.group(1))
-        game_data = (
-            data.get("props", {})
-            .get("pageProps", {})
-            .get("game", {})
-            .get("data", {})
-            .get("game", [])
-        )
-
-        if not game_data:
-            return None
-
-        game = game_data[0]
-
-        # Convert seconds to hours and format
-        def format_time(seconds):
-            if not seconds or seconds == 0:
-                return "N/A"
-            hours = seconds / 3600
-            if hours == int(hours):
-                return f"{int(hours)} Hours"
-            else:
-                return f"{hours:.1f} Hours"
-
-        return Game(
-            name=game.get("game_name", "Unknown"),
-            url=f"https://howlongtobeat.com/game/{game.get('game_id', '')}",
-            main_story=format_time(game.get("comp_main")),
-            main_extras=format_time(game.get("comp_plus")),
-            completionist=format_time(game.get("comp_100")),
-        )
-
-    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-        return None
-
-
-def scrape_hltb_search(game_name):
-    """Search for games using web search"""
-    try:
-        # Use a simple, reliable search approach
-        search_query = f"{game_name} site:howlongtobeat.com/game"
-
-        # Try different search engines with minimal requests
-        search_urls = [
-            f"https://duckduckgo.com/lite/?q={requests.utils.quote(search_query)}",
-            f"https://www.startpage.com/sp/search?query={requests.utils.quote(search_query)}",
-        ]
-
-        search_headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; bot)",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-
-        game_ids = []
-
-        for search_url in search_urls:
-            try:
-                response = get_session().get(
-                    search_url, headers=search_headers, timeout=5
-                )
-                if response.ok:
-                    # Look for HowLongToBeat game URLs in the response
-                    game_id_matches = re.findall(
-                        r"howlongtobeat\.com/game/(\d+)", response.text
-                    )
-                    if game_id_matches:
-                        # Get up to 5 unique game IDs
-                        unique_ids = list(dict.fromkeys(game_id_matches))[:5]
-                        game_ids.extend(unique_ids)
-                        break
-            except (requests.RequestException, requests.Timeout):
-                continue
-
-        if not game_ids:
-            return None
-
-        # Get game pages for multiple IDs
-        games = []
-        game_headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; bot)",
-        }
-
-        for game_id in game_ids:
-            try:
-                game_url = f"https://howlongtobeat.com/game/{game_id}"
-                game_response = get_session().get(
-                    game_url, headers=game_headers, timeout=8
-                )
-                if not game_response.ok:
-                    continue
-
-                # Try to extract data from JSON
-                game_data = extract_game_data_from_json(game_response.text)
-                if game_data:
-                    games.append(game_data)
-                    continue
-
-                # Fallback: basic title extraction
-                title_match = re.search(
-                    r"<title>([^|]+)\s*\|\s*HowLongToBeat</title>",
-                    game_response.text,
-                )
-                game_title = (
-                    title_match.group(1)
-                    .replace("How long is ", "")
-                    .replace("?", "")
-                    .strip()
-                    if title_match
-                    else game_name
-                )
-
-                games.append(
-                    Game(
-                        name=game_title,
-                        url=game_url,
-                        main_story="See website",
-                        main_extras="for times",
-                        completionist=f"ID: {game_id}",
-                    )
-                )
-
-            except (requests.RequestException, requests.Timeout):
-                continue
-
-        return games if games else None
-
-    except (requests.RequestException, ValueError, AttributeError):
-        return None
-
-
 @hook.command("howlongtobeat", "hltb", autohelp=False)
 def howlongtobeat(text, nick, chan):
     """<game> - Search for a game on How Long To Beat"""
-    global results_queue
-
     if not text:
         return "Please provide a game name to search for"
 
-    # Try API search first
-    games = try_api_search(text)
+    games = try_api_search(text) or scrape_hltb_search(text)
     if games:
-        results_queue[chan][nick] = games[1:]  # Store all but the first result
-        return str(games[0])  # Return the first result directly
+        results_queue[chan][nick] = games[1:]
+        return str(games[0])
 
-    # If API fails, try scraping
-    games = scrape_hltb_search(text)
-    if games:
-        results_queue[chan][nick] = games[1:]  # Store all but the first result
-        return str(games[0])  # Return the first result directly
-
-    # If everything fails, provide a direct link
-    encoded_search = requests.utils.quote(text)
-    return f"No results found for '{text}'. Search directly: https://howlongtobeat.com/?q={encoded_search}"
+    encoded = quote(text)
+    return f"No results found for '{text}'. Search directly: {BASE_URL}/?q={encoded}"
