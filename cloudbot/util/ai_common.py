@@ -81,10 +81,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
 <script>
 const TITLE=__TITLE_JSON__;
 const MSGS=__MESSAGES_JSON__;
 marked.use({breaks:true,gfm:true,html:false});
+const PURIFY_CFG={
+  ALLOWED_TAGS:['p','a','strong','em','b','i','u','s','del','code','pre','ul','ol','li',
+    'h1','h2','h3','h4','h5','h6','blockquote','hr','br',
+    'table','thead','tbody','tfoot','tr','th','td','caption',
+    'sup','sub','span','div','img','figure','figcaption'],
+  ALLOWED_ATTR:['href','src','alt','title','class','id','target','rel','colspan','rowspan']
+};
 document.getElementById('hdr-title').textContent=TITLE;
 
 function flash(btn,label){
@@ -108,7 +116,7 @@ MSGS.forEach((m,i)=>{
   bub.className='bub'+(shouldCollapse?' collapsed':'');
   const content=document.createElement('div');
   content.className='bub-content';
-  content.innerHTML=marked.parse(m.content);
+  content.innerHTML=DOMPurify.sanitize(marked.parse(m.content),PURIFY_CFG);
   const cb=document.createElement('button');
   cb.className='cbtn';cb.textContent='Copy';
   cb.onclick=()=>copy(m.content,cb,'Copy');
