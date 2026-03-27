@@ -91,7 +91,9 @@ const PURIFY_CFG={
     'h1','h2','h3','h4','h5','h6','blockquote','hr','br',
     'table','thead','tbody','tfoot','tr','th','td','caption',
     'sup','sub','span','div','img','figure','figcaption'],
-  ALLOWED_ATTR:['href','src','alt','title','class','id','target','rel','colspan','rowspan']
+  // class allowed only so marked's language-* on <code> survives for hljs;
+  // style/id stripped to prevent matching page CSS or DOM targeting
+  ALLOWED_ATTR:['href','src','alt','title','class','target','rel','colspan','rowspan']
 };
 document.getElementById('hdr-title').textContent=TITLE;
 
@@ -210,15 +212,32 @@ def _js_safe_json(obj) -> str:
     return json.dumps(obj).replace("</", "<\\/")
 
 
+def _safe_content(content: str) -> str:
+    # Wrap raw HTML documents in a code fence so marked renders them as escaped
+    # <pre><code> blocks rather than injecting them into the page DOM.
+    # Any other raw HTML snippets are handled client-side by DOMPurify.
+    stripped = content.lstrip()
+    if stripped.lower().startswith(("<!doctype", "<html")):
+        return f"```html\n{content}\n```"
+    return content
+
+
 def upload_history(nick: str, messages: list[Message], header: str) -> str:
     """Render conversation as a formatted HTML page and upload. Returns URL."""
     msgs_data = [
-        {"role": m.role, "content": m.content, "label": nick}
+        {"role": m.role, "content": _safe_content(m.content), "label": nick}
         for m in messages
     ]
+    safe_title = (
+        header
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
     html = (
         _HISTORY_HTML
-        .replace("__TITLE__", header)
+        .replace("__TITLE__", safe_title)
         .replace("__TITLE_JSON__", _js_safe_json(header))
         .replace("__MESSAGES_JSON__", _js_safe_json(msgs_data))
     )
