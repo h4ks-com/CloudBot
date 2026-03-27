@@ -1,17 +1,23 @@
-import re
-import tempfile
-from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
 from functools import lru_cache
 from typing import Deque
 
 import requests
 
 from cloudbot import hook
-from cloudbot.util import formatting
+from cloudbot.util import web
 from cloudbot.util.web import TimeoutSession
-from plugins.huggingface import FileIrcResponseWrapper
+from cloudbot.util.ai_common import (
+    APP_HTML_PROMPT_SUFFIX,
+    Message,
+    clear_history,
+    copy_history,
+    detect_code_blocks,
+    get_or_create_history,
+    truncate_or_paste,
+    upload_history,
+    upload_html_app,
+)
 
 GEN_API = "https://gen.pollinations.ai"
 MAX_HISTORY_LENGTH = 20
@@ -53,19 +59,6 @@ VOICES = [
     "brian",
     "bill",
 ]
-
-
-@dataclass
-class Message:
-    role: str
-    content: str
-    timestamp: float = datetime.timestamp(datetime.now())
-
-    def as_dict(self):
-        return {
-            "role": self.role,
-            "content": self.content,
-        }
 
 
 @dataclass
@@ -148,17 +141,15 @@ class PollinationsClient:
         return response
 
     def transcribe_audio(
-        self, audio_file_path: str, model: str = "whisper-large-v3"
+        self, audio_bytes: bytes, model: str = "whisper-large-v3"
     ) -> dict:
         url = f"{self.base_url}/v1/audio/transcriptions"
         headers = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-
-        with open(audio_file_path, "rb") as f:
-            files = {"file": ("audio.mp3", f, "audio/mpeg")}
-            data = {"model": model, "response_format": "json"}
-            response = requests.post(url, headers=headers, files=files, data=data)
+        files = {"file": ("audio.mp3", audio_bytes, "audio/mpeg")}
+        data = {"model": model, "response_format": "json"}
+        response = requests.post(url, headers=headers, files=files, data=data)
         response.raise_for_status()
         return response.json()
 
@@ -182,24 +173,6 @@ def get_client(api_key: str | None = None):
     return PollinationsClient(api_key)
 
 
-def upload_responses(nick: str, messages: list[Message], header: str) -> str:
-    bar = "-" * 80
-    lb = "\n"
-    text_contents = (
-        header
-        + "\n" * 4
-        + f"{lb}{bar}{lb * 2}".join(
-            f"{nick if message.role == 'user' else 'bot'}: {message.content}"
-            for message in messages
-        )
-    )
-    with tempfile.NamedTemporaryFile(suffix=".txt") as f:
-        with open(f.name, "wb") as file:
-            file.write(text_contents.encode("utf-8"))
-        file_url = FileIrcResponseWrapper.upload_file(f.name, "pl")
-    return file_url
-
-
 def parse_args(
     text: str, available_options: list[str] | None = None
 ) -> tuple[str | None, str]:
@@ -212,11 +185,6 @@ def parse_args(
         prompt = parts[1]
 
     return option, prompt
-
-
-def detect_code_blocks(markdown_text: str) -> list[str]:
-    code_block_pattern = re.compile(r"```\S*(.*)```", re.DOTALL)
-    return code_block_pattern.findall(markdown_text)
 
 
 @hook.on_start()
@@ -328,12 +296,7 @@ def plimage_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     try:
         response = client.generate_image(prompt, model)
-        with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-            f.flush()
-            image_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
+        image_url = web.paste(response.content, ext="jpg")
         return f"Image for '{prompt}': {image_url}"
     except requests.HTTPError as e:
         if e.response.status_code == 402:
@@ -387,12 +350,7 @@ def plvideo_command(text: str, nick: str, chan: str, bot, notice) -> str | None:
 
     try:
         response = client.generate_image(prompt, model=model, duration=duration)
-        with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-            f.flush()
-            video_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
+        video_url = web.paste(response.content, ext="mp4")
         return f"[{model}] Video for '{prompt}' ({duration}s): {video_url}"
     except requests.HTTPError as e:
         if e.response.status_code == 402:
@@ -419,11 +377,7 @@ def plaudio_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     try:
         audio_response = client.generate_audio(prompt, voice or "alloy")
-        audio_bytes = audio_response.content
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            f.write(audio_bytes)
-            f.flush()
-            audio_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
+        audio_url = web.paste(audio_response.content, ext="mp3")
         return f"Audio for '{prompt}': {audio_url}"
     except requests.HTTPError as e:
         if e.response.status_code == 402:
@@ -458,10 +412,7 @@ def plmusic_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     try:
         music_response = client.generate_music(prompt, duration, instrumental=True)
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            f.write(music_response.content)
-            f.flush()
-            music_url = FileIrcResponseWrapper.upload_file(f.name, chan or nick)
+        music_url = web.paste(music_response.content, ext="mp3")
         return f"Music for '{prompt}' ({duration}s): {music_url}"
 
     except requests.HTTPError as e:
@@ -489,13 +440,8 @@ def pltranscribe_command(text: str, bot, notice) -> str:
     try:
         response = requests.get(url, timeout=30)
         response.raise_for_status()
-
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            f.write(response.content)
-            f.flush()
-
-            result = client.transcribe_audio(f.name)
-            return f"Transcription: {result['text']}"
+        result = client.transcribe_audio(response.content)
+        return f"Transcription: {result['text']}"
 
     except requests.HTTPError as e:
         if e.response.status_code == 402:
@@ -505,20 +451,6 @@ def pltranscribe_command(text: str, bot, notice) -> str:
         return f"Error: {e.response.status_code}"
     except requests.Timeout:
         return "Error: Download timeout"
-
-
-def process_text_response(
-    response_text: str, nick: str, chan: str, messages: Deque[Message]
-) -> str:
-    truncated = formatting.truncate_str(response_text, 350)
-    if len(truncated) < len(response_text):
-        paste_url = upload_responses(
-            nick,
-            list(messages),
-            f"{nick}'s Pollinations conversation in {chan}",
-        )
-        return f"{truncated} (full response: {paste_url})"
-    return truncated
 
 
 @hook.command("pltext")
@@ -534,22 +466,19 @@ def pltext_command(text: str, nick: str, chan: str, bot, notice) -> str:
     model = user_models.get((chan, nick), "openai")
     client = get_client(api_key)
 
-    channick = (chan, nick)
-    if channick not in pollinations_messages_cache:
-        pollinations_messages_cache[channick] = deque(maxlen=MAX_HISTORY_LENGTH)
-
-    pollinations_messages_cache[channick].append(Message(role="user", content=text))
+    history = get_or_create_history(pollinations_messages_cache, chan, nick, MAX_HISTORY_LENGTH)
+    history.append(Message(role="user", content=text))
 
     try:
-        messages = [msg.as_dict() for msg in pollinations_messages_cache[channick]]
+        messages = [msg.as_dict() for msg in history]
         response = client.generate_text(messages, model)
         response_text = response["choices"][0]["message"]["content"]
-        pollinations_messages_cache[channick].append(
-            Message(role="assistant", content=response_text)
-        )
-
-        formatted = process_text_response(
-            response_text, nick, chan, pollinations_messages_cache[channick]
+        history.append(Message(role="assistant", content=response_text))
+        formatted = truncate_or_paste(
+            response_text,
+            nick,
+            list(history),
+            f"{nick}'s Pollinations conversation in {chan}",
         )
         return f"[{model}] {formatted}"
     except requests.HTTPError as e:
@@ -573,38 +502,21 @@ def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
     model = user_models.get((chan, nick), "openai")
     client = get_client(api_key)
 
-    channick = (chan, nick)
-    if channick not in pollinations_messages_cache:
-        pollinations_messages_cache[channick] = deque(maxlen=MAX_HISTORY_LENGTH)
-
-    app_prompt = (
-        text
-        + "\nMake sure to put everything in a single html file so it can be a single code block meant to be directly used in a browser as it is. Do not explain, just show the code formatted inside a markdown code block"
-    )
-
-    pollinations_messages_cache[channick].append(
-        Message(role="user", content=app_prompt)
-    )
+    history = get_or_create_history(pollinations_messages_cache, chan, nick, MAX_HISTORY_LENGTH)
+    history.append(Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX))
 
     try:
-        messages = [msg.as_dict() for msg in pollinations_messages_cache[channick]]
+        messages = [msg.as_dict() for msg in history]
         response = client.generate_text(messages, model)
         response_text = response["choices"][0]["message"]["content"]
-        pollinations_messages_cache[channick].append(
-            Message(role="assistant", content=response_text)
-        )
+        history.append(Message(role="assistant", content=response_text))
 
         code_blocks = detect_code_blocks(response_text)
 
         if not code_blocks:
             return "No code block found in the response. Try again or see what happened with .plpaste."
 
-        with tempfile.NamedTemporaryFile(suffix=".html") as f:
-            with open(f.name, "wb") as file:
-                file.write(code_blocks[0].encode("utf-8").strip())
-            html_url = FileIrcResponseWrapper.upload_file(f.name, "pl")
-            paste_url = html_url.removesuffix(".html") + "/p"
-            return f"[{model}] {paste_url}. Try online: {html_url}"
+        return upload_html_app(code_blocks[0], model_prefix=model)
     except requests.HTTPError as e:
         if e.response.status_code == 402:
             return "Error: Insufficient pollen balance"
@@ -624,7 +536,7 @@ def plpaste_command(nick: str, chan: str, text: str) -> str:
 
     channick = (chan, nick)
     if channick in pollinations_messages_cache:
-        return upload_responses(
+        return upload_history(
             nick,
             list(pollinations_messages_cache[channick]),
             f"{nick}'s Pollinations conversation in {chan}",
@@ -641,22 +553,10 @@ def plcopy_command(text: str, nick: str, chan: str) -> str:
     if not target:
         return "Usage: .plcopy <user>"
 
-    target_channick = (chan, target)
-    if target_channick not in pollinations_messages_cache:
-        return f"No conversation history found for {target}."
-
-    pollinations_messages_cache[(chan, nick)] = deque(
-        pollinations_messages_cache[target_channick], maxlen=MAX_HISTORY_LENGTH
-    )
-    return f"Copied {target}'s conversation history into yours ({len(pollinations_messages_cache[(chan, nick)])} messages)."
+    return copy_history(pollinations_messages_cache, chan, nick, target, MAX_HISTORY_LENGTH)
 
 
 @hook.command("plclear", autohelp=False)
 def plclear_command(nick: str, chan: str) -> str:
     """Clear Pollinations conversation history for the current user."""
-    global pollinations_messages_cache
-    channick = (chan, nick)
-    if channick in pollinations_messages_cache:
-        del pollinations_messages_cache[channick]
-        return f"Cleared conversation history for {nick} in {chan}."
-    return f"No conversation history to clear for {nick} in {chan}."
+    return clear_history(pollinations_messages_cache, chan, nick)

@@ -428,6 +428,17 @@ class Hastebin(Pastebin):
             raise ServiceHTTPError(j["message"], r)
 
 
+_MIME_TYPES: dict[str, str] = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "mp3": "audio/mpeg",
+    "mp4": "video/mp4",
+    "html": "text/html",
+}
+
+
 class Girafiles(Pastebin):
     def __init__(self, base_url: str):
         super().__init__()
@@ -439,8 +450,9 @@ class Girafiles(Pastebin):
         else:
             encoded = data
 
+        mime_type = _MIME_TYPES.get(ext, "text/plain")
         try:
-            files = {"file": ("paste." + ext, encoded, "text/plain")}
+            files = {"file": (f"paste.{ext}", encoded, mime_type)}
             r = get_session().post(self.url, files=files)
             r.raise_for_status()
         except HTTPError as e:

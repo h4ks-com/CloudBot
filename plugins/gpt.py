@@ -1,7 +1,6 @@
 import copy
 import importlib
 import re
-import tempfile
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -17,8 +16,25 @@ from markitdown import MarkItDown
 from cloudbot import hook
 from cloudbot.bot import bot
 from cloudbot.util import formatting
+from cloudbot.util.ai_common import (
+    APP_HTML_PROMPT_SUFFIX,
+    Message,
+    RoleType,
+    clear_history,
+    copy_history,
+    detect_code_blocks,
+    get_or_create_history,
+    truncate_or_paste,
+    upload_history,
+    upload_html_app,
+)
 from cloudbot.util.web import get_session
-from plugins.huggingface import FileIrcResponseWrapper
+from plugins.huggingface import (
+    ALIASES,
+    HuggingFaceClient,
+    attempt_inference,
+    process_response,
+)
 from plugins.wikis import WIKI_APIS, search
 
 from .youtube import get_client, get_video_info, youtube_re
@@ -27,7 +43,6 @@ API_URL = "https://g4f.h4ks.com/api/completions"
 MAX_SUMMARIZE_MESSAGES = 1000
 AGI_HISTORY_LENGTH = 50
 MAX_USER_HISTORY_LENGTH = 32
-RoleType = Literal["user", "assistant"]
 
 WIKI = ("wikih4ks", "wh")
 
@@ -51,24 +66,6 @@ def on_start():
     if not wiki_password:
         return
     patch_input(wiki_password)
-
-
-def detect_code_blocks(markdown_text: str) -> list[str]:
-    code_block_pattern = re.compile(r"```\S*(.*)```", re.DOTALL)
-    return code_block_pattern.findall(markdown_text)
-
-
-@dataclass
-class Message:
-    role: RoleType
-    content: str
-    timestamp: float = datetime.timestamp(datetime.now())
-
-    def as_dict(self):
-        return {
-            "role": self.role,
-            "content": self.content,
-        }
 
 
 def generate_z_ai_token(apikey: str, exp_seconds: int = 3600) -> str:
@@ -128,24 +125,6 @@ def get_completion(messages: list[Message]) -> str:
         return response.json()["completion"]
 
 
-def upload_responses(nick: str, messages: list[Message], header: str) -> str:
-    bar = "-" * 80
-    lb = "\n"
-    text_contents = (
-        header
-        + "\n" * 4
-        + f"{lb}{bar}{lb*2}".join(
-            f"{nick if message.role == 'user' else 'bot'}: {message.content}"
-            for message in messages
-        )
-    )
-    with tempfile.NamedTemporaryFile(suffix=".txt") as f:
-        with open(f.name, "wb") as file:
-            file.write(text_contents.encode("utf-8"))
-        image_url = FileIrcResponseWrapper.upload_file(f.name, "st")
-    return image_url
-
-
 gpt_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
 
 
@@ -154,37 +133,24 @@ def gpt_command(text: str, nick: str, chan: str) -> str:
     """<text> - Get a response from text generating LLM."""
     global gpt_messages_cache
 
-    channick = (chan, nick)
-    if channick not in gpt_messages_cache:
-        gpt_messages_cache[channick] = deque(maxlen=MAX_USER_HISTORY_LENGTH)
-
-    gpt_messages_cache[channick].append(Message(role="user", content=text))
+    history = get_or_create_history(gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history.append(Message(role="user", content=text))
     try:
-        response = get_completion(list(gpt_messages_cache[channick]))
+        response = get_completion(list(history))
     except requests.HTTPError as e:
         return f"Error: {e}"
-    gpt_messages_cache[channick].append(
-        Message(role="assistant", content=response)
+    history.append(Message(role="assistant", content=response))
+    return truncate_or_paste(
+        response,
+        nick,
+        list(history),
+        f"{nick}'s GPT conversation in {chan}",
     )
-    truncated = formatting.truncate_str(response, 350)
-    if len(truncated) < len(response):
-        paste_url = upload_responses(
-            nick,
-            list(gpt_messages_cache[channick]),
-            f"{nick}'s GPT conversation in {chan}",
-        )
-        return f"{truncated} (full response: {paste_url})"
-    return truncated
 
 
 def create_web_app(text: str, history: list[Message] | Deque[Message]) -> str:
     history.append(
-        Message(
-            role="user",
-            content=text
-            + "\nMake sure to put everything in a single html file so it can be a single code block meant to be"
-            " directly used in a browser as it is. Do not explain, just show the code.",
-        )
+        Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX)
     )
     try:
         response = get_completion(list(history))
@@ -192,17 +158,11 @@ def create_web_app(text: str, history: list[Message] | Deque[Message]) -> str:
         return f"Error: {e}"
 
     history.append(Message(role="assistant", content=response))
-    # Match on multi line markdown block '````'
     code_blocks = detect_code_blocks(response)
     if not code_blocks:
         return "No code block found in the response. Try .gptclear or see what happened with .gptpaste."
 
-    with tempfile.NamedTemporaryFile(suffix=".html") as f:
-        with open(f.name, "wb") as file:
-            file.write(code_blocks[0].encode("utf-8").strip())
-        html_url = FileIrcResponseWrapper.upload_file(f.name, "st")
-        paste_url = html_url.removesuffix(".html") + "/p"
-        return f"{paste_url}. Try online: {html_url}"
+    return upload_html_app(code_blocks[0])
 
 
 @hook.command("gptweb", "gptapp")
@@ -210,11 +170,8 @@ def gpt_app(text: str, nick: str, chan: str) -> str:
     """<text> - Create a single page html web app on the fly with gpt"""
     global gpt_messages_cache
 
-    channick = (chan, nick)
-    if channick not in gpt_messages_cache:
-        gpt_messages_cache[channick] = deque(maxlen=MAX_USER_HISTORY_LENGTH)
-
-    return create_web_app(text, gpt_messages_cache[channick])
+    history = get_or_create_history(gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    return create_web_app(text, history)
 
 
 @hook.command("agiweb", "agiapp")
@@ -235,7 +192,7 @@ def gpt_paste_command(nick: str, chan: str, text: str) -> str:
 
     channick = (chan, nick)
     if channick in gpt_messages_cache:
-        return upload_responses(
+        return upload_history(
             nick,
             list(gpt_messages_cache[channick]),
             f"{nick}'s GPT conversation in {chan}",
@@ -254,26 +211,13 @@ def gpt_copy_command(text: str, nick: str, chan: str) -> str:
     if not target:
         return "Usage: .gptcopy <user>"
 
-    target_channick = (chan, target)
-    if target_channick not in gpt_messages_cache:
-        return f"No conversation history found for {target}."
-
-    gpt_messages_cache[(chan, nick)] = deque(
-        gpt_messages_cache[target_channick], maxlen=MAX_USER_HISTORY_LENGTH
-    )
-    return f"Copied {target}'s conversation history into yours ({len(gpt_messages_cache[(chan, nick)])} messages)."
+    return copy_history(gpt_messages_cache, chan, nick, target, MAX_USER_HISTORY_LENGTH)
 
 
 @hook.command("gptclear", autohelp=False)
 def gpt_clear_command(nick: str, chan: str) -> str:
     """Clear the conversation cache."""
-    global gpt_messages_cache
-
-    channick = (chan, nick)
-    if channick in gpt_messages_cache:
-        gpt_messages_cache.pop(channick)
-        return "Conversation cache cleared."
-    return "No conversation cache to clear."
+    return clear_history(gpt_messages_cache, chan, nick)
 
 
 last_summary = ""
@@ -313,13 +257,6 @@ def summarize(
         return f"Error: {e}"
 
     if image:
-        from plugins.huggingface import (
-            ALIASES,
-            HuggingFaceClient,
-            attempt_inference,
-            process_response,
-        )
-
         api_key = bot.config.get_api_key("huggingface")
         if not api_key:
             return "error: missing api key for huggingface"
@@ -332,11 +269,10 @@ def summarize(
             return formatting.truncate(response, 420)
         return formatting.truncate(process_response(response, chan, nick), 420)
     else:
-        # Output at most 3 messages
         last_summary = response
         output = formatting.chunk_str(response.replace("\n", " - "))
         if len(output) > 3:
-            paste_url = upload_responses(
+            paste_url = upload_history(
                 nick,
                 [Message(role="assistant", content=response)],
                 f"{nick}'s GPT summary in {chan}",
@@ -425,7 +361,6 @@ def generate_agi_history(conn, chan: str) -> list[Message]:
         else:
             mod_msg = msg
             fmt = "{}: {}"
-        # Skip bot commands
         if mod_msg.startswith(prefix):
             continue
         inner.append(("user", timestamp, fmt.format(name, mod_msg)))
@@ -439,8 +374,6 @@ def generate_agi_history(conn, chan: str) -> list[Message]:
     sorted_messages = sorted(inner, key=lambda x: x[1])
     messages = copy.deepcopy(sorted_messages)
 
-    # We remove the bot's message from the begining of the history so that it doesn't think it started the conversation
-    # on it's own
     for msg in sorted_messages:
         role = msg[0]
         if role == "assistant":
@@ -468,19 +401,17 @@ def gpts_command(
     reply, text: str, nick: str, chan: str, conn
 ) -> str | list[str] | None:
     """<text> - Get a response from text generating LLM that is aware of the conversation."""
-    # Same logic as .summarize but with the last 30 messages and the user's message
     messages = generate_agi_history(conn, chan)
     try:
         response = get_completion(messages)
     except requests.HTTPError as e:
         return f"Error: {e}"
 
-    # Output at most 3 messages
     output = formatting.chunk_str(response.replace("\n", " - "))
     for message in output:
         agi_messages_cache.append((datetime.timestamp(datetime.now()), message))
     if len(output) > 3:
-        paste_url = upload_responses(
+        paste_url = upload_history(
             nick,
             [Message(role="assistant", content=response)],
             f"GPT conversation in {chan}",
@@ -499,7 +430,7 @@ def gpts_command(
 def agi_paste_command(nick: str, conn, chan: str) -> str:
     """Pastes the AGI context window."""
     messages = generate_agi_history(conn, chan)
-    return upload_responses("", messages, f"AGI conversation in {chan}")
+    return upload_history("", messages, f"AGI conversation in {chan}")
 
 
 @hook.command("gpredict", "gptpredict", "gptpred", "predict", autohelp=False)
@@ -517,7 +448,6 @@ def gpredict_command(
     messages = []
     was_user_in_history = False
     for name, _timestamp, msg in reversed(conn.history[chan]):
-        # Skip bot commands
         if msg.startswith("."):
             continue
         if msg.startswith("\x01ACTION"):
@@ -539,7 +469,7 @@ def gpredict_command(
     if not was_user_in_history or not messages:
         return f"No chat history found for {text.strip()}."
 
-    messages.reverse()  # Ensure messages are in chronological order
+    messages.reverse()
     messages.insert(
         0,
         Message(
@@ -594,7 +524,6 @@ def edit_wiki(
     if not wiki_text:
         return "Error: No text found in the response."
 
-    # Extract the title from the wiki text as the first line without surrounding "=="
     match = re.search(r"^=+\s*(.*?)\s*=+", wiki_text, re.MULTILINE)
     if match:
         title = match.group(1).strip()
@@ -606,7 +535,6 @@ def edit_wiki(
 
     if page.exists():
         reply(f"Editing page at {page.full_url()} ...")
-        # Refrese the prompt to avoid the bot thinking it is a new page, give it the old page as a context
         history[-1].content = (
             f"Please edit the following page content:\n```mediawiki\n{page.text}\n```\n\n{wiki_text}\n"
             + history[-1].content
@@ -635,7 +563,6 @@ def edit_wiki(
             page.save("Edited by GPT bot from irc")
             break
         except Exception as e:
-            # Reload module to get the new password
             importlib.reload(pywikibot)
             patch_input(bot.config.get_api_key("wiki_password"))
             site = pywikibot.Site(url=WIKI_APIS[WIKI], user=user)
@@ -653,11 +580,8 @@ def gptwiki(
 ) -> list[str] | str:
     """<text> - Create or edit a wiki page on demand from AI prompt"""
     global gpt_messages_cache
-    channick = (chan, nick)
-    if channick not in gpt_messages_cache:
-        gpt_messages_cache[channick] = deque(maxlen=MAX_USER_HISTORY_LENGTH)
-
-    return edit_wiki(bot, reply, chan, nick, text, gpt_messages_cache[channick])
+    history = get_or_create_history(gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    return edit_wiki(bot, reply, chan, nick, text, history)
 
 
 @hook.command("agiwiki", autohelp=False)
@@ -677,14 +601,12 @@ def gptsummarize(
     global gpt_messages_cache
     if not text.strip():
         return "Error: You must provide a url to summarize."
-    # Validate as a url
     parsed_url = urlparse(text.strip())
     if not (parsed_url.scheme and parsed_url.netloc):
         return "Error: Invalid URL provided. Please provide a valid URL to summarize."
 
     prompt = None
 
-    # If youtube url, use the transcript API
     if youtube_re.search(parsed_url.geturl()):
         info = get_video_info(get_client(), parsed_url.geturl())
         if info["transcript"]:
@@ -700,25 +622,18 @@ def gptsummarize(
             return "Error: Failed to read and convert the source. Make sure it is a supported url"
         prompt = f"Please briefly summarize the contents of the following text:\n{result.markdown}\n\n"
 
-    channick = (chan, nick)
-    if channick not in gpt_messages_cache:
-        gpt_messages_cache[channick] = deque(maxlen=MAX_USER_HISTORY_LENGTH)
-    gpt_messages_cache[channick].append(Message(role="user", content=prompt))
+    history = get_or_create_history(gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history.append(Message(role="user", content=prompt))
     try:
-        response = get_completion(list(gpt_messages_cache[channick]))
+        response = get_completion(list(history))
     except requests.HTTPError as e:
         return f"Error: {e}"
 
-    gpt_messages_cache[channick].append(
-        Message(role="assistant", content=response)
+    history.append(Message(role="assistant", content=response))
+    return truncate_or_paste(
+        response,
+        nick,
+        list(history),
+        f"{nick}'s GPT conversation in {chan}",
+        prefix="Summary: ",
     )
-
-    truncated = f"Summary: {formatting.truncate_str(response, 350)}"
-    if len(truncated) < len(response):
-        paste_url = upload_responses(
-            nick,
-            list(gpt_messages_cache[channick]),
-            f"{nick}'s GPT conversation in {chan}",
-        )
-        return f"{truncated} (full response: {paste_url})"
-    return truncated

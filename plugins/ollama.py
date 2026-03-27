@@ -1,16 +1,20 @@
-import re
-import tempfile
-from collections import deque
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Deque, Literal
+from typing import Deque
 
 import requests
 
 from cloudbot import hook
-from cloudbot.util import formatting
+from cloudbot.util.ai_common import (
+    APP_HTML_PROMPT_SUFFIX,
+    Message,
+    clear_history,
+    copy_history,
+    detect_code_blocks,
+    get_or_create_history,
+    truncate_or_paste,
+    upload_history,
+    upload_html_app,
+)
 from cloudbot.util.web import get_session
-from plugins.huggingface import FileIrcResponseWrapper
 
 MAX_USER_HISTORY_LENGTH = 10
 ALLOWED_MODELS = [
@@ -22,26 +26,10 @@ ALLOWED_MODELS = [
     "opencoder:8b",
     "olmo2:7b",
 ]
-RoleType = Literal["user", "assistant"]
-
-
-@dataclass
-class Message:
-    role: RoleType
-    content: str
-    timestamp: float = datetime.timestamp(datetime.now())
-
-    def as_dict(self):
-        return {
-            "role": self.role,
-            "content": self.content,
-        }
-
 
 def get_ollama_config(
     bot, model: str | None = None
 ) -> tuple[str | None, str | None]:
-    """Get Ollama configuration from bot config."""
     config = bot.config.get("plugins", {}).get("ollama", {})
     api_url = config.get("api_url")
     api_key = config.get("api_key")
@@ -58,7 +46,6 @@ def get_ollama_config(
 def get_completion(
     api_url: str, api_key: str, model: str, messages: list[Message]
 ) -> str:
-    """Call Ollama API to get completion."""
     headers = {
         "Content-Type": "application/json",
     }
@@ -79,37 +66,6 @@ def get_completion(
     return response.json()["message"]["content"]
 
 
-def upload_responses(nick: str, messages: list[Message], header: str) -> str:
-    """Upload conversation to pastebin."""
-    bar = "-" * 80
-    lb = "\n"
-    text_contents = (
-        header
-        + "\n" * 4
-        + f"{lb}{bar}{lb*2}".join(
-            f"{nick if message.role == 'user' else 'bot'}: {message.content}"
-            for message in messages
-        )
-    )
-    with tempfile.NamedTemporaryFile(suffix=".txt") as f:
-        with open(f.name, "wb") as file:
-            file.write(text_contents.encode("utf-8"))
-        paste_url = FileIrcResponseWrapper.upload_file(f.name, "st")
-    return paste_url
-
-
-def detect_code_blocks(markdown_text: str) -> list[str]:
-    """Extract code blocks from markdown."""
-    code_block_pattern = re.compile(r"```\S*(.*)```", re.DOTALL)
-    block = code_block_pattern.findall(markdown_text)
-    if not block:
-        code_block_pattern = re.compile(r"```(.*)", re.DOTALL)
-        block = code_block_pattern.findall(markdown_text)
-        if not block:
-            return [markdown_text]
-    return block
-
-
 ollama_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
 user_models: dict[tuple[str, str], str] = {}
 
@@ -121,7 +77,6 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
     global user_models
     model = user_models.get((chan, nick), "qwen:latest")
 
-    # Get configuration
     api_url, api_key = get_ollama_config(bot, model)
     if not api_url:
         notice(
@@ -129,34 +84,23 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
         )
         return
 
-    channick = (chan, nick)
-    if channick not in ollama_messages_cache:
-        ollama_messages_cache[channick] = deque(maxlen=MAX_USER_HISTORY_LENGTH)
-
-    ollama_messages_cache[channick].append(Message(role="user", content=text))
+    history = get_or_create_history(ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history.append(Message(role="user", content=text))
     try:
-        response = get_completion(
-            api_url, api_key, model, list(ollama_messages_cache[channick])
-        )
+        response = get_completion(api_url, api_key, model, list(history))
     except requests.HTTPError as e:
         return f"Error: {e}"
     except requests.Timeout:
         return "Error: Request timed out"
-    except Exception as e:
-        return f"Error: {e}"
 
-    ollama_messages_cache[channick].append(
-        Message(role="assistant", content=response)
+    history.append(Message(role="assistant", content=response))
+    return truncate_or_paste(
+        response,
+        nick,
+        list(history),
+        f"{nick}'s Ollama conversation in {chan}",
+        prefix=f"[{model}] ",
     )
-    truncated = formatting.truncate_str(response, 350)
-    if len(truncated) < len(response):
-        paste_url = upload_responses(
-            nick,
-            list(ollama_messages_cache[channick]),
-            f"{nick}'s Ollama conversation in {chan}",
-        )
-        return f"[{model}] {truncated} (full response: {paste_url})"
-    return f"[{model}] {truncated}"
 
 
 def create_web_app(
@@ -167,14 +111,8 @@ def create_web_app(
     api_key: str,
     model: str,
 ) -> str:
-    """Create a single-page HTML app using Ollama."""
     history.append(
-        Message(
-            role="user",
-            content=text
-            + "\nMake sure to put everything in a single html file so it can be a single code block meant to be"
-            " directly used in a browser as it is. Do not explain, just show the code.",
-        )
+        Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX)
     )
     try:
         response = get_completion(api_url, api_key, model, list(history))
@@ -182,20 +120,13 @@ def create_web_app(
         return f"Error: {e}"
     except requests.Timeout:
         return "Error: Request timed out"
-    except Exception as e:
-        return f"Error: {e}"
 
     history.append(Message(role="assistant", content=response))
     code_blocks = detect_code_blocks(response)
     if not code_blocks:
         return "No code block found in the response. Try .aiclear or see what happened with .aipaste."
 
-    with tempfile.NamedTemporaryFile(suffix=".html") as f:
-        with open(f.name, "wb") as file:
-            file.write(code_blocks[0].encode("utf-8").strip())
-        html_url = FileIrcResponseWrapper.upload_file(f.name, "st")
-        paste_url = html_url.removesuffix(".html") + "/p"
-        return f"[{model}] {paste_url}. Try online: {html_url}"
+    return upload_html_app(code_blocks[0], model_prefix=model)
 
 
 @hook.command("aiapp", "aiweb")
@@ -205,7 +136,6 @@ def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
     global user_models
     model = user_models.get((chan, nick), "qwen:latest")
 
-    # Get configuration
     api_url, api_key = get_ollama_config(bot, model)
     if not api_url:
         notice(
@@ -213,13 +143,8 @@ def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
         )
         return
 
-    channick = (chan, nick)
-    if channick not in ollama_messages_cache:
-        ollama_messages_cache[channick] = deque(maxlen=MAX_USER_HISTORY_LENGTH)
-
-    return create_web_app(
-        text, ollama_messages_cache[channick], bot, api_url, api_key, model
-    )
+    history = get_or_create_history(ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    return create_web_app(text, history, bot, api_url, api_key, model)
 
 
 @hook.command("aih", "aihistory", "aipaste", autohelp=False)
@@ -233,7 +158,7 @@ def ai_paste_command(nick: str, chan: str, text: str) -> str:
 
     channick = (chan, nick)
     if channick in ollama_messages_cache:
-        return upload_responses(
+        return upload_history(
             nick,
             list(ollama_messages_cache[channick]),
             f"{nick}'s Ollama conversation in {chan}",
@@ -250,32 +175,18 @@ def ai_copy_command(text: str, nick: str, chan: str) -> str:
     if not target:
         return "Usage: .aicopy <user>"
 
-    target_channick = (chan, target)
-    if target_channick not in ollama_messages_cache:
-        return f"No conversation history found for {target}."
-
-    ollama_messages_cache[(chan, nick)] = deque(
-        ollama_messages_cache[target_channick], maxlen=MAX_USER_HISTORY_LENGTH
-    )
-    return f"Copied {target}'s conversation history into yours ({len(ollama_messages_cache[(chan, nick)])} messages)."
+    return copy_history(ollama_messages_cache, chan, nick, target, MAX_USER_HISTORY_LENGTH)
 
 
 @hook.command("aiclear", autohelp=False)
 def ai_clear_command(nick: str, chan: str) -> str:
     """Clear the conversation cache."""
-    global ollama_messages_cache
-
-    channick = (chan, nick)
-    if channick in ollama_messages_cache:
-        ollama_messages_cache.pop(channick)
-        return "Conversation cache cleared."
-    return "No conversation cache to clear."
+    return clear_history(ollama_messages_cache, chan, nick)
 
 
 @hook.command("aimodels", autohelp=False)
 def ai_models_command(bot, notice) -> list[str] | str:
     """List available Ollama models."""
-    # Get configuration
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
         notice(
@@ -283,7 +194,6 @@ def ai_models_command(bot, notice) -> list[str] | str:
         )
         return
 
-    # Get base URL (remove /api/chat if present)
     base_url = api_url.rsplit("/api/", 1)[0]
     tags_url = f"{base_url}/api/tags"
 
@@ -304,8 +214,6 @@ def ai_models_command(bot, notice) -> list[str] | str:
         return f"Error fetching models: {e}"
     except requests.Timeout:
         return "Error: Request timed out"
-    except Exception as e:
-        return f"Error: {e}"
 
 
 @hook.command("aisetmodel", "aimodel", "setaimodel", autohelp=False)
@@ -317,7 +225,6 @@ def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
     if not model:
         return f"You are currently using model '{user_models.get((chan, nick), 'qwen:latest')}'. Specify a model with this command to change it."
 
-    # Get configuration
     try:
         get_ollama_config(bot, model)
     except ValueError as e:
