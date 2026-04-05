@@ -1,27 +1,21 @@
-"""h4ks portal integration — announcements and #lobby chat forwarding.
+"""h4ks portal integration — announcements and chat snapshots.
 
 Commands:
   .announce <message>  — post an announcement to h4ks.com (botcontrol only)
-  .syncchat [n]        — push the last N lobby messages to the portal (botcontrol only)
-
-Events:
-  Every message in lobby_channel is forwarded to /api/chat/ automatically.
+  .syncchat [n]        — push the last N lobby messages to the portal once (botcontrol only)
 
 Config (in config.json under "h4ks"):
   {
     "h4ks": {
       "announce_api_url": "https://h4ks.com/api/announce/",
       "chat_api_url":     "https://h4ks.com/api/chat/",
-      "announce_api_token": "your-raw-token-here",
-      "lobby_channel": "#lobby"
+      "announce_api_token": "your-raw-token-here"
     }
   }
 
 Token setup on the Django side:
-  1. Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"
-  2. Hash:     python -c "import hashlib; print(hashlib.sha256(b'RAW_TOKEN').hexdigest())"
-  3. Create an ApiToken record in Django admin with the hash.
-  4. Put the raw token in config.json.
+  1. Create an ApiToken in Django admin — the raw token is shown once on creation.
+  2. Put the raw token in config.json under announce_api_token.
 """
 
 import asyncio
@@ -32,7 +26,6 @@ import aiohttp
 from cloudbot import hook
 from cloudbot.bot import CloudBot
 from cloudbot.clients.irc import IrcClient
-from cloudbot.event import Event, EventType
 
 _TIMEOUT = aiohttp.ClientTimeout(total=8.0)
 _SYNC_DEFAULT = 20
@@ -117,29 +110,3 @@ async def syncchat_cmd(text: str, bot: CloudBot, conn: IrcClient) -> str:
     return f"syncchat: sent {sent} messages{f', {failed} failed' if failed else ''}"
 
 
-@hook.event(EventType.message, singlethread=False)
-async def forward_chat(event: Event, bot: CloudBot, conn: IrcClient) -> None:
-    """Forward #lobby messages to the h4ks.com chat API."""
-    cfg = _cfg(bot)
-    api_url: str | None = cfg.get("chat_api_url")
-    api_token: str | None = cfg.get("announce_api_token")
-    lobby: str = cfg.get("lobby_channel", "#lobby").lower()
-
-    if not api_url or not api_token:
-        return
-    if event.chan.lower() != lobby:
-        return
-    if event.nick.lower() == conn.nick.lower():
-        return
-
-    payload = {"nick": event.nick, "message": event.content, "channel": event.chan}
-    headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
-
-    try:
-        async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-            async with session.post(api_url, json=payload, headers=headers) as resp:
-                if resp.status not in (200, 201):
-                    body = await resp.text()
-                    print(f"[h4ks_chat] API error {resp.status}: {body[:120]}")
-    except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
-        print(f"[h4ks_chat] forward failed: {e}")
