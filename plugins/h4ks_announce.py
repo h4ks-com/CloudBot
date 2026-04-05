@@ -71,7 +71,7 @@ async def announce_cmd(text: str, nick: str, bot: CloudBot) -> str:
         return f"announce error: {e}"
 
 
-@hook.command("syncchat", permissions=["botcontrol"])
+@hook.command("syncchat", permissions=["botcontrol"], autohelp=False)
 async def syncchat_cmd(text: str, bot: CloudBot, conn: IrcClient) -> str:
     """[n] - push the last N lobby messages from history to the h4ks.com portal (default 20)"""
     cfg = _cfg(bot)
