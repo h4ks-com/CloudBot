@@ -85,8 +85,8 @@ async def syncchat_cmd(text: str, bot: CloudBot, conn: IrcClient) -> str:
     except KeyError:
         return f"syncchat: no history for {lobby}"
 
-    # history entries are (nick, timestamp, message) — take the last `count`
-    messages = list(channel_history)[-count:]
+    # history entries are (nick, timestamp, message) — take the last `count`, skip bot commands
+    messages = [m for m in channel_history if not m[2].startswith('.')][-count:]
 
     if not messages:
         return f"syncchat: no messages in history for {lobby}"
