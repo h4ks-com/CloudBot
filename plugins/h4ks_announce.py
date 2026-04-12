@@ -3,6 +3,7 @@
 Commands:
   .announce <message>  — post an announcement to h4ks.com (botcontrol only)
   .syncchat [n]        — push the last N lobby messages to the portal once (botcontrol only)
+  .register            — reply with the h4ks.com registration link
 
 Config (in config.json under "h4ks"):
   {
@@ -62,6 +63,13 @@ async def announce_cmd(text: str, nick: str, bot: CloudBot) -> str:
                 return f"announce failed: HTTP {resp.status} — {body[:80]}"
     except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
         return f"announce error: {e}"
+
+
+@hook.command("register", autohelp=False)
+def register_cmd(bot: CloudBot) -> str:
+    """- get the link to create an h4ks.com account"""
+    base_url: str = _cfg(bot).get("base_url", "https://h4ks.com")
+    return f"You can register here: {base_url}/sign-up/"
 
 
 @hook.command("syncchat", permissions=["botcontrol"], autohelp=False)
