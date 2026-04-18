@@ -25,6 +25,7 @@ ALLOWED_MODELS = [
     "qwen2.5-coder:3b",
     "opencoder:8b",
     "olmo2:7b",
+    "gemma4:e4b"
 ]
 
 def get_ollama_config(
