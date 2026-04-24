@@ -396,35 +396,6 @@ def generate_agi_history(conn, chan: str) -> list[Message]:
     return [Message(role=role, content=text) for role, _, text in messages]
 
 
-@hook.command("agi", "sentient", autohelp=False)
-def gpts_command(
-    reply, text: str, nick: str, chan: str, conn
-) -> str | list[str] | None:
-    """<text> - Get a response from text generating LLM that is aware of the conversation."""
-    messages = generate_agi_history(conn, chan)
-    try:
-        response = get_completion(messages)
-    except requests.HTTPError as e:
-        return f"Error: {e}"
-
-    output = formatting.chunk_str(response.replace("\n", " - "))
-    for message in output:
-        agi_messages_cache.append((datetime.timestamp(datetime.now()), message))
-    if len(output) > 3:
-        paste_url = upload_history(
-            nick,
-            [Message(role="assistant", content=response)],
-            f"GPT conversation in {chan}",
-        )
-        output[2] = (
-            formatting.truncate(output[2], 350)
-            + " (full response: "
-            + paste_url
-            + ")"
-        )
-        return output[:3]
-    return output
-
 
 @hook.command("agipaste", autohelp=False)
 def agi_paste_command(nick: str, conn, chan: str) -> str:

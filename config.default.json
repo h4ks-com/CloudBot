@@ -142,6 +142,40 @@
             "default_model": "openai/gpt-3.5-turbo",
             "max_history_messages": 50,
             "timeout": 30
+        },
+        "agent": {
+            "enabled": true,
+            "backend": "z_ai",
+            "fallback_backend": "openrouter",
+            "backends": {
+                "z_ai": {
+                    "base_url": "https://api.z.ai/api/coding/paas/v4",
+                    "model": "glm-5",
+                    "api_key_config_path": "z_ai"
+                },
+                "openrouter": {
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "model": "z-ai/glm-4.5-air:free",
+                    "api_key_config_path": "openrouter"
+                },
+                "ollama": {
+                    "base_url": "https://ollama.t3ks.com/v1",
+                    "model": "gemma4:e4b",
+                    "api_key_config_path": "plugins.ollama.api_key",
+                    "auth_header": "x-api-key"
+                }
+            },
+            "max_turns": 8,
+            "timeout_s": 120,
+            "reply_max_chars": 420,
+            "enabled_channels": [],
+            "include": [],
+            "exclude": [
+                "quit", "restart", "part", "kick", "ban", "op", "deop",
+                "ignore", "unignore", "chainallow", "join", "nick", "mode",
+                "gpt", "gemini", "ollama", "huggingface", "openrouter",
+                "chatbot", "pollinations", "chain", "ask", "agent"
+            ]
         }
     },
     "browserless": {

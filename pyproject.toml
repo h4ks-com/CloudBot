@@ -117,6 +117,8 @@ dependencies = [
     "yarl>=1.8.1",
     "youtube-search==2.1.0",
     "youtube-transcript-api>=1.1.0",
+    "openai-agents>=0.0.6",
+    "litellm>=1.41.1",
 ]
 
 [tool.isort]

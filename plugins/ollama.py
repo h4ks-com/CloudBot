@@ -1,8 +1,11 @@
+import base64
+import time
 from typing import Deque
 
 import requests
 
 from cloudbot import hook
+from cloudbot.util import web
 from cloudbot.util.ai_common import (
     APP_HTML_PROMPT_SUFFIX,
     Message,
@@ -17,16 +20,112 @@ from cloudbot.util.ai_common import (
 from cloudbot.util.web import get_session
 
 MAX_USER_HISTORY_LENGTH = 10
-ALLOWED_MODELS = [
-    "qwen2.5-coder:3b",
-    "qwen:latest",
-    "llama3:latest",
-    "qwen2.5-coder:7b",
-    "qwen2.5-coder:3b",
-    "opencoder:8b",
-    "olmo2:7b",
-    "gemma4:e4b"
-]
+# GGUF weight-file size cap (bytes). At Q4_K_M, ~6GB ≈ 10B params — generous
+# enough to include 9B-Q4 and Gemma "E4B" effective-param models.
+MODEL_SIZE_LIMIT_BYTES = 7 * 1024**3
+ALLOWED_MODELS_TTL_S = 300
+IMAGE_DEFAULT_SIZE = "512x512"
+# Usecase flags that mark a model as NOT a pure chat LLM.
+_NON_CHAT_FLAGS = {"FLAG_IMAGE", "FLAG_TTS", "FLAG_TRANSCRIPT", "FLAG_EMBEDDING", "FLAG_RERANK"}
+# Inference backends treated as chat-capable LLM runtimes.
+_CHAT_BACKENDS = {"llama-cpp", "vulkan-llama-cpp"}
+
+_allowed_cache: dict[str, tuple[float, list[str]]] = {}
+_image_models_cache: dict[str, tuple[float, list[str]]] = {}
+
+
+def _model_is_allowed(api_url: str, headers: dict, mid: str) -> bool:
+    """Query LocalAI's real per-model metadata. No name regex guessing."""
+    cfg = _get_config_json(api_url, headers, mid)
+    if cfg is None:
+        return False
+
+    usecases = set(cfg.get("known_usecases") or [])
+    if "FLAG_CHAT" not in usecases:
+        return False
+    if usecases & _NON_CHAT_FLAGS:
+        return False
+    if cfg.get("backend") not in _CHAT_BACKENDS:
+        return False
+
+    try:
+        est = get_session().post(
+            f"{api_url}/api/models/vram-estimate",
+            headers=headers,
+            json={"model": mid},
+            timeout=10,
+        ).json()
+        if est.get("sizeBytes", 0) > MODEL_SIZE_LIMIT_BYTES:
+            return False
+    except (requests.RequestException, ValueError):
+        pass
+
+    return True
+
+
+class _RateLimited(Exception):
+    pass
+
+
+def _get_config_json(base: str, headers: dict, mid: str) -> dict | None:
+    """Fetch a single model's config-json. Raises _RateLimited if server is 429'd.
+    Returns None on any other error so callers can skip the model."""
+    try:
+        r = get_session().get(
+            f"{base}/api/models/config-json/{mid}", headers=headers, timeout=10
+        )
+    except requests.RequestException:
+        return None
+    if r.status_code == 429:
+        raise _RateLimited(f"rate limit hit on {mid}")
+    if not r.ok:
+        return None
+    try:
+        return r.json()
+    except ValueError:
+        return None
+
+
+def _fetch_image_models(api_url: str, api_key: str | None) -> list[str]:
+    """Return model ids whose config advertises FLAG_IMAGE."""
+    now = time.monotonic()
+    cached = _image_models_cache.get(api_url)
+    if cached and now - cached[0] < ALLOWED_MODELS_TTL_S:
+        return cached[1]
+
+    base = api_url.rstrip("/")
+    headers = {"apikey": api_key} if api_key else {}
+    response = get_session().get(f"{base}/v1/models", headers=headers, timeout=10)
+    response.raise_for_status()
+    ids = [m["id"] for m in response.json()["data"]]
+    image_ids: list[str] = []
+    for mid in ids:
+        cfg = _get_config_json(base, headers, mid)
+        if cfg is None:
+            continue
+        if "FLAG_IMAGE" in (cfg.get("known_usecases") or []):
+            image_ids.append(mid)
+
+    _image_models_cache[api_url] = (now, image_ids)
+    return image_ids
+
+
+def _fetch_allowed_models(api_url: str, api_key: str | None) -> list[str]:
+    now = time.monotonic()
+    cached = _allowed_cache.get(api_url)
+    if cached and now - cached[0] < ALLOWED_MODELS_TTL_S:
+        return cached[1]
+
+    base = api_url.rstrip("/")
+    headers = {"apikey": api_key} if api_key else {}
+    response = get_session().get(f"{base}/v1/models", headers=headers, timeout=10)
+    response.raise_for_status()
+    ids = [m["id"] for m in response.json()["data"]]
+    allowed = [mid for mid in ids if _model_is_allowed(base, headers, mid)]
+
+    _allowed_cache[api_url] = (now, allowed)
+    return allowed
+
 
 def get_ollama_config(
     bot, model: str | None = None
@@ -34,11 +133,17 @@ def get_ollama_config(
     config = bot.config.get("plugins", {}).get("ollama", {})
     api_url = config.get("api_url")
     api_key = config.get("api_key")
+    if not api_url:
+        return api_url, api_key
+
+    allowed = _fetch_allowed_models(api_url, api_key)
     if model is None:
-        model = ALLOWED_MODELS[0]
-    if model not in ALLOWED_MODELS:
+        if not allowed:
+            raise ValueError("No chat models available on the server.")
+        return api_url, api_key
+    if model not in allowed:
         raise ValueError(
-            f"Model '{model}' is not allowed. Choose from: {', '.join(ALLOWED_MODELS)}"
+            f"Model '{model}' is not allowed. Choose from: {', '.join(allowed)}"
         )
 
     return api_url, api_key
@@ -60,11 +165,12 @@ def get_completion(
         "stream": False,
     }
 
+    url = f"{api_url.rstrip('/')}/v1/chat/completions"
     response = get_session().post(
-        api_url, headers=headers, json=json_data, timeout=60
+        url, headers=headers, json=json_data, timeout=60
     )
     response.raise_for_status()
-    return response.json()["message"]["content"]
+    return response.json()["choices"][0]["message"]["content"]
 
 
 ollama_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
@@ -76,14 +182,19 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
     """<text> - Get a response from Ollama LLM."""
     global ollama_messages_cache
     global user_models
-    model = user_models.get((chan, nick), "qwen:latest")
+    model = user_models.get((chan, nick))
 
-    api_url, api_key = get_ollama_config(bot, model)
+    try:
+        api_url, api_key = get_ollama_config(bot, model)
+    except ValueError as e:
+        return str(e)
     if not api_url:
         notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
-        return
+        return ""
+    if model is None:
+        model = _fetch_allowed_models(api_url, api_key)[0]
 
     history = get_or_create_history(ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
     history.append(Message(role="user", content=text))
@@ -135,14 +246,19 @@ def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
     """<text> - Create a single page html web app on the fly with Ollama"""
     global ollama_messages_cache
     global user_models
-    model = user_models.get((chan, nick), "qwen:latest")
+    model = user_models.get((chan, nick))
 
-    api_url, api_key = get_ollama_config(bot, model)
+    try:
+        api_url, api_key = get_ollama_config(bot, model)
+    except ValueError as e:
+        return str(e)
     if not api_url:
         notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
-        return
+        return ""
+    if model is None:
+        model = _fetch_allowed_models(api_url, api_key)[0]
 
     history = get_or_create_history(ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
     return create_web_app(text, history, bot, api_url, api_key, model)
@@ -195,8 +311,7 @@ def ai_models_command(bot, notice) -> list[str] | str:
         )
         return
 
-    base_url = api_url.rsplit("/api/", 1)[0]
-    tags_url = f"{base_url}/api/tags"
+    tags_url = f"{api_url.rstrip('/')}/v1/models"
 
     headers = {}
     if api_key:
@@ -205,11 +320,12 @@ def ai_models_command(bot, notice) -> list[str] | str:
     try:
         response = get_session().get(tags_url, headers=headers, timeout=10)
         response.raise_for_status()
-        models = response.json()["models"]
-        model_names = [m["name"] for m in models]
+        models = response.json()["data"]
+        all_names = [m["id"] for m in models]
+        allowed = _fetch_allowed_models(api_url, api_key)
         return [
-            f"Available models: {', '.join(model_names)}",
-            "Allowed models: " + ", ".join(ALLOWED_MODELS),
+            f"Available models: {', '.join(all_names)}",
+            f"Allowed chat models (backend=llama-cpp, weights ≤{MODEL_SIZE_LIMIT_BYTES // (1024**3)} GB): {', '.join(allowed)}",
         ]
     except requests.HTTPError as e:
         return f"Error fetching models: {e}"
@@ -224,7 +340,8 @@ def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     model = text.strip()
     if not model:
-        return f"You are currently using model '{user_models.get((chan, nick), 'qwen:latest')}'. Specify a model with this command to change it."
+        current = user_models.get((chan, nick)) or "<server default>"
+        return f"You are currently using model '{current}'. Specify a model with this command to change it. Use .aimodels to list allowed."
 
     try:
         get_ollama_config(bot, model)
@@ -234,3 +351,80 @@ def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
     channick = (chan, nick)
     user_models[channick] = model
     return f"Ollama model set to '{model}'  {nick} in {chan}."
+
+
+@hook.command("aimage")
+def ai_image_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<[model] prompt> - Generate an image via LocalAI. '.aimage list' to list models."""
+    api_url, api_key = get_ollama_config(bot)
+    if not api_url:
+        notice(
+            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
+        )
+        return ""
+
+    text = text.strip()
+
+    try:
+        image_models = _fetch_image_models(api_url, api_key)
+    except _RateLimited:
+        return "Error: server rate-limited enumeration — bot likely needs enterprise API key."
+    except requests.HTTPError as e:
+        return f"Error listing image models: {e}"
+    except requests.Timeout:
+        return "Error: Request timed out"
+
+    if text.lower() == "list":
+        if not image_models:
+            return (
+                "No image models detected. If you installed some, the server may be "
+                "rate-limiting per-model metadata probes — use an enterprise API key in the "
+                "bot config."
+            )
+        return f"Available image models: {', '.join(image_models)}"
+
+    if not image_models:
+        return (
+            "No image models detected. Try '.aimage list' — if the server has models but "
+            "they aren't listed, bot is probably rate-limited (use enterprise API key)."
+        )
+
+    parts = text.split(None, 1)
+    if len(parts) == 2 and parts[0] in image_models:
+        model, prompt = parts[0], parts[1]
+    else:
+        model, prompt = image_models[0], text
+
+    if not prompt:
+        return "Usage: .aimage [model] <prompt>"
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["apikey"] = api_key
+
+    try:
+        response = get_session().post(
+            f"{api_url.rstrip('/')}/v1/images/generations",
+            headers=headers,
+            json={
+                "model": model,
+                "prompt": prompt,
+                "size": IMAGE_DEFAULT_SIZE,
+                "n": 1,
+                "response_format": "b64_json",
+            },
+            timeout=180,
+        )
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        return f"Error: {e}"
+    except requests.Timeout:
+        return "Error: image generation timed out"
+
+    try:
+        png_bytes = base64.b64decode(response.json()["data"][0]["b64_json"])
+    except (KeyError, ValueError, TypeError):
+        return "Error: unexpected response from server"
+
+    paste_url = web.paste(png_bytes, ext="png")
+    return f"[{model}] {paste_url}"
