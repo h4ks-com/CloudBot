@@ -1,12 +1,8 @@
 """Agentic LLM dispatcher for CloudBot.
 
-When the bot is addressed in natural language, route the message to an LLM
-agent that can call existing bot commands as tools. Uses openai-agents 0.0.6
+Explicit-only entry: .ask / .agent / .agi <prompt>. Routes to an LLM agent
+that can call existing bot commands as tools. Uses openai-agents 0.0.6
 with Z.AI glm-5 (primary) and OpenRouter (fallback).
-
-Two entry points:
-  - Explicit: .ask / .agent / .agi <prompt>
-  - Implicit: _cloudbot: <natural language> (when no command matches)
 """
 import asyncio
 import json
@@ -14,19 +10,17 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
-from agents import Agent, FunctionTool, RunContextWrapper, Runner
+from agents import Agent, FunctionTool, RunContextWrapper, RunHooks, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_provider import OpenAIProvider
 from agents.run import RunConfig
 from openai import AsyncOpenAI
 
 from cloudbot import hook
-from cloudbot.bot import get_cmd_regex
 from cloudbot.event import CommandEvent
-from cloudbot.hook import Priority
-from cloudbot.util import formatting, web
+from cloudbot.util import formatting
 from cloudbot.util.typing import start_typing_for_command, stop_typing_for_command
-from plugins.agent_tools import CUSTOM_TOOLS
+from plugins.agent_tools import CUSTOM_TOOLS, upload_markdown_paste
 
 logger = logging.getLogger("cloudbot")
 
@@ -97,6 +91,13 @@ AGENT_INSTRUCTIONS = (
     "Keep your final answer concise — IRC lines are short. "
     "When a tool returns raw text, extract and summarise the key information."
 )
+
+class _LoggingHooks(RunHooks):
+    async def on_tool_start(self, context, agent, tool) -> None:
+        logger.info("agent: tool invoked: %s", tool.name)
+
+
+_HOOKS = _LoggingHooks()
 
 # Per-bot caches keyed by id(bot). Built lazily because on_start fires
 # per-plugin during load, before sibling plugins have registered commands.
@@ -280,17 +281,28 @@ def _make_run_config(cfg: dict, bot, backend: str) -> RunConfig:
     )
 
 
-def _format_answer(text: str, cfg: dict) -> str:
-    max_len = int(cfg.get("reply_max_chars", 420))
-    truncated = formatting.truncate(text, max_len)
-    if len(truncated) < len(text):
-        try:
-            url = web.paste(text.encode("utf-8"), ext="txt")
-        except Exception:
-            logger.exception("agent: paste upload failed")
-            return truncated
-        return f"{truncated} (full: {url})"
-    return truncated
+def _format_answer(text: str, cfg: dict) -> list[str]:
+    """Collapse multiline answer into one IRC line. Paste only if it doesn't fit."""
+    max_chars = int(cfg.get("reply_max_chars", 420))
+    text = text.strip()
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    collapsed = " - ".join(lines) if lines else text
+
+    if len(collapsed) <= max_chars:
+        return [collapsed]
+
+    try:
+        url = upload_markdown_paste(text)
+    except Exception:
+        logger.exception("agent: paste upload failed")
+        url = None
+
+    if url:
+        suffix = f" (full: {url})"
+        truncated = formatting.truncate(collapsed, max_chars - len(suffix))
+        return [truncated + suffix]
+
+    return [formatting.truncate(collapsed, max_chars)]
 
 
 async def _run_agent(event, prompt: str) -> None:
@@ -354,6 +366,7 @@ async def _run_agent(event, prompt: str) -> None:
                         agent_input,
                         context=event,
                         run_config=run_cfg,
+                        hooks=_HOOKS,
                         max_turns=max_turns,
                     ),
                     timeout=timeout,
@@ -375,7 +388,7 @@ async def _run_agent(event, prompt: str) -> None:
                 logger.debug("agent: result.to_input_list() unavailable in this SDK version")
 
             answer = str(result.final_output or "").strip() or "(no answer)"
-            event.reply(_format_answer(answer, cfg))
+            event.reply(*_format_answer(answer, cfg))
             return
 
         err_name = type(last_err).__name__ if last_err else "unknown"
@@ -391,26 +404,3 @@ async def agent_command(text, event):
         event.reply("usage: .ask <natural language prompt>")
         return
     await _run_agent(event, text)
-
-
-@hook.regex(r"^.+$", run_on_cmd=False, priority=Priority.LOW)
-async def agent_fallback(event):
-    """Fires when the bot is addressed by nick and no command matched.
-
-    With run_on_cmd=False this only fires when normal command dispatch
-    (including the prefix-auto-complete at bot.py:430-449) found no match.
-    We re-run get_cmd_regex to confirm the bot was actually addressed —
-    otherwise this would fire on every PRIVMSG.
-    """
-    content = event.content or ""
-    cmd_re = get_cmd_regex(event)
-    m = cmd_re.match(content)
-    if not m:
-        return
-    command = (m.group("command") or "").lower()
-    prompt = (m.group("text") or "").strip()
-    if not prompt:
-        prompt = command
-    if not prompt:
-        return
-    await _run_agent(event, prompt)

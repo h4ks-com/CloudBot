@@ -3,6 +3,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Deque, Literal
 
 from cloudbot.util import formatting, web
@@ -14,139 +15,7 @@ APP_HTML_PROMPT_SUFFIX = (
     " meant to be directly used in a browser as it is. Do not explain, just show the code."
 )
 
-_HISTORY_HTML = """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>__TITLE__</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-html{background:#0d1117;height:100%}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.65;padding:1.5rem 1rem;min-height:100vh}
-.wrap{max-width:800px;margin:0 auto}
-.hdr{display:flex;justify-content:space-between;align-items:center;padding-bottom:.85rem;border-bottom:1px solid #21262d;margin-bottom:1.4rem;gap:1rem}
-.hdr h1{font-size:.95rem;font-weight:500;color:#8b949e;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.msg{display:flex;gap:.65rem;margin-bottom:1rem;align-items:flex-start}
-.msg.user{flex-direction:row-reverse}
-.av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0;text-transform:uppercase;letter-spacing:.03em}
-.user .av{background:#1f6feb;color:#fff}
-.bot .av{background:#1c2128;color:#79c0ff;border:1px solid #388bfd55}
-.bub{position:relative;padding:.65rem .9rem;border-radius:14px;font-size:.875rem;word-break:break-word;max-width:84%}
-.user .bub{background:#1c2d42;border:1px solid #1f6feb33;border-top-right-radius:4px}
-.bot .bub{background:#161b22;border:1px solid #30363d;border-top-left-radius:4px}
-.bub-content{overflow:hidden}
-.bub.collapsed .bub-content{max-height:22em;-webkit-mask-image:linear-gradient(to bottom,black 55%,transparent 100%);mask-image:linear-gradient(to bottom,black 55%,transparent 100%)}
-.bub-content p{margin:.3em 0}.bub-content p:first-child{margin-top:0}.bub-content p:last-child{margin-bottom:0}
-.bub-content pre{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:.75rem .9rem;overflow-x:auto;margin:.5em 0;font-size:.8em;white-space:pre;word-break:normal}
-.bub-content pre code{background:none!important;border:none!important;padding:0!important;font-size:inherit;white-space:pre}
-.bub-content code{background:#161b22;padding:.1em .35em;border-radius:4px;font-size:.83em;font-family:'SFMono-Regular',Consolas,monospace;border:1px solid #30363d}
-.bub-content ul,.bub-content ol{padding-left:1.4em;margin:.3em 0}.bub-content li{margin:.15em 0}
-.bub-content h1,.bub-content h2,.bub-content h3,.bub-content h4{margin:.55em 0 .25em;color:#e6edf3;font-weight:600}
-.bub-content h1{font-size:1.1em}.bub-content h2{font-size:1.02em}.bub-content h3,.bub-content h4{font-size:.95em}
-.bub-content a{color:#58a6ff;text-decoration:none}.bub-content a:hover{text-decoration:underline}
-.bub-content blockquote{border-left:3px solid #388bfd55;padding-left:.75em;color:#8b949e;margin:.4em 0}
-.bub-content table{border-collapse:collapse;width:100%;margin:.4em 0;font-size:.88em}
-.bub-content th,.bub-content td{border:1px solid #30363d;padding:.3em .6em;text-align:left}
-.bub-content th{background:#1c2128;color:#e6edf3}
-.bub-content hr{border:none;border-top:1px solid #21262d;margin:.6em 0}
-.toggle{display:block;width:100%;margin-top:.45rem;background:none;border:none;border-top:1px solid #21262d;color:#58a6ff;font-size:.73rem;cursor:pointer;padding:.3rem 0 0;text-align:center;transition:color .1s}
-.toggle:hover{color:#79c0ff}
-.cbtn{position:absolute;top:.3rem;right:.3rem;background:#0d1117dd;border:1px solid #30363d;border-radius:4px;padding:.1rem .4rem;color:#8b949e;font-size:.7rem;cursor:pointer;line-height:1.5;transition:color .1s,border-color .1s,opacity .15s;white-space:nowrap;opacity:0}
-.msg:hover .cbtn{opacity:1}
-.cbtn:hover{color:#e6edf3;border-color:#8b949e}
-.cbtn.ok,.hcbtn.ok{color:#3fb950!important;border-color:#3fb950!important}
-.hcbtn{background:none;border:1px solid #30363d;border-radius:4px;padding:.15rem .6rem;color:#8b949e;font-size:.72rem;cursor:pointer;line-height:1.5;transition:color .1s,border-color .1s;white-space:nowrap;flex-shrink:0}
-.hcbtn:hover{color:#e6edf3;border-color:#8b949e}
-@media(max-width:600px){
-  body{padding:1rem .65rem}
-  .bub{max-width:91%;font-size:.85rem;padding:.6rem .8rem}
-  .av{width:26px;height:26px;font-size:.6rem}
-  .msg{gap:.5rem;margin-bottom:.85rem}
-  .bub-content pre{font-size:.78em;padding:.6rem .75rem}
-  .hdr h1{font-size:.85rem}
-  .hdr{margin-bottom:1.1rem}
-}
-</style>
-</head>
-<body>
-<div class="wrap">
-<div class="hdr">
-  <h1 id="hdr-title"></h1>
-  <button class="hcbtn" id="copy-all">Copy all</button>
-</div>
-<div id="chat"></div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
-<script>
-const TITLE=__TITLE_JSON__;
-const MSGS=__MESSAGES_JSON__;
-marked.use({breaks:true,gfm:true,html:false});
-const PURIFY_CFG={
-  ALLOWED_TAGS:['p','a','strong','em','b','i','u','s','del','code','pre','ul','ol','li',
-    'h1','h2','h3','h4','h5','h6','blockquote','hr','br',
-    'table','thead','tbody','tfoot','tr','th','td','caption',
-    'sup','sub','span','div','img','figure','figcaption'],
-  // class allowed only so marked's language-* on <code> survives for hljs;
-  // style/id stripped to prevent matching page CSS or DOM targeting
-  ALLOWED_ATTR:['href','src','alt','title','class','target','rel','colspan','rowspan']
-};
-document.getElementById('hdr-title').textContent=TITLE;
-
-function flash(btn,label){
-  btn.textContent='\u2713 Copied';btn.classList.add('ok');
-  setTimeout(()=>{btn.textContent=label;btn.classList.remove('ok');},1500);
-}
-function copy(text,btn,label){
-  navigator.clipboard.writeText(text).then(()=>flash(btn,label));
-}
-
-MSGS.forEach((m,i)=>{
-  const isLast=i===MSGS.length-1;
-  const lines=m.content.split('\\n').length;
-  const shouldCollapse=lines>20&&!isLast;
-  const wrap=document.createElement('div');
-  wrap.className='msg '+m.role;
-  const av=document.createElement('div');
-  av.className='av';
-  av.textContent=m.role==='user'?m.label.slice(0,2):'AI';
-  const bub=document.createElement('div');
-  bub.className='bub'+(shouldCollapse?' collapsed':'');
-  const content=document.createElement('div');
-  content.className='bub-content';
-  content.innerHTML=DOMPurify.sanitize(marked.parse(m.content),PURIFY_CFG);
-  const cb=document.createElement('button');
-  cb.className='cbtn';cb.textContent='Copy';
-  cb.onclick=()=>copy(m.content,cb,'Copy');
-  bub.append(content,cb);
-  if(lines>20){
-    const tog=document.createElement('button');
-    tog.className='toggle';
-    tog.textContent=shouldCollapse?'Show more \u25be':'Collapse \u25b4';
-    tog.onclick=()=>{
-      const now=bub.classList.toggle('collapsed');
-      tog.textContent=now?'Show more \u25be':'Collapse \u25b4';
-    };
-    bub.appendChild(tog);
-  }
-  wrap.append(av,bub);
-  document.getElementById('chat').appendChild(wrap);
-});
-
-document.querySelectorAll('pre code').forEach(el=>hljs.highlightElement(el));
-
-document.getElementById('copy-all').onclick=function(){
-  const text=MSGS.map(m=>'['+m.role+']: '+m.content).join('\\n\\n');
-  copy(text,this,'Copy all');
-};
-</script>
-</body>
-</html>
-"""
+_HISTORY_TEMPLATE_PATH = Path(__file__).parent / "history_paste.html"
 
 
 @dataclass
@@ -235,13 +104,19 @@ def upload_history(nick: str, messages: list[Message], header: str) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+    template = _HISTORY_TEMPLATE_PATH.read_text(encoding="utf-8")
     html = (
-        _HISTORY_HTML
+        template
         .replace("__TITLE__", safe_title)
         .replace("__TITLE_JSON__", _js_safe_json(header))
         .replace("__MESSAGES_JSON__", _js_safe_json(msgs_data))
     )
     return web.paste(html.encode("utf-8"), ext="html")
+
+
+def collapse_whitespace(text: str) -> str:
+    """Collapse all whitespace runs (newlines, tabs, multiple spaces) to single space."""
+    return " ".join(text.split())
 
 
 def truncate_or_paste(
@@ -252,10 +127,11 @@ def truncate_or_paste(
     prefix: str = "",
     max_len: int = 350,
 ) -> str:
-    """Truncate for IRC. If truncated, upload full conversation and append URL."""
-    truncated = formatting.truncate_str(response, max_len)
+    """Truncate for IRC. If truncated or multi-line, upload full conversation and append URL."""
+    flat = collapse_whitespace(response)
+    truncated = formatting.truncate_str(flat, max_len)
     result = f"{prefix}{truncated}" if prefix else truncated
-    if len(truncated) < len(response):
+    if len(truncated) < len(flat) or flat != response.strip():
         paste_url = upload_history(nick, messages, header)
         return f"{result} (full response: {paste_url})"
     return result

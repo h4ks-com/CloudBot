@@ -2,14 +2,46 @@
 import asyncio
 import importlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 import pywikibot
 import requests
 from agents import FunctionTool, RunContextWrapper
 from markitdown import MarkItDown
+from sqlalchemy import Column, String, Table, Text, or_
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import SQLAlchemyError
 
+from cloudbot.util import database, web
 from cloudbot.util.ai_common import APP_HTML_PROMPT_SUFFIX, upload_html_app
+
+_MEMORY_TABLE = Table(
+    "agent_memory",
+    database.metadata,
+    Column("namespace", String(100), primary_key=True),
+    Column("key", String(200), primary_key=True),
+    Column("value", Text),
+    Column("updated_at", String(32)),
+    extend_existing=True,
+)
+
+_MEMORY_VALUE_MAX = 2000
+_MEMORY_SEARCH_LIMIT = 20
+
+
+def _parse_args(args_json: str) -> dict[str, Any]:
+    try:
+        return json.loads(args_json) if args_json else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _parse_namespace(data: dict[str, Any], ctx: RunContextWrapper) -> str:
+    return str(data.get("namespace") or ctx.context.chan or "global").strip()[:100]
+
+_MARKDOWN_TEMPLATE_PATH = Path(__file__).parent / "markdown_paste.html"
 
 WIKI_API = "https://wiki.h4ks.com/api.php"
 WIKI_URL = "https://wiki.h4ks.com"
@@ -26,11 +58,7 @@ def _patch_wiki_input(wiki_password: str) -> None:
 
 def _build_chat_history_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
-        try:
-            data = json.loads(args_json) if args_json else {}
-        except json.JSONDecodeError:
-            data = {}
-
+        data = _parse_args(args_json)
         n = min(int(data.get("n") or 20), 100)
         event = ctx.context
 
@@ -66,11 +94,7 @@ def _build_chat_history_tool() -> FunctionTool:
 
 def _build_wiki_read_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
-        try:
-            data = json.loads(args_json) if args_json else {}
-        except json.JSONDecodeError:
-            data = {}
-
+        data = _parse_args(args_json)
         title = str(data.get("title") or "").strip()
         if not title:
             return "(error: title required)"
@@ -114,11 +138,7 @@ def _build_wiki_read_tool() -> FunctionTool:
 
 def _build_wiki_write_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
-        try:
-            data = json.loads(args_json) if args_json else {}
-        except json.JSONDecodeError:
-            data = {}
-
+        data = _parse_args(args_json)
         title = str(data.get("title") or "").strip()
         content = str(data.get("content") or "").strip()
         summary = str(data.get("summary") or "Edited by CloudBot agent").strip()
@@ -184,11 +204,7 @@ def _build_web_fetch_tool() -> FunctionTool:
     _md = MarkItDown()
 
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
-        try:
-            data = json.loads(args_json) if args_json else {}
-        except json.JSONDecodeError:
-            data = {}
-
+        data = _parse_args(args_json)
         url = str(data.get("url") or "").strip()
         if not url:
             return "(error: url required)"
@@ -196,7 +212,7 @@ def _build_web_fetch_tool() -> FunctionTool:
             return "(error: url must start with http:// or https://)"
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, _md.convert, url)
             text = (result.text_content or "").strip()
         except Exception as e:
@@ -225,11 +241,7 @@ def _build_web_fetch_tool() -> FunctionTool:
 
 def _build_search_history_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
-        try:
-            data = json.loads(args_json) if args_json else {}
-        except json.JSONDecodeError:
-            data = {}
-
+        data = _parse_args(args_json)
         query = str(data.get("query") or "").strip().lower()
         if not query:
             return "(error: query required)"
@@ -270,17 +282,13 @@ def _build_search_history_tool() -> FunctionTool:
 
 def _build_web_app_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
-        try:
-            data = json.loads(args_json) if args_json else {}
-        except json.JSONDecodeError:
-            data = {}
-
+        data = _parse_args(args_json)
         html = str(data.get("html") or "").strip()
         if not html:
             return "(error: html required)"
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             url = await loop.run_in_executor(None, upload_html_app, html)
             return url
         except Exception as e:
@@ -307,6 +315,235 @@ def _build_web_app_tool() -> FunctionTool:
     )
 
 
+def upload_markdown_paste(text: str, title: str = "Response") -> str:
+    """Render markdown as a rich HTML page and upload. Returns URL."""
+    safe_title = (
+        title
+        .replace("&", "&amp;").replace("<", "&lt;")
+        .replace(">", "&gt;").replace('"', "&quot;")
+    )
+    template = _MARKDOWN_TEMPLATE_PATH.read_text(encoding="utf-8")
+    html = (
+        template
+        .replace("__TITLE__", safe_title)
+        .replace("__TITLE_JSON__", json.dumps(title).replace("</", "<\\/"))
+        .replace("__CONTENT_JSON__", json.dumps(text).replace("</", "<\\/"))
+    )
+    return web.paste(html.encode("utf-8"), ext="html")
+
+
+def _build_paste_markdown_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        content = str(data.get("content") or "").strip()
+        title = str(data.get("title") or "Document").strip()
+
+        if not content:
+            return "(error: content required)"
+
+        try:
+            loop = asyncio.get_running_loop()
+            url = await loop.run_in_executor(
+                None, lambda: upload_markdown_paste(content, title)
+            )
+            return url
+        except Exception as e:
+            return f"(error uploading: {e})"
+
+    return FunctionTool(
+        name="paste_markdown",
+        description=(
+            "Render markdown as a rich HTML page and return a URL. "
+            "Supports: **bold/italic**, headers, tables, code blocks with syntax highlighting, "
+            "LaTeX math (inline `$...$` and block `$$...$$`), "
+            "Mermaid diagrams (```mermaid fences), "
+            "runnable Python blocks (```python — executes in-browser via Pyodide, "
+            "numpy/pandas/matplotlib preloaded). "
+            "To display a matplotlib plot, save to an in-memory BytesIO and print a data URI line: "
+            "`import io, base64; buf = io.BytesIO(); plt.savefig(buf, format='png'); "
+            "print('data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode())`. "
+            "Any line printed starting with `data:image/` renders as an inline image. "
+            "Do NOT use `open('file.png', 'rb')` — there is no filesystem. "
+            "and runnable JavaScript blocks (```js — sandboxed iframe, console.log captured). "
+            "runnable Lua blocks (```lua — runs via Fengari WASM, print() captured), "
+            "runnable SQLite blocks (```sql or ```sqlite — runs in-browser, results shown as table). "
+            "Use for long responses, structured reports, math derivations, code tutorials, or anything "
+            "that would benefit from rich formatting instead of plain IRC text."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "Markdown content to render",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Page title shown in browser tab (optional, default: Document)",
+                },
+            },
+            "required": ["content"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_memory_set_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        key = str(data.get("key") or "").strip()[:200]
+        value = str(data.get("value") or "").strip()
+        ns = _parse_namespace(data, ctx)
+
+        if not key:
+            return "(error: key required)"
+        if len(value) > _MEMORY_VALUE_MAX:
+            return f"(error: value too long, max {_MEMORY_VALUE_MAX} chars)"
+
+        def _do_upsert() -> None:
+            db = database.Session()
+            now = datetime.now(timezone.utc).isoformat()
+            stmt = (
+                sqlite_insert(_MEMORY_TABLE)
+                .values(namespace=ns, key=key, value=value, updated_at=now)
+                .on_conflict_do_update(
+                    index_elements=["namespace", "key"],
+                    set_={"value": value, "updated_at": now},
+                )
+            )
+            try:
+                db.execute(stmt)
+                db.commit()
+            except SQLAlchemyError as e:
+                db.rollback()
+                raise e
+
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.run_in_executor(None, _do_upsert)
+        except SQLAlchemyError as e:
+            return f"(error storing memory: {e})"
+        return f"stored: {ns}/{key}"
+
+    return FunctionTool(
+        name="memory_set",
+        description=(
+            "Store a key-value pair in persistent memory. Use to remember facts, "
+            "preferences, or notes across conversations. "
+            "namespace defaults to the current channel. "
+            f"Value is capped at {_MEMORY_VALUE_MAX} chars."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Memory key (max 200 chars)"},
+                "value": {"type": "string", "description": f"Value to store (max {_MEMORY_VALUE_MAX} chars)"},
+                "namespace": {"type": "string", "description": "Scope (default: current channel)"},
+            },
+            "required": ["key", "value"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_memory_get_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        key = str(data.get("key") or "").strip()
+        ns = _parse_namespace(data, ctx)
+
+        if not key:
+            return "(error: key required)"
+
+        def _do_get() -> Any:
+            db = database.Session()
+            return db.execute(
+                _MEMORY_TABLE.select().where(
+                    (_MEMORY_TABLE.c.namespace == ns) &
+                    (_MEMORY_TABLE.c.key == key)
+                )
+            ).first()
+
+        loop = asyncio.get_running_loop()
+        try:
+            row = await loop.run_in_executor(None, _do_get)
+        except SQLAlchemyError as e:
+            return f"(error reading memory: {e})"
+        if row is None:
+            return f"(not found: {ns}/{key})"
+        return f"{row['value']} [updated: {row['updated_at'][:16]}]"
+
+    return FunctionTool(
+        name="memory_get",
+        description=(
+            "Retrieve a stored memory by key. "
+            "namespace defaults to the current channel. "
+            "Returns the value or a not-found message."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Memory key to retrieve"},
+                "namespace": {"type": "string", "description": "Scope (default: current channel)"},
+            },
+            "required": ["key"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_memory_search_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        query = str(data.get("query") or "").strip()
+        ns = _parse_namespace(data, ctx)
+
+        if not query:
+            return "(error: query required)"
+
+        like = f"%{query}%"
+
+        def _do_search() -> list[Any]:
+            db = database.Session()
+            return db.execute(
+                _MEMORY_TABLE.select().where(
+                    (_MEMORY_TABLE.c.namespace == ns) &
+                    or_(
+                        _MEMORY_TABLE.c.key.ilike(like),
+                        _MEMORY_TABLE.c.value.ilike(like),
+                    )
+                ).order_by(_MEMORY_TABLE.c.updated_at.desc()).limit(_MEMORY_SEARCH_LIMIT)
+            ).fetchall()
+
+        loop = asyncio.get_running_loop()
+        try:
+            matches = await loop.run_in_executor(None, _do_search)
+        except SQLAlchemyError as e:
+            return f"(error searching memory: {e})"
+        if not matches:
+            return f"(no memories found for '{query}' in {ns})"
+        lines = [f"{r['key']}: {(r['value'] or '')[:200]}" for r in matches]
+        return "\n".join(lines)
+
+    return FunctionTool(
+        name="memory_search",
+        description=(
+            "Search stored memories by keyword in key or value. "
+            "namespace defaults to the current channel. "
+            f"Returns up to {_MEMORY_SEARCH_LIMIT} matching entries."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Keyword to search for (case-insensitive)"},
+                "namespace": {"type": "string", "description": "Scope (default: current channel)"},
+            },
+            "required": ["query"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
 CUSTOM_TOOLS: list[FunctionTool] = [
     _build_chat_history_tool(),
     _build_search_history_tool(),
@@ -314,4 +551,8 @@ CUSTOM_TOOLS: list[FunctionTool] = [
     _build_wiki_write_tool(),
     _build_web_fetch_tool(),
     _build_web_app_tool(),
+    _build_paste_markdown_tool(),
+    _build_memory_set_tool(),
+    _build_memory_get_tool(),
+    _build_memory_search_tool(),
 ]

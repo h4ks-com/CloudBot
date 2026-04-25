@@ -27,6 +27,7 @@ from sqlalchemy import (
 
 from cloudbot import hook
 from cloudbot.util import database, formatting, web
+from plugins.agent_tools import upload_markdown_paste
 
 logger = logging.getLogger("cloudbot.openrouter")
 
@@ -376,14 +377,15 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
                 db, conn.name, chan, nick, model, "assistant", content
             )
 
-            truncated = formatting.truncate_str(content, MAX_IRC_LINE_LENGTH)
-            if len(truncated) < len(content):
+            flat = " ".join(content.split())
+            truncated = formatting.truncate_str(flat, MAX_IRC_LINE_LENGTH)
+            if len(truncated) < len(flat) or flat != content.strip():
                 full_history = get_chat_history(db, conn.name, chan, nick)
                 paste_text = format_history_for_paste(
                     nick, full_history, f"{nick}'s conversation in {chan}"
                 )
-                paste_url = web.paste(
-                    paste_text, ext="txt", raise_on_no_paste=True
+                paste_url = upload_markdown_paste(
+                    paste_text, title=f"{nick}'s conversation in {chan}"
                 )
                 return f"{truncated} (full: {paste_url})"
 
@@ -591,7 +593,9 @@ def llm_paste_history(chan: str, conn, db, nick: str) -> str:
     paste_text = format_history_for_paste(
         nick, history, f"{nick}'s conversation in {chan}"
     )
-    paste_url = web.paste(paste_text, ext="txt", raise_on_no_paste=True)
+    paste_url = upload_markdown_paste(
+        paste_text, title=f"{nick}'s conversation in {chan}"
+    )
     return f"Chat history ({len(history)} messages): {paste_url}"
 
 

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>__TITLE__</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.45/dist/katex.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#0d1117}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#c9d1d9;line-height:1.7;padding:2.5rem 1.5rem;min-height:100vh}
+.wrap{max-width:860px;margin:0 auto}
+h1,h2,h3,h4,h5,h6{color:#e6edf3;margin:1.4em 0 .5em;font-weight:600;line-height:1.3}
+h1{font-size:2em;border-bottom:1px solid #21262d;padding-bottom:.3em;margin-top:.5em}
+h2{font-size:1.5em;border-bottom:1px solid #21262d;padding-bottom:.3em}
+p{margin:.7em 0}
+a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}
+ul,ol{padding-left:2em;margin:.5em 0}li{margin:.25em 0}
+blockquote{border-left:4px solid #388bfd55;padding-left:1em;color:#8b949e;margin:.8em 0}
+table{border-collapse:collapse;width:100%;margin:.8em 0}
+th,td{border:1px solid #30363d;padding:.4em .8em}
+th{background:#161b22;color:#e6edf3}
+tr:nth-child(even) td{background:#0d1117}
+hr{border:none;border-top:1px solid #21262d;margin:1.5em 0}
+img{max-width:100%;border-radius:4px}
+pre{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1rem;overflow-x:auto;margin:.8em 0}
+pre code{background:none;border:none;padding:0;font-size:.875em;font-family:'SFMono-Regular',Consolas,monospace}
+code{background:#161b22;padding:.15em .4em;border-radius:4px;font-size:.875em;font-family:'SFMono-Regular',Consolas,monospace;border:1px solid #30363d}
+.katex-display{margin:.8em 0;overflow-x:visible;overflow-y:hidden}
+.katex-display>.katex{white-space:normal}
+.mermaid-wrap{background:#1c2128;border:1px solid #30363d;border-radius:8px;padding:1rem;margin:.8em 0;text-align:center;overflow:auto}
+.mermaid-wrap svg{max-width:100%}
+.run-block{border:1px solid #30363d;border-radius:8px;margin:.8em 0;overflow:hidden}
+.run-block>pre{margin:0;border:none;border-radius:0;border-bottom:1px solid #30363d}
+.run-toolbar{display:flex;align-items:center;gap:.5rem;padding:.35rem .75rem;background:#1c2128;border-bottom:1px solid #30363d}
+.run-btn{background:#21262d;border:1px solid #388bfd55;color:#79c0ff;border-radius:5px;padding:.15rem .7rem;font-size:.78rem;cursor:pointer}
+.run-btn:hover{background:#1f6feb;color:#fff;border-color:#1f6feb}
+.run-btn:disabled{opacity:.45;cursor:default}
+.lang-badge{font-size:.72rem;color:#8b949e;font-family:'SFMono-Regular',Consolas,monospace;flex:1}
+.run-out{padding:.65rem .9rem;font-family:'SFMono-Regular',Consolas,monospace;font-size:.82rem;white-space:pre-wrap;word-break:break-all;color:#c9d1d9}
+.run-out:empty{display:none}
+.run-out .err{color:#f85149}.run-out .warn{color:#d29922}.run-out .res{color:#3fb950}
+.run-out img{max-width:100%;border-radius:4px;display:block;margin:.25em 0}
+.code-wrap{position:relative}
+.copy-btn{position:absolute;top:.4rem;right:.4rem;background:#21262dcc;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:.1rem .45rem;font-size:.72rem;cursor:pointer;opacity:0;transition:opacity .15s}
+.code-wrap:hover .copy-btn,.copy-btn:focus{opacity:1}
+.copy-btn.copied{color:#3fb950;border-color:#3fb95066}
+</style>
+</head>
+<body>
+<div class="wrap" id="out"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.45/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.45/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@18.0.2/lib/marked.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked-highlight@2.2.1/lib/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked-katex-extension@5.1.8/lib/index.umd.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+window.__mermaid = mermaid;
+mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'loose'});
+window.dispatchEvent(new Event('mermaid-ready'));
+</script>
+<script>
+const CONTENT = __CONTENT_JSON__;
+const TITLE_S = __TITLE_JSON__;
+document.title = TITLE_S || 'Document';
+
+// Code for runnable blocks, keyed by block ID (avoids HTML-attribute escaping)
+const __codes = {};
+
+// Sandboxed JS execution via null-origin iframe
+window.addEventListener('message', e => {
+  if (!e.data?.__sb) return;
+  const {bid, type, args} = e.data;
+  const out = document.getElementById(bid + '-out');
+  if (!out) return;
+  const d = document.createElement('div');
+  d.className = type === 'error' ? 'err' : type === 'warn' ? 'warn' : '';
+  d.textContent = args.join(' ');
+  out.appendChild(d);
+});
+
+window.runJS = function(bid) {
+  const out = document.getElementById(bid + '-out');
+  out.innerHTML = '';
+  const code = __codes[bid] || '';
+  const ic = `(function(){const s=(t,a)=>window.parent.postMessage({__sb:1,bid:'${bid}',type:t,args:a.map(x=>typeof x==='object'?JSON.stringify(x,null,2):String(x))},'*');['log','info'].forEach(m=>{console[m]=(...a)=>s(m,a)});console.warn=(...a)=>s('warn',a);console.error=(...a)=>s('error',a);window.onerror=(msg,_,l)=>{s('error',[msg+' (line '+l+')']);return true};})();`;
+  const cs = '</' + 'script>';
+  const html = `<!DOCTYPE html><html><body><script>${ic}\ntry{\n${code}\n}catch(e){console.error(e.message)}${cs}</body></html>`;
+  const fr = document.createElement('iframe');
+  fr.sandbox = 'allow-scripts';
+  fr.style.display = 'none';
+  fr.srcdoc = html;
+  document.body.appendChild(fr);
+  setTimeout(() => fr.remove(), 20000);
+};
+
+// Pyodide — lazy-loaded on first Run click
+let _py = null, _pyBusy = false, _pyQ = [];
+async function getPy() {
+  if (_py) return _py;
+  if (_pyBusy) return new Promise(r => _pyQ.push(r));
+  _pyBusy = true;
+  await new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js';
+    s.onload = ok; s.onerror = fail;
+    document.head.appendChild(s);
+  });
+  _py = await loadPyodide({});
+  await _py.loadPackage(['numpy', 'matplotlib', 'pandas']);
+  // Force Agg so matplotlib never renders to document.body.
+  _py.runPython('import matplotlib; matplotlib.use("Agg")');
+  _pyQ.forEach(r => r(_py)); _pyQ = [];
+  return _py;
+}
+
+window.runPy = async function(bid) {
+  const btn = document.getElementById(bid + '-btn');
+  const out = document.getElementById(bid + '-out');
+  out.innerHTML = '<em style="color:#8b949e;font-size:.8em">Loading Python (first run fetches packages)…</em>';
+  if (btn) btn.disabled = true;
+  try {
+    const py = await getPy();
+    out.innerHTML = '';
+    py.setStdout({batched: t => {
+      const d = document.createElement('div');
+      const line = t.trimEnd();
+      if (line.startsWith('data:image/')) {
+        const img = document.createElement('img'); img.src = line; d.appendChild(img);
+      } else { d.textContent = t; }
+      out.appendChild(d);
+    }});
+    py.setStderr({batched: t => { const d = document.createElement('div'); d.className = 'err'; d.textContent = t; out.appendChild(d); }});
+    const code = __codes[bid] || '';
+    await py.loadPackagesFromImports(code);
+    const res = await py.runPythonAsync(code);
+    if (res !== undefined && res !== null) {
+      const d = document.createElement('div'); d.className = 'res'; d.textContent = String(res); out.appendChild(d);
+    }
+    if (!out.children.length) { const d = document.createElement('div'); d.textContent = '(no output)'; out.appendChild(d); }
+  } catch(e) {
+    out.innerHTML = '<div class="err">' + (e.message || e) + '</div>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+// --- Fengari (Lua) ---
+let _lvm = null, _lvmBusy = false, _lvmQ = [];
+async function getLua() {
+  if (_lvm) return _lvm;
+  if (_lvmBusy) return new Promise(r => _lvmQ.push(r));
+  _lvmBusy = true;
+  await new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/fengari-web@0.1.4/dist/fengari-web.js';
+    s.onload = ok; s.onerror = fail;
+    document.head.appendChild(s);
+  });
+  _lvm = window.fengari;
+  _lvmQ.forEach(r => r(_lvm)); _lvmQ = [];
+  return _lvm;
+}
+window.runLua = async function(bid) {
+  const btn = document.getElementById(bid + '-btn');
+  const out = document.getElementById(bid + '-out');
+  out.innerHTML = '<em style="color:#8b949e;font-size:.8em">Loading Lua…</em>';
+  if (btn) btn.disabled = true;
+  try {
+    const fg = await getLua();
+    out.innerHTML = '';
+    const code = __codes[bid] || '';
+    const lines = [];
+    const L = fg.lauxlib.luaL_newstate();
+    fg.lualib.luaL_openlibs(L);
+    const jsStr = s => fg.lua.lua_tojsstring ? fg.lua.lua_tojsstring(s, -1)
+                                              : fg.to_jsstring(fg.lua.lua_tostring(s, -1));
+    fg.lua.lua_register(L, fg.to_luastring('print'), state => {
+      const n = fg.lua.lua_gettop(state);
+      const parts = [];
+      for (let i = 1; i <= n; i++) {
+        fg.lauxlib.luaL_tolstring(state, i, null);
+        parts.push(jsStr(state));
+        fg.lua.lua_pop(state, 1);
+      }
+      lines.push(parts.join('\t'));
+      return 0;
+    });
+    // Fengari-web omits the io library; shim io.write → print so code using io.write works.
+    fg.lauxlib.luaL_dostring(L, fg.to_luastring(
+      'io={_b="",write=function(...)local p={}for i=1,select("#",...)do p[i]=tostring(select(i,...))end\n' +
+      'io._b=io._b..table.concat(p)\n' +
+      'while true do local n=string.find(io._b,"\\n")if not n then break end\n' +
+      'print(string.sub(io._b,1,n-1))io._b=string.sub(io._b,n+1)end end,read=function()return nil end}'
+    ));
+    const r = fg.lauxlib.luaL_dostring(L, fg.to_luastring(code));
+    fg.lauxlib.luaL_dostring(L, fg.to_luastring('if io and io._b and io._b~="" then print(io._b) end'));
+    if (r !== fg.lua.LUA_OK) {
+      throw new Error(jsStr(L) || 'Lua error');
+    }
+    const d = document.createElement('div');
+    d.textContent = lines.join('\n') || '(no output)';
+    out.appendChild(d);
+  } catch(e) {
+    out.innerHTML = '<div class="err">' + escH(String(e.message || e)) + '</div>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+// --- sql.js (SQLite) ---
+let _sqljs = null, _sqljsBusy = false, _sqljsQ = [];
+async function getSql() {
+  if (_sqljs) return _sqljs;
+  if (_sqljsBusy) return new Promise(r => _sqljsQ.push(r));
+  _sqljsBusy = true;
+  await new Promise((ok, fail) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.js';
+    s.onload = ok; s.onerror = fail;
+    document.head.appendChild(s);
+  });
+  _sqljs = await initSqlJs({locateFile: f => 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/' + f});
+  _sqljsQ.forEach(r => r(_sqljs)); _sqljsQ = [];
+  return _sqljs;
+}
+window.runSQL = async function(bid) {
+  const btn = document.getElementById(bid + '-btn');
+  const out = document.getElementById(bid + '-out');
+  out.innerHTML = '<em style="color:#8b949e;font-size:.8em">Loading SQLite…</em>';
+  if (btn) btn.disabled = true;
+  try {
+    const SQL = await getSql();
+    out.innerHTML = '';
+    const db = new SQL.Database();
+    const results = db.exec(__codes[bid] || '');
+    db.close();
+    if (!results.length) {
+      const d = document.createElement('div'); d.textContent = '(no results)'; out.appendChild(d);
+    } else {
+      for (const res of results) {
+        const cols = res.columns;
+        const widths = cols.map((c, i) => Math.max(String(c).length, ...res.values.map(r => String(r[i] ?? '').length)));
+        const pad = (v, w) => String(v ?? '').padEnd(w);
+        const sep = widths.map(w => '-'.repeat(w + 2)).join('+');
+        const row = r => '| ' + r.map((v, i) => pad(v, widths[i])).join(' | ') + ' |';
+        const lines = [row(cols), '+' + sep + '+', ...res.values.map(row)];
+        const pre = document.createElement('pre');
+        pre.style.cssText = 'margin:0;color:#c9d1d9;font-size:.8em';
+        pre.textContent = lines.join('\n');
+        out.appendChild(pre);
+      }
+    }
+  } catch(e) {
+    out.innerHTML = '<div class="err">' + escH(String(e.message || e)) + '</div>';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+function escH(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+window.copyCode = function(id) {
+  navigator.clipboard.writeText(__codes[id] || '').then(() => {
+    const btn = document.getElementById(id + '-copy');
+    if (!btn) return;
+    btn.textContent = '✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+  }).catch(() => {});
+};
+
+const renderer = {
+  code(token) {
+    const lang = (token.lang || '').toLowerCase().trim();
+    const text = token.text;
+    const id = 'b' + Math.random().toString(36).slice(2, 10);
+    if (lang === 'mermaid') {
+      return '<div class="mermaid-wrap"><div class="mermaid" id="' + id + '">' + escH(text) + '</div></div>';
+    }
+    if (lang === 'python' || lang === 'py') {
+      __codes[id] = text;
+      const hl = hljs.highlight(text, {language: 'python'}).value;
+      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-python">' + hl + '</code></pre>' +
+        '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
+        '<div class="run-toolbar"><span class="lang-badge">python</span>' +
+        '<button class="run-btn" id="' + id + '-btn" onclick="runPy(\'' + id + '\')">&#9654; Run</button></div>' +
+        '<div class="run-out" id="' + id + '-out"></div></div>';
+    }
+    if (lang === 'js' || lang === 'javascript') {
+      __codes[id] = text;
+      const hl = hljs.highlight(text, {language: 'javascript'}).value;
+      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-javascript">' + hl + '</code></pre>' +
+        '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
+        '<div class="run-toolbar"><span class="lang-badge">javascript</span>' +
+        '<button class="run-btn" onclick="runJS(\'' + id + '\')">&#9654; Run</button></div>' +
+        '<div class="run-out" id="' + id + '-out"></div></div>';
+    }
+    if (lang === 'lua') {
+      __codes[id] = text;
+      const hl = hljs.highlight(text, {language: 'lua'}).value;
+      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-lua">' + hl + '</code></pre>' +
+        '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
+        '<div class="run-toolbar"><span class="lang-badge">lua</span>' +
+        '<button class="run-btn" id="' + id + '-btn" onclick="runLua(\'' + id + '\')">&#9654; Run</button></div>' +
+        '<div class="run-out" id="' + id + '-out"></div></div>';
+    }
+    if (lang === 'sql' || lang === 'sqlite') {
+      __codes[id] = text;
+      const hl = hljs.highlight(text, {language: 'sql'}).value;
+      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-sql">' + hl + '</code></pre>' +
+        '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
+        '<div class="run-toolbar"><span class="lang-badge">sql (sqlite)</span>' +
+        '<button class="run-btn" id="' + id + '-btn" onclick="runSQL(\'' + id + '\')">&#9654; Run</button></div>' +
+        '<div class="run-out" id="' + id + '-out"></div></div>';
+    }
+    return false;
+  }
+};
+
+const {Marked} = window.marked;
+const {markedHighlight} = window.markedHighlight;
+const md = new Marked(
+  markedHighlight({
+    emptyLangClass: 'hljs',
+    langPrefix: 'hljs language-',
+    highlight(code, lang) {
+      if (!lang || ['python','py','mermaid','js','javascript','lua','sql','sqlite'].includes(lang)) return code;
+      const l = hljs.getLanguage(lang) ? lang : 'plaintext';
+      return hljs.highlight(code, {language: l}).value;
+    }
+  }),
+  {renderer, breaks: false, gfm: true}
+);
+
+// KaTeX via marked-katex-extension (graceful fallback if UMD name differs)
+const katexExt = (window.markedKatex && window.markedKatex.default) || window.markedKatex;
+if (typeof katexExt === 'function') md.use(katexExt({throwOnError: false, output: 'html'}));
+
+document.getElementById('out').innerHTML = md.parse(CONTENT);
+
+// Add copy buttons to non-runnable code blocks
+document.querySelectorAll('#out pre').forEach(pre => {
+  if (pre.closest('.run-block')) return;
+  const id = 'b' + Math.random().toString(36).slice(2, 10);
+  __codes[id] = (pre.querySelector('code') || pre).textContent.trim();
+  const wrap = document.createElement('div');
+  wrap.className = 'code-wrap';
+  pre.replaceWith(wrap);
+  wrap.appendChild(pre);
+  const btn = document.createElement('button');
+  btn.id = id + '-copy';
+  btn.className = 'copy-btn';
+  btn.textContent = 'copy';
+  btn.onclick = () => copyCode(id);
+  wrap.appendChild(btn);
+});
+
+// Highlight any blocks not already handled by markedHighlight
+document.querySelectorAll('pre code:not(.hljs)').forEach(el => hljs.highlightElement(el));
+
+// Mermaid: ESM module signals ready via custom event
+function doMermaid() {
+  const nodes = [...document.querySelectorAll('.mermaid')];
+  if (!nodes.length) return;
+  (async () => {
+    for (const el of nodes) {
+      try {
+        const {svg} = await window.__mermaid.render('mg' + Math.random().toString(36).slice(2), el.textContent.trim());
+        el.innerHTML = svg;
+      } catch(e) {
+        el.innerHTML = '<pre style="color:#f85149;font-size:.8em">' + escH(String(e)) + '</pre>';
+      }
+    }
+  })();
+}
+if (window.__mermaid) doMermaid();
+else window.addEventListener('mermaid-ready', doMermaid, {once: true});
+</script>
+</body>
+</html>
