@@ -174,8 +174,16 @@
                 "quit", "restart", "part", "kick", "ban", "op", "deop",
                 "ignore", "unignore", "chainallow", "join", "nick", "mode",
                 "gpt", "gemini", "ollama", "huggingface", "openrouter",
-                "chatbot", "pollinations", "chain", "ask", "agent"
+                "chatbot", "pollinations", "chain", "ask", "agent",
+                "prove", "pv", "code", "cd"
             ]
+        },
+        "sandbox_agent": {
+            "sandbox_url": "https://sandbox.t3ks.com/mcp",
+            "sandbox_api_key": "",
+            "prove_max_turns": 20,
+            "code_max_turns": 10,
+            "timeout_s": 300
         }
     },
     "browserless": {

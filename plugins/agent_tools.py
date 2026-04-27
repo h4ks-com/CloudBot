@@ -16,6 +16,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from cloudbot.util import database, web
 from cloudbot.util.ai_common import APP_HTML_PROMPT_SUFFIX, upload_html_app
+from cloudbot.util.browserless import (
+    evaluate_in_page,
+    fetch_console_logs,
+    is_configured as browserless_configured,
+    take_screenshot,
+)
 
 _MEMORY_TABLE = Table(
     "agent_memory",
@@ -299,7 +305,11 @@ def _build_web_app_tool() -> FunctionTool:
         description=(
             "Create and deploy a single-page HTML web app, then return a preview URL. "
             "When called, generate complete self-contained HTML with all CSS and JS inline "
-            "(CDN links allowed). " + APP_HTML_PROMPT_SUFFIX.strip()
+            "(CDN links allowed). "
+            "If a previous deploy had bugs (seen via browser_console), fix the ROOT CAUSE in the "
+            "HTML you submit — do NOT re-upload the same code expecting different results. "
+            "Each call creates a new URL; budget at most 2-3 deploys per user request. "
+            + APP_HTML_PROMPT_SUFFIX.strip()
         ),
         params_json_schema={
             "type": "object",
@@ -544,6 +554,167 @@ def _build_memory_search_tool() -> FunctionTool:
     )
 
 
+def _normalize_url(url: str) -> str:
+    url = url.strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    return url
+
+
+def _build_browser_screenshot_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        url = _normalize_url(str(data.get("url") or ""))
+        if not url:
+            return "(error: url required)"
+        bot = ctx.context.bot
+        if not browserless_configured(bot):
+            return "(error: browserless not configured)"
+
+        wait_ms = int(data.get("wait_ms") or 4000)
+        try:
+            loop = asyncio.get_running_loop()
+            png = await loop.run_in_executor(
+                None, lambda: take_screenshot(url, bot, extra_wait_ms=wait_ms)
+            )
+            paste_url = await loop.run_in_executor(
+                None, lambda: web.paste(png, ext="png")
+            )
+            return paste_url
+        except requests.HTTPError as e:
+            return f"(error: HTTP {e.response.status_code})"
+        except Exception as e:
+            return f"(error: {e})"
+
+    return FunctionTool(
+        name="browser_screenshot",
+        description=(
+            "Render a URL in a real headless Chrome and upload a PNG screenshot. "
+            "Returns the screenshot URL. Use to see what a page actually looks like — "
+            "for visual debugging of web apps you build, checking layout, or inspecting "
+            "rendered third-party content."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Page URL to screenshot"},
+                "wait_ms": {
+                    "type": "integer",
+                    "description": "Extra ms to wait after networkidle2 (default 4000)",
+                },
+            },
+            "required": ["url"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_browser_console_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        url = _normalize_url(str(data.get("url") or ""))
+        if not url:
+            return "(error: url required)"
+        bot = ctx.context.bot
+        if not browserless_configured(bot):
+            return "(error: browserless not configured)"
+
+        settle_ms = int(data.get("wait_ms") or 2000)
+        try:
+            loop = asyncio.get_running_loop()
+            messages = await loop.run_in_executor(
+                None, lambda: fetch_console_logs(url, bot, settle_ms=settle_ms)
+            )
+        except requests.HTTPError as e:
+            return f"(error: HTTP {e.response.status_code})"
+        except Exception as e:
+            return f"(error: {e})"
+
+        if not messages:
+            return "(no console output, no errors)"
+        out = json.dumps(messages, ensure_ascii=False, indent=None)
+        return out[:4000]
+
+    return FunctionTool(
+        name="browser_console",
+        description=(
+            "Open a URL in a real browser and capture all console.log/warn/error output, "
+            "uncaught page exceptions, and failed network requests. "
+            "Returns JSON list of {type, text}. "
+            "Very useful for debugging web apps you generated — load the paste URL and "
+            "see exactly what JS errors fire. Run this AFTER deploying a web_app or "
+            "paste_markdown to verify it actually works."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Page URL to load"},
+                "wait_ms": {
+                    "type": "integer",
+                    "description": "Ms to wait after load before capturing (default 2000)",
+                },
+            },
+            "required": ["url"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_browser_evaluate_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        url = _normalize_url(str(data.get("url") or ""))
+        script = str(data.get("script") or "").strip()
+        if not url:
+            return "(error: url required)"
+        if not script:
+            return "(error: script required)"
+        bot = ctx.context.bot
+        if not browserless_configured(bot):
+            return "(error: browserless not configured)"
+
+        settle_ms = int(data.get("wait_ms") or 0)
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, lambda: evaluate_in_page(url, script, bot, settle_ms=settle_ms)
+            )
+        except requests.HTTPError as e:
+            return f"(error: HTTP {e.response.status_code})"
+        except Exception as e:
+            return f"(error: {e})"
+
+        out = json.dumps(result, ensure_ascii=False, default=str)
+        return out[:4000]
+
+    return FunctionTool(
+        name="browser_evaluate",
+        description=(
+            "Open a URL in a real browser and run a JS expression/snippet in the page context. "
+            "Returns {ok, value} on success or {ok:false, error, stack} on failure. "
+            "Use to inspect DOM (e.g. `document.title`, `document.querySelectorAll('.x').length`), "
+            "extract data, or test that selectors/state work. "
+            "Result must be JSON-serializable; for DOM nodes use `.textContent` or `.outerHTML`."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Page URL to load"},
+                "script": {
+                    "type": "string",
+                    "description": "JS expression or block to evaluate in page context",
+                },
+                "wait_ms": {
+                    "type": "integer",
+                    "description": "Ms to wait after load before evaluating (default 0)",
+                },
+            },
+            "required": ["url", "script"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
 CUSTOM_TOOLS: list[FunctionTool] = [
     _build_chat_history_tool(),
     _build_search_history_tool(),
@@ -555,4 +726,7 @@ CUSTOM_TOOLS: list[FunctionTool] = [
     _build_memory_set_tool(),
     _build_memory_get_tool(),
     _build_memory_search_tool(),
+    _build_browser_screenshot_tool(),
+    _build_browser_console_tool(),
+    _build_browser_evaluate_tool(),
 ]

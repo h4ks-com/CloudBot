@@ -51,6 +51,36 @@ code{background:#161b22;padding:.15em .4em;border-radius:4px;font-size:.875em;fo
 <body>
 <div class="wrap" id="out"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+<script>
+// Inline Coq/Rocq language for highlight.js (no official package on CDN).
+hljs.registerLanguage('coq', function(hljs) {
+  const KW = 'Axiom CoFixpoint CoInductive Definition Example Fact Fixpoint Function ' +
+    'Goal Hypotheses Hypothesis Inductive Lemma Let Local Ltac Module Notation Parameter ' +
+    'Parameters Proof Property Qed Record Remark Require Reserved Save Scheme Section ' +
+    'Structure Theorem Variable Variables Class Instance Existing Implicit Import Export ' +
+    'Open Close Bind Delimit Arguments About Check Compute Eval Hint Print Search Show ' +
+    'Admitted Defined End forall fun match with as return if then else let in struct ' +
+    'measure where Type Set Prop SProp using of';
+  const TACTIC = 'intro intros apply assert assumption auto autorewrite case cbn cbv change ' +
+    'clear compute congruence constructor contradiction cut destruct discriminate eauto ' +
+    'einduction elim eq_refl exact exists f_equal field firstorder generalize hnf induction ' +
+    'injection inversion lazy lia ltac match move nia nra omega pattern pose psatz red refine ' +
+    'reflexivity remember rename repeat replace revert rewrite ring set setoid_rewrite simpl ' +
+    'simple solve specialize split subst symmetry tauto transitivity trivial try unfold vm_compute';
+  return {
+    name: 'Coq',
+    keywords: { keyword: KW, built_in: TACTIC,
+      literal: 'true false True False O S nil Some None tt' },
+    contains: [
+      hljs.COMMENT(/\(\*/, /\*\)/, { contains: ['self'] }),
+      { className: 'string', begin: /"/, end: /"/, contains: [{ begin: /""/ }] },
+      { className: 'number', begin: /\b\d+\b/ },
+      { className: 'symbol', begin: /\?[A-Za-z_][A-Za-z0-9_']*/ },
+      { className: 'operator', begin: /->|<-|<->|:=|\|-|\/\\|\\\/|:>|::/ }
+    ]
+  };
+});
+</script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.45/dist/katex.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.45/dist/contrib/auto-render.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@18.0.2/lib/marked.umd.js"></script>
@@ -261,6 +291,23 @@ window.runSQL = async function(bid) {
   }
 };
 
+// --- Coq via jsCoq scratchpad (opens new tab, code copied to clipboard) ---
+window.runCoq = function(bid) {
+  const code = __codes[bid] || '';
+  const out = document.getElementById(bid + '-out');
+  out.innerHTML = '';
+  navigator.clipboard.writeText(code).then(() => {
+    const d = document.createElement('div');
+    d.innerHTML = 'Proof copied. Opening jsCoq scratchpad in new tab — paste with <code>Ctrl+V</code> or <code>Cmd+V</code>.';
+    out.appendChild(d);
+  }).catch(() => {
+    const d = document.createElement('div'); d.className = 'warn';
+    d.textContent = 'Clipboard blocked. Manually copy the proof above before pasting in jsCoq.';
+    out.appendChild(d);
+  });
+  window.open('https://jscoq.github.io/scratchpad.html', '_blank', 'noopener');
+};
+
 function escH(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 window.copyCode = function(id) {
@@ -317,6 +364,15 @@ const renderer = {
         '<button class="run-btn" id="' + id + '-btn" onclick="runSQL(\'' + id + '\')">&#9654; Run</button></div>' +
         '<div class="run-out" id="' + id + '-out"></div></div>';
     }
+    if (lang === 'coq' || lang === 'rocq') {
+      __codes[id] = text;
+      const hl = hljs.getLanguage('coq') ? hljs.highlight(text, {language: 'coq'}).value : escH(text);
+      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-coq">' + hl + '</code></pre>' +
+        '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
+        '<div class="run-toolbar"><span class="lang-badge">coq</span>' +
+        '<button class="run-btn" id="' + id + '-btn" onclick="runCoq(\'' + id + '\')">&#9654; Open in jsCoq</button></div>' +
+        '<div class="run-out" id="' + id + '-out"></div></div>';
+    }
     return false;
   }
 };
@@ -328,7 +384,7 @@ const md = new Marked(
     emptyLangClass: 'hljs',
     langPrefix: 'hljs language-',
     highlight(code, lang) {
-      if (!lang || ['python','py','mermaid','js','javascript','lua','sql','sqlite'].includes(lang)) return code;
+      if (!lang || ['python','py','mermaid','js','javascript','lua','sql','sqlite','coq','rocq'].includes(lang)) return code;
       const l = hljs.getLanguage(lang) ? lang : 'plaintext';
       return hljs.highlight(code, {language: l}).value;
     }
