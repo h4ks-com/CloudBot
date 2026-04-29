@@ -46,6 +46,10 @@ code{background:#161b22;padding:.15em .4em;border-radius:4px;font-size:.875em;fo
 .copy-btn{position:absolute;top:.4rem;right:.4rem;background:#21262dcc;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:.1rem .45rem;font-size:.72rem;cursor:pointer;opacity:0;transition:opacity .15s}
 .code-wrap:hover .copy-btn,.copy-btn:focus{opacity:1}
 .copy-btn.copied{color:#3fb950;border-color:#3fb95066}
+.edit-area{display:none;width:100%;min-height:8em;background:#161b22;color:#c9d1d9;border:none;padding:1rem;font-family:'SFMono-Regular',Consolas,monospace;font-size:.875em;resize:vertical;outline:none;line-height:1.5;tab-size:2;-moz-tab-size:2}
+.edit-btn{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:5px;padding:.15rem .7rem;font-size:.78rem;cursor:pointer}
+.edit-btn:hover{background:#30363d;color:#c9d1d9}
+.edit-btn.active{border-color:#d29922;color:#d29922}
 </style>
 </head>
 <body>
@@ -99,6 +103,7 @@ document.title = TITLE_S || 'Document';
 
 // Code for runnable blocks, keyed by block ID (avoids HTML-attribute escaping)
 const __codes = {};
+const __editing = new Set();
 
 // Sandboxed JS execution via null-origin iframe
 window.addEventListener('message', e => {
@@ -115,7 +120,7 @@ window.addEventListener('message', e => {
 window.runJS = function(bid) {
   const out = document.getElementById(bid + '-out');
   out.innerHTML = '';
-  const code = __codes[bid] || '';
+  const code = getCode(bid);
   const ic = `(function(){const s=(t,a)=>window.parent.postMessage({__sb:1,bid:'${bid}',type:t,args:a.map(x=>typeof x==='object'?JSON.stringify(x,null,2):String(x))},'*');['log','info'].forEach(m=>{console[m]=(...a)=>s(m,a)});console.warn=(...a)=>s('warn',a);console.error=(...a)=>s('error',a);window.onerror=(msg,_,l)=>{s('error',[msg+' (line '+l+')']);return true};})();`;
   const cs = '</' + 'script>';
   const html = `<!DOCTYPE html><html><body><script>${ic}\ntry{\n${code}\n}catch(e){console.error(e.message)}${cs}</body></html>`;
@@ -164,7 +169,7 @@ window.runPy = async function(bid) {
       out.appendChild(d);
     }});
     py.setStderr({batched: t => { const d = document.createElement('div'); d.className = 'err'; d.textContent = t; out.appendChild(d); }});
-    const code = __codes[bid] || '';
+    const code = getCode(bid);
     await py.loadPackagesFromImports(code);
     const res = await py.runPythonAsync(code);
     if (res !== undefined && res !== null) {
@@ -202,7 +207,7 @@ window.runLua = async function(bid) {
   try {
     const fg = await getLua();
     out.innerHTML = '';
-    const code = __codes[bid] || '';
+    const code = getCode(bid);
     const lines = [];
     const L = fg.lauxlib.luaL_newstate();
     fg.lualib.luaL_openlibs(L);
@@ -266,7 +271,7 @@ window.runSQL = async function(bid) {
     const SQL = await getSql();
     out.innerHTML = '';
     const db = new SQL.Database();
-    const results = db.exec(__codes[bid] || '');
+    const results = db.exec(getCode(bid));
     db.close();
     if (!results.length) {
       const d = document.createElement('div'); d.textContent = '(no results)'; out.appendChild(d);
@@ -293,7 +298,7 @@ window.runSQL = async function(bid) {
 
 // --- Coq via jsCoq scratchpad (opens new tab, code copied to clipboard) ---
 window.runCoq = function(bid) {
-  const code = __codes[bid] || '';
+  const code = getCode(bid);
   const out = document.getElementById(bid + '-out');
   out.innerHTML = '';
   navigator.clipboard.writeText(code).then(() => {
@@ -310,8 +315,55 @@ window.runCoq = function(bid) {
 
 function escH(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+function getCode(bid) {
+  if (__editing.has(bid)) {
+    const ta = document.getElementById(bid + '-edit');
+    if (ta) __codes[bid] = ta.value;
+  }
+  return __codes[bid] || '';
+}
+
+window.toggleEdit = function(bid) {
+  const preEl = document.getElementById(bid + '-pre');
+  const ta = document.getElementById(bid + '-edit');
+  const btn = document.getElementById(bid + '-editbtn');
+  if (!ta) return;
+  if (__editing.has(bid)) {
+    __codes[bid] = ta.value;
+    __editing.delete(bid);
+    if (preEl) {
+      const codeEl = preEl.querySelector('code');
+      if (codeEl) {
+        const lang = ([...codeEl.classList].find(c => c.startsWith('language-')) || '').replace('language-', '');
+        codeEl.innerHTML = (lang && hljs.getLanguage(lang))
+          ? hljs.highlight(__codes[bid], {language: lang}).value
+          : escH(__codes[bid]);
+      }
+      preEl.style.display = '';
+    }
+    ta.style.display = 'none';
+    btn.classList.remove('active');
+    btn.textContent = 'edit';
+  } else {
+    __editing.add(bid);
+    ta.value = __codes[bid] || '';
+    if (!ta.dataset.ar) {
+      ta.dataset.ar = '1';
+      ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.max(120, ta.scrollHeight + 4) + 'px'; });
+    }
+    ta.style.height = 'auto';
+    ta.style.height = Math.max(120, ta.scrollHeight + 4) + 'px';
+    if (preEl) preEl.style.display = 'none';
+    ta.style.display = 'block';
+    btn.classList.add('active');
+    btn.textContent = 'done';
+    ta.focus();
+  }
+};
+
 window.copyCode = function(id) {
-  navigator.clipboard.writeText(__codes[id] || '').then(() => {
+  const text = getCode(id);
+  navigator.clipboard.writeText(text).then(() => {
     const btn = document.getElementById(id + '-copy');
     if (!btn) return;
     btn.textContent = '✓';
@@ -331,45 +383,55 @@ const renderer = {
     if (lang === 'python' || lang === 'py') {
       __codes[id] = text;
       const hl = hljs.highlight(text, {language: 'python'}).value;
-      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-python">' + hl + '</code></pre>' +
+      return '<div class="run-block"><div class="code-wrap"><pre id="' + id + '-pre"><code class="hljs language-python">' + hl + '</code></pre>' +
+        '<textarea class="edit-area" id="' + id + '-edit" spellcheck="false"></textarea>' +
         '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
         '<div class="run-toolbar"><span class="lang-badge">python</span>' +
+        '<button class="edit-btn" id="' + id + '-editbtn" onclick="toggleEdit(\'' + id + '\')">edit</button>' +
         '<button class="run-btn" id="' + id + '-btn" onclick="runPy(\'' + id + '\')">&#9654; Run</button></div>' +
         '<div class="run-out" id="' + id + '-out"></div></div>';
     }
     if (lang === 'js' || lang === 'javascript') {
       __codes[id] = text;
       const hl = hljs.highlight(text, {language: 'javascript'}).value;
-      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-javascript">' + hl + '</code></pre>' +
+      return '<div class="run-block"><div class="code-wrap"><pre id="' + id + '-pre"><code class="hljs language-javascript">' + hl + '</code></pre>' +
+        '<textarea class="edit-area" id="' + id + '-edit" spellcheck="false"></textarea>' +
         '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
         '<div class="run-toolbar"><span class="lang-badge">javascript</span>' +
-        '<button class="run-btn" onclick="runJS(\'' + id + '\')">&#9654; Run</button></div>' +
+        '<button class="edit-btn" id="' + id + '-editbtn" onclick="toggleEdit(\'' + id + '\')">edit</button>' +
+        '<button class="run-btn" id="' + id + '-btn" onclick="runJS(\'' + id + '\')">&#9654; Run</button></div>' +
         '<div class="run-out" id="' + id + '-out"></div></div>';
     }
     if (lang === 'lua') {
       __codes[id] = text;
       const hl = hljs.highlight(text, {language: 'lua'}).value;
-      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-lua">' + hl + '</code></pre>' +
+      return '<div class="run-block"><div class="code-wrap"><pre id="' + id + '-pre"><code class="hljs language-lua">' + hl + '</code></pre>' +
+        '<textarea class="edit-area" id="' + id + '-edit" spellcheck="false"></textarea>' +
         '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
         '<div class="run-toolbar"><span class="lang-badge">lua</span>' +
+        '<button class="edit-btn" id="' + id + '-editbtn" onclick="toggleEdit(\'' + id + '\')">edit</button>' +
         '<button class="run-btn" id="' + id + '-btn" onclick="runLua(\'' + id + '\')">&#9654; Run</button></div>' +
         '<div class="run-out" id="' + id + '-out"></div></div>';
     }
     if (lang === 'sql' || lang === 'sqlite') {
       __codes[id] = text;
       const hl = hljs.highlight(text, {language: 'sql'}).value;
-      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-sql">' + hl + '</code></pre>' +
+      return '<div class="run-block"><div class="code-wrap"><pre id="' + id + '-pre"><code class="hljs language-sql">' + hl + '</code></pre>' +
+        '<textarea class="edit-area" id="' + id + '-edit" spellcheck="false"></textarea>' +
         '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
         '<div class="run-toolbar"><span class="lang-badge">sql (sqlite)</span>' +
+        '<button class="edit-btn" id="' + id + '-editbtn" onclick="toggleEdit(\'' + id + '\')">edit</button>' +
         '<button class="run-btn" id="' + id + '-btn" onclick="runSQL(\'' + id + '\')">&#9654; Run</button></div>' +
         '<div class="run-out" id="' + id + '-out"></div></div>';
     }
     if (lang === 'coq' || lang === 'rocq') {
       __codes[id] = text;
       const hl = hljs.getLanguage('coq') ? hljs.highlight(text, {language: 'coq'}).value : escH(text);
-      return '<div class="run-block"><div class="code-wrap"><pre><code class="hljs language-coq">' + hl + '</code></pre>' +
+      return '<div class="run-block"><div class="code-wrap"><pre id="' + id + '-pre"><code class="hljs language-coq">' + hl + '</code></pre>' +
+        '<textarea class="edit-area" id="' + id + '-edit" spellcheck="false"></textarea>' +
         '<button class="copy-btn" id="' + id + '-copy" onclick="copyCode(\'' + id + '\')">copy</button></div>' +
         '<div class="run-toolbar"><span class="lang-badge">coq</span>' +
+        '<button class="edit-btn" id="' + id + '-editbtn" onclick="toggleEdit(\'' + id + '\')">edit</button>' +
         '<button class="run-btn" id="' + id + '-btn" onclick="runCoq(\'' + id + '\')">&#9654; Open in jsCoq</button></div>' +
         '<div class="run-out" id="' + id + '-out"></div></div>';
     }
