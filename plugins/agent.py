@@ -88,6 +88,7 @@ AGENT_INSTRUCTIONS = (
     "Use the available tools (existing bot commands) to answer. "
     "Call multiple tools in parallel when independent. "
     "Use the chat_history tool when the request refers to something said earlier or needs channel context. "
+    "When a message contains an image URL (jpg/png/gif/webp/imgur/i.redd.it etc.), use describe_image to see it. "
     "Keep your final answer concise — IRC lines are short. "
     "When a tool returns raw text, extract and summarise the key information."
 )

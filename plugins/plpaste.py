@@ -6,7 +6,10 @@ from cloudbot import hook
 
 @hook.command("ghsource", "ghpaste", "plugin", "commandsource", "cmdsrc")
 def ghpaste(text, bot):
-    """<command> - links to the GitHub file that contains <command>"""
+    """<command|plugin> - Returns a GitHub source URL (with exact line number) for any bot command or plugin. \
+Fetch that URL to read the implementation source code. \
+Also works with a bare plugin filename (no .py). \
+Use this to understand how any command works before calling it."""
     repo_link = bot.config.get(
         "repo_link", "https://github.com/h4ks-com/CloudBot"
     )
