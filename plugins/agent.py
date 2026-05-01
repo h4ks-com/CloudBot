@@ -7,10 +7,12 @@ with Z.AI glm-5 (primary) and OpenRouter (fallback).
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Any, Optional
 
 from agents import Agent, FunctionTool, RunContextWrapper, RunHooks, Runner
+from agents.exceptions import MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_provider import OpenAIProvider
 from agents.run import RunConfig
@@ -41,7 +43,7 @@ DEFAULT_INCLUDE = frozenset({
     "etree", "etymology", "expand", "fact", "fakenews", "fc",
     "fcd", "fcw", "feed", "forecast", "forecastweek", "fortune",
     "funtranslate", "g", "gbooks", "gd", "geoguess", "geoip",
-    "getlyrics", "gh", "ghissue", "ghn", "ghnext", "gis",
+    "getlyrics", "gh", "ghissue", "ghn", "ghnext", "ghpaste", "ghsource", "gis",
     "github", "gitio", "gmd", "gn", "googl", "google_translate",
     "gw", "gwn",
     "hltb", "hltb_next", "hltbn", "horoscope", "howlongtobeat", "imdb",
@@ -90,15 +92,95 @@ AGENT_INSTRUCTIONS = (
     "Use the chat_history tool when the request refers to something said earlier or needs channel context. "
     "When a message contains an image URL (jpg/png/gif/webp/imgur/i.redd.it etc.), use describe_image to see it. "
     "Keep your final answer concise — IRC lines are short. "
-    "When a tool returns raw text, extract and summarise the key information."
+    "When a tool returns raw text, extract and summarise the key information. "
+    "YOUR OWN SOURCE CODE lives at GitHub repo 'h4ks-com/CloudBot'. "
+    "The ghsource tool maps any bot command name to its exact source file and line number. "
+    "WHENEVER a user asks about a bot command (e.g. 'how does .wiki work', 'what model does .agi use', "
+    "'show me .we source') — ALWAYS call ghsource <command> FIRST as the very first tool call. "
+    "ghsource returns a sentence like: \"Command 'X' is defined in: https://github.com/h4ks-com/CloudBot/blob/main/plugins/foo.py#L42\". "
+    "Parse that URL: the file path is everything after '/main/' and before '#L' (e.g. 'plugins/foo.py'); the line number is the integer after '#L' (e.g. 42). "
+    "Then call read_github_file with repo='h4ks-com/CloudBot', path='plugins/foo.py', branch='main', start_line=42. "
+    "The start_line param extracts code around that line — always pass it when you have a line number, so you don't get a truncated top-of-file snippet. "
+    "If ghsource returns 'not found', immediately call list_bot_commands (no args) to get all command names, "
+    "find the closest match to what the user typed, then call ghsource again with the correct name. "
+    "Do NOT call web_fetch, search_history, search_github_code, or any other tool when a command is not found. "
+    "Never use search_github_code as a substitute for ghsource when a command name is known or guessable. "
+    "The GitHub tools (list_repo_files, read_github_file, search_github_code, fork_github_repo, "
+    "create_github_branch, edit_github_file, open_github_pr) are ALREADY CONFIGURED and authenticated — "
+    "call them directly without speculating about credentials or setup. If a tool fails, report the error. "
+    "When asked to fix, improve, or add a bot command or plugin: "
+    "1) Call ghsource <command> first, extract file path and line number from the URL, then call read_github_file with start_line set to that line number. "
+    "2) Use fork_github_repo if needed (wait ~10s after forking). "
+    "3) Use create_github_branch with a name like 'fix/command-name'. "
+    "4) Use edit_github_file with the COMPLETE new file content (not a diff — full file). "
+    "5) Use open_github_pr and report the PR URL to the channel. "
+    "Always read the full file before editing. You cannot run or test code, so reason carefully about correctness."
 )
 
-class _LoggingHooks(RunHooks):
+class _RunTracker(RunHooks):
+    """Per-run hook that tracks tool call sequence for safe failure summaries.
+
+    Only records tool names and timing (never args or outputs) so summaries
+    can be shown in IRC or pasted without leaking file contents, tokens, or
+    API responses.
+    """
+
+    def __init__(self):
+        self._start = time.monotonic()
+        self._calls: list[tuple[str, float]] = []  # (name, offset_from_start)
+        self._errors: set[int] = set()
+
     async def on_tool_start(self, context, agent, tool) -> None:
         logger.info("agent: tool invoked: %s", tool.name)
+        self._calls.append((tool.name, time.monotonic() - self._start))
 
+    async def on_tool_end(self, context, agent, tool, result) -> None:
+        # Only inspect the very start of result to detect errors — never log full content.
+        prefix = str(result or "")[:20]
+        if prefix.startswith("(error") or prefix.startswith("(mcp"):
+            # Find the latest unresolved call for this tool name (handles parallel calls).
+            for i in range(len(self._calls) - 1, -1, -1):
+                if self._calls[i][0] == tool.name and i not in self._errors:
+                    self._errors.add(i)
+                    break
 
-_HOOKS = _LoggingHooks()
+    def failure_summary(self, err: BaseException) -> str:
+        err_type = type(err).__name__
+        if not self._calls:
+            return f"[{err_type}] failed before any tool call"
+        parts = [f"{n}!" if i in self._errors else n for i, (n, _) in enumerate(self._calls)]
+        total = len(parts)
+        # Keep last 10 steps to stay within IRC line length.
+        if total > 10:
+            parts = [f"…+{total - 9}"] + parts[-9:]
+        return f"[{err_type}] {total} tool calls: {'→'.join(parts)}"
+
+    def failure_paste_md(self, err: BaseException, prompt: str, backends: list[str]) -> str:
+        """Build a paste-safe markdown failure report.
+
+        Contains ONLY: prompt (already public in IRC), tool names, timing,
+        error class name, backends tried. Never includes tool args, tool
+        outputs, exception messages, or any API/config values.
+        """
+        err_type = type(err).__name__
+        elapsed = time.monotonic() - self._start
+        lines = [
+            "# Agent Failure Report",
+            "",
+            f"**Error**: `{err_type}`",
+            f"**Elapsed**: {elapsed:.1f}s",
+            f"**Backends tried**: {', '.join(backends)}",
+            f"**Prompt**: {prompt}",
+            "",
+            f"## Tool Call Sequence ({len(self._calls)} calls)",
+            "",
+        ]
+        for i, (name, offset) in enumerate(self._calls):
+            flag = " ❌" if i in self._errors else ""
+            lines.append(f"{i + 1}. `{name}`{flag}  *(+{offset:.1f}s)*")
+        if not self._calls:
+            lines.append("*(no tools were called)*")
+        return "\n".join(lines)
 
 # Per-bot caches keyed by id(bot). Built lazily because on_start fires
 # per-plugin during load, before sibling plugins have registered commands.
@@ -351,9 +433,13 @@ async def _run_agent(event, prompt: str) -> None:
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
     logger.info("agent: starting LLM call, backends=%s timeout=%s history_items=%d", backends_to_try, timeout, len(prev_history))
+    # Fresh tracker per run — never shared across concurrent calls.
+    tracker = _RunTracker()
+    backends_tried: list[str] = []
     try:
         last_err: Optional[BaseException] = None
         for backend in backends_to_try:
+            backends_tried.append(backend)
             try:
                 run_cfg = _make_run_config(cfg, bot, backend)
             except Exception as e:
@@ -367,7 +453,7 @@ async def _run_agent(event, prompt: str) -> None:
                         agent_input,
                         context=event,
                         run_config=run_cfg,
-                        hooks=_HOOKS,
+                        hooks=tracker,
                         max_turns=max_turns,
                     ),
                     timeout=timeout,
@@ -376,7 +462,13 @@ async def _run_agent(event, prompt: str) -> None:
                 logger.warning("agent: %s timed out after %ss", backend, timeout)
                 last_err = e
                 continue
+            except MaxTurnsExceeded as e:
+                # Model exhausted turns — retrying on a fallback backend repeats the same loop.
+                logger.warning("agent: %s hit max turns (%s)", backend, max_turns)
+                last_err = e
+                break
             except Exception as e:
+                # Log full error server-side; never expose str(e) to IRC (may contain tokens/URLs).
                 logger.warning("agent: %s failed: %s: %s", backend, type(e).__name__, e)
                 last_err = e
                 continue
@@ -392,8 +484,16 @@ async def _run_agent(event, prompt: str) -> None:
             event.reply(*_format_answer(answer, cfg))
             return
 
-        err_name = type(last_err).__name__ if last_err else "unknown"
-        event.reply(f"Agent failed: {err_name}")
+        if last_err:
+            summary = tracker.failure_summary(last_err)
+            try:
+                md = tracker.failure_paste_md(last_err, prompt, backends_tried)
+                paste_url = upload_markdown_paste(md)
+                event.reply(f"Agent failed: {summary} — details: {paste_url}")
+            except Exception:
+                event.reply(f"Agent failed: {summary}")
+        else:
+            event.reply("Agent failed: no backends tried")
     finally:
         await stop_typing_for_command(event.conn, target, typing_id)
 

@@ -800,9 +800,418 @@ def _build_describe_image_tool() -> FunctionTool:
     )
 
 
+def _extract_mcp_content(result: dict) -> str:
+    """Extract meaningful text from a GitHub MCP tool result dict.
+
+    GitHub MCP returns two content items per file call:
+      - type='text':     a metadata summary ("successfully downloaded…")
+      - type='resource': the actual file text in resource.text
+
+    We prefer resource.text when present; fall back to plain text items.
+    """
+    content = result.get("content", [])
+    if not isinstance(content, list):
+        return json.dumps(result)[:8000]
+    resource_parts = [
+        c["resource"]["text"]
+        for c in content
+        if c.get("type") == "resource" and isinstance(c.get("resource"), dict) and "text" in c["resource"]
+    ]
+    if resource_parts:
+        return "\n".join(resource_parts)
+    text_parts = [c.get("text", "") for c in content if c.get("type") == "text"]
+    return "\n".join(text_parts) if text_parts else json.dumps(result)[:8000]
+
+
+_SSE_FIELDS = ("data:", "event:", "id:", "retry:")
+
+
+def _parse_sse(text: str) -> str | None:
+    """Parse an SSE response body and return the first JSON-RPC result content.
+
+    GitHub MCP embeds literal (unescaped) newlines inside JSON string values,
+    so one SSE data: event spans many physical lines. We collect continuation
+    lines (non-SSE-field, non-blank) and join with the JSON newline escape
+    sequence so json.loads can parse the reassembled chunk.
+    """
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        if not lines[i].startswith("data:"):
+            i += 1
+            continue
+        chunk_parts = [lines[i][5:]]
+        j = i + 1
+        while j < len(lines):
+            ln = lines[j]
+            if not ln or any(ln.startswith(f) for f in _SSE_FIELDS):
+                break
+            chunk_parts.append(ln)
+            j += 1
+        # Join with JSON newline escape — the literal newlines in the response
+        # are inside JSON string values and must be re-escaped before parsing.
+        chunk = "\\n".join(chunk_parts).strip()
+        i = j
+        if not chunk or chunk == "[DONE]":
+            continue
+        try:
+            parsed = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict) and "result" in parsed:
+            return _extract_mcp_content(parsed["result"])
+    return None
+
+
+async def _github_mcp_call(event, tool_name: str, args: dict) -> str:
+    """JSON-RPC 2.0 call to the GitHub MCP HTTP server (same protocol as sandbox MCP)."""
+    bot = event.bot
+    if not event.conn.permissions.has_perm_mask(event.mask, "botcontrol"):
+        return f"(error: GitHub MCP tools require botcontrol permission — {event.nick} is not authorised)"
+    cfg = ((bot.config.get("plugins") or {}).get("agent") or {}).get("github_mcp") or {}
+    if not cfg.get("enabled", True):
+        return "(error: github_mcp disabled in config)"
+    url = cfg.get("url") or ""
+    api_key = bot.config.get_api_key(cfg.get("api_key_config_path") or "github_mcp_bot")
+    github_token = bot.config.get_api_key(cfg.get("github_token_config_path") or "github")
+    if not url or not api_key or not github_token:
+        return "(error: github_mcp url, api key, or github token not configured)"
+
+    headers = {
+        "apikey": api_key,
+        "Authorization": f"Bearer {github_token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    init_payload = {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "cloudbot-agent", "version": "1.0"},
+        },
+    }
+    loop = asyncio.get_running_loop()
+    try:
+        resp = await loop.run_in_executor(
+            None, lambda: requests.post(url, json=init_payload, headers=headers, timeout=10)
+        )
+        resp.raise_for_status()
+        session_id = resp.headers.get("mcp-session-id", "")
+
+        call_headers = {**headers}
+        if session_id:
+            call_headers["mcp-session-id"] = session_id
+        call_payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": args},
+        }
+        resp2 = await loop.run_in_executor(
+            None, lambda: requests.post(url, json=call_payload, headers=call_headers, timeout=30)
+        )
+        resp2.raise_for_status()
+        text = resp2.text
+
+        if "data:" in text:
+            result = _parse_sse(text)
+            return result if result is not None else "(no result in SSE stream)"
+
+        data = resp2.json()
+        if "error" in data:
+            return f"(mcp error: {data['error'].get('message', str(data['error']))})"
+        return _extract_mcp_content(data.get("result", {}))
+    except requests.RequestException as e:
+        return f"(error calling github mcp: {e})"
+
+
+def _build_list_repo_files_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        repo = str(data.get("repo") or "").strip()
+        path = str(data.get("path") or "").strip()
+        branch = str(data.get("branch") or "main").strip()
+        if not repo:
+            return "(error: repo required, e.g. 'owner/repo')"
+        return await _github_mcp_call(
+            ctx.context, "get_file_contents",
+            {"owner": repo.split("/")[0], "repo": repo.split("/")[-1],
+             "path": path, "ref": branch},
+        )
+
+    return FunctionTool(
+        name="list_repo_files",
+        description=(
+            "List files and directories in a GitHub repo at a given path. "
+            "repo format: 'owner/repo'. path defaults to repo root. "
+            "Use to explore the codebase structure before reading or editing files."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "GitHub repo in 'owner/repo' format"},
+                "path": {"type": "string", "description": "Directory path (default: root)"},
+                "branch": {"type": "string", "description": "Branch name (default: main)"},
+            },
+            "required": ["repo"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_read_github_file_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        repo = str(data.get("repo") or "").strip()
+        path = str(data.get("path") or "").strip()
+        branch = str(data.get("branch") or "main").strip()
+        start_line = data.get("start_line")
+        if not repo or not path:
+            return "(error: repo and path required)"
+        raw = await _github_mcp_call(
+            ctx.context, "get_file_contents",
+            {"owner": repo.split("/")[0], "repo": repo.split("/")[-1],
+             "path": path, "ref": branch},
+        )
+        if start_line is not None:
+            try:
+                center = int(start_line)
+                lines = raw.splitlines()
+                lo = max(0, center - 30)
+                hi = min(len(lines), center + 120)
+                excerpt = "\n".join(f"{lo+i+1}: {l}" for i, l in enumerate(lines[lo:hi]))
+                return f"(lines {lo+1}-{hi} of {len(lines)})\n{excerpt}"
+            except (ValueError, AttributeError):
+                pass
+        return raw[:8000]
+
+    return FunctionTool(
+        name="read_github_file",
+        description=(
+            "Read the contents of a file from any GitHub repo. "
+            "repo format: 'owner/repo'. Returns raw file text (up to 8000 chars from top). "
+            "If you know the line number of interest (e.g. from ghsource), pass start_line "
+            "to get ±100 lines around that line instead of reading from the top. "
+            "Always read a file before editing it."
+        ),
+        params_json_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "repo": {"type": "string", "description": "owner/repo, e.g. 'h4ks-com/CloudBot'"},
+                "path": {"type": "string", "description": "File path, e.g. 'plugins/weather.py'"},
+                "branch": {"type": "string", "description": "Branch (default: main)"},
+                "start_line": {"type": "integer", "description": "Line number from ghsource #L (returns ±100 lines)"},
+            },
+            "required": ["repo", "path"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_search_github_code_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        query = str(data.get("query") or "").strip()
+        repo = str(data.get("repo") or "").strip()
+        if not query:
+            return "(error: query required)"
+        args: dict[str, Any] = {"query": query}
+        if repo:
+            args["query"] = f"{query} repo:{repo}"
+        return await _github_mcp_call(ctx.context, "search_code", args)
+
+    return FunctionTool(
+        name="search_github_code",
+        description=(
+            "Search code across GitHub using GitHub code search. "
+            "Optionally scope to a specific repo ('owner/repo'). "
+            "Use to find where a function or pattern is defined before editing."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query (GitHub code search syntax)"},
+                "repo": {"type": "string", "description": "Limit to repo 'owner/repo' (optional)"},
+            },
+            "required": ["query"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_fork_github_repo_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        repo = str(data.get("repo") or "").strip()
+        if not repo:
+            return "(error: repo required)"
+        result = await _github_mcp_call(
+            ctx.context, "fork_repository",
+            {"owner": repo.split("/")[0], "repo": repo.split("/")[-1]},
+        )
+        return result
+
+    return FunctionTool(
+        name="fork_github_repo",
+        description=(
+            "Fork a GitHub repo to the authenticated account. "
+            "IMPORTANT: fork creation is async — wait ~10 seconds before using the fork. "
+            "Use this before editing if you don't have direct write access to the repo."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "Repo to fork in 'owner/repo' format"},
+            },
+            "required": ["repo"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_create_github_branch_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        repo = str(data.get("repo") or "").strip()
+        branch = str(data.get("branch") or "").strip()
+        base = str(data.get("base") or "main").strip()
+        if not repo or not branch:
+            return "(error: repo and branch required)"
+        return await _github_mcp_call(
+            ctx.context, "create_branch",
+            {"owner": repo.split("/")[0], "repo": repo.split("/")[-1],
+             "branch": branch, "from_branch": base},
+        )
+
+    return FunctionTool(
+        name="create_github_branch",
+        description=(
+            "Create a new git branch in a GitHub repo. "
+            "Use a descriptive name like 'fix/command-name' or 'add/feature-name'. "
+            "Always create a branch before editing files."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "Repo in 'owner/repo' format"},
+                "branch": {"type": "string", "description": "New branch name"},
+                "base": {"type": "string", "description": "Base branch to create from (default: main)"},
+            },
+            "required": ["repo", "branch"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_edit_github_file_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        repo = str(data.get("repo") or "").strip()
+        path = str(data.get("path") or "").strip()
+        content = str(data.get("content") or "")
+        message = str(data.get("message") or "Update file via CloudBot AGI").strip()
+        branch = str(data.get("branch") or "main").strip()
+        if not repo or not path or not content:
+            return "(error: repo, path, and content required)"
+        return await _github_mcp_call(
+            ctx.context, "create_or_update_file",
+            {"owner": repo.split("/")[0], "repo": repo.split("/")[-1],
+             "path": path, "content": content, "message": message, "branch": branch},
+        )
+
+    return FunctionTool(
+        name="edit_github_file",
+        description=(
+            "Create or overwrite a file in a GitHub repo on the given branch. "
+            "Provide the COMPLETE new file content — this is a full replacement, not a patch. "
+            "Always read_github_file first to get the current content before editing. "
+            "Always create_github_branch before editing."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "Repo in 'owner/repo' format"},
+                "path": {"type": "string", "description": "File path, e.g. 'plugins/foo.py'"},
+                "content": {"type": "string", "description": "Complete new file content"},
+                "message": {"type": "string", "description": "Commit message"},
+                "branch": {"type": "string", "description": "Branch to commit to"},
+            },
+            "required": ["repo", "path", "content", "branch"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_open_github_pr_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        data = _parse_args(args_json)
+        repo = str(data.get("repo") or "").strip()
+        title = str(data.get("title") or "").strip()
+        body = str(data.get("body") or "Automated PR by CloudBot AGI").strip()
+        head = str(data.get("head") or "").strip()
+        base = str(data.get("base") or "main").strip()
+        draft = bool(data.get("draft", False))
+        if not repo or not title or not head:
+            return "(error: repo, title, and head required)"
+        return await _github_mcp_call(
+            ctx.context, "create_pull_request",
+            {"owner": repo.split("/")[0], "repo": repo.split("/")[-1],
+             "title": title, "body": body, "head": head, "base": base, "draft": draft},
+        )
+
+    return FunctionTool(
+        name="open_github_pr",
+        description=(
+            "Open a GitHub pull request from head branch into base branch. "
+            "For cross-fork PRs use 'forkowner:branchname' as head. "
+            "Set draft=true for work-in-progress PRs. "
+            "Returns the PR URL — report it to the user."
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "Target repo in 'owner/repo' format"},
+                "title": {"type": "string", "description": "PR title"},
+                "body": {"type": "string", "description": "PR description"},
+                "head": {"type": "string", "description": "Source branch (or 'forkowner:branch')"},
+                "base": {"type": "string", "description": "Target branch (default: main)"},
+                "draft": {"type": "boolean", "description": "Open as draft PR (default: false)"},
+            },
+            "required": ["repo", "title", "head"],
+        },
+        on_invoke_tool=on_invoke,
+    )
+
+
+def _build_list_bot_commands_tool() -> FunctionTool:
+    async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        event = ctx.context
+        try:
+            cmds = sorted(event.bot.plugin_manager.commands.keys())
+        except AttributeError:
+            return "(error: command list unavailable)"
+        return ", ".join(cmds)
+
+    return FunctionTool(
+        name="list_bot_commands",
+        description=(
+            "Return a sorted list of all bot command names (without dot prefix). "
+            "Use when ghsource says a command is not found and you need to find the correct name — "
+            "call this, scan the list for a close match or spelling variant, then call ghsource again."
+        ),
+        params_json_schema={"type": "object", "properties": {}},
+        on_invoke_tool=on_invoke,
+    )
+
+
 CUSTOM_TOOLS: list[FunctionTool] = [
     _build_chat_history_tool(),
     _build_search_history_tool(),
+    _build_list_bot_commands_tool(),
     _build_wiki_read_tool(),
     _build_wiki_write_tool(),
     _build_web_fetch_tool(),
@@ -815,4 +1224,11 @@ CUSTOM_TOOLS: list[FunctionTool] = [
     _build_browser_console_tool(),
     _build_browser_evaluate_tool(),
     _build_describe_image_tool(),
+    _build_list_repo_files_tool(),
+    _build_read_github_file_tool(),
+    _build_search_github_code_tool(),
+    _build_fork_github_repo_tool(),
+    _build_create_github_branch_tool(),
+    _build_edit_github_file_tool(),
+    _build_open_github_pr_tool(),
 ]
