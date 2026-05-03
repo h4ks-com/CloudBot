@@ -11,6 +11,7 @@ import logging
 import re
 from typing import Any, Awaitable, Callable, Optional
 
+import openai
 import requests
 from agents import RunContextWrapper
 
@@ -18,6 +19,9 @@ logger = logging.getLogger("cloudbot")
 
 # Boundary errors caught in tool wrappers. Anything else is a real bug —
 # let it propagate so we see it in logs instead of swallowing silently.
+# openai.APIError covers RateLimitError, AuthenticationError, BadRequestError,
+# APIConnectionError — all the failure modes any tool that calls AsyncOpenAI
+# can hit. Without it a 429 in describe_image kills the whole agent run.
 TOOL_BOUNDARY_ERRORS: tuple[type[BaseException], ...] = (
     TypeError,
     KeyError,
@@ -25,6 +29,7 @@ TOOL_BOUNDARY_ERRORS: tuple[type[BaseException], ...] = (
     ValueError,
     requests.RequestException,
     json.JSONDecodeError,
+    openai.APIError,
     OSError,
     RuntimeError,
 )

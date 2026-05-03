@@ -2,6 +2,7 @@
 
 import base64
 
+import openai
 import requests
 from openai import AsyncOpenAI
 
@@ -20,6 +21,7 @@ _VISION_MAX_TOKENS = 512
         "context would help answer a question. Accepts jpg/png/gif/webp URLs. "
         "Optionally accepts a specific question to answer about the image."
     ),
+    wrap_errors=True,
     schema={
         "type": "object",
         "properties": {
@@ -94,5 +96,9 @@ async def describe_image(ctx, data):
             max_tokens=_VISION_MAX_TOKENS,
         )
         return completion.choices[0].message.content or "(no description)"
+    except openai.RateLimitError:
+        return "(error: vision model rate-limited — try again in a moment)"
+    except openai.APIError as e:
+        return f"(error calling vision model: {type(e).__name__}: {str(e)[:200]})"
     except (requests.RequestException, OSError, ValueError, RuntimeError) as e:
         return f"(error calling vision model: {e})"
