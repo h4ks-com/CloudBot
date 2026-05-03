@@ -1,0 +1,16 @@
+{
+  "name": "minerals",
+  "description": "Mineral-based hanb boards representing geological formations",
+  "boards": [
+    {"name": "Quartz Crystal", "code": "tFZ2fD1LbWJYCkaB-feYB7wkEVjINP.-taGiY8iAef7R1noBhM-uz.Bdwgmld"},
+    {"name": "Pyrite Cluster", "code": "lmXDMBOHISwvumSev7rZtf449JmaUfPIN0EGWHK-yu782UobkdRNNhrkkDVTS"},
+    {"name": "Obsidian Shard", "code": "acuXsBJ18dV-dXTD3pi8hDD6_bDFIQ94wi9vFNbZyCa3ZL8NNN6Bb2zVzoqRE"},
+    {"name": "Emerald Formation", "code": "fMTNqDeeIKrPQAqveHdY5.BZRDtHxMDlotxyR3y2Cy-5VnrnDpxX6Ssk1LRps"},
+    {"name": "Ruby Geode", "code": "19i7oMvDURxQzfHiVVCbA4dL278J-XvPfgL.rTOgcQrrK03nlCBJ3RMXHdOyP"},
+    {"name": "Sapphire Vein", "code": "aYfqpEOK1s5gtDE-ocemVoUH45Ef88Pp9POLKF7cH97WADGBa2dBC6kL6wljU"},
+    {"name": "Amethyst Cavity", "code": "t7t82Ry18okmA1HCr0R8zi0HncVQyGtTo5xGo-44PXA4NRK0ND-sbVrT8fJMt"},
+    {"name": "Topaz Deposit", "code": "3kF2jH5gN8mP0qR1sT6uV4wX7yZ9aBcDeFgHiJkLmNoPqRsTuVxYzABCDEF012"},
+    {"name": "Garnet Matrix", "code": "P8mK3nL7jH2gF5dSaR9tY6uW4xZ1cBvNqEpDsGfJhLkImNoPrQsTuVwXyZabcd012"},
+    {"name": "Diamond Rough", "code": "D9eF7cB6gH5jK4lM3nO2pQ1rS0tU9vW8xY7zA6bC5dE4fG3hI2jK1lM0nO1pQ2r"}
+  ]
+}
