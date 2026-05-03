@@ -1,0 +1,16 @@
+{
+  "name": "items",
+  "description": "Item-based hanb boards representing objects and tools",
+  "boards": [
+    {"name": "Iron Sword", "code": "iIrRoO8nNn6sSwWw4oOrR2dDd0sStT8wWw6hHh4iIlL2lLl0wOnN8gGg6bBlL4aAdD2"},
+    {"name": "Wooden Shield", "code": "wWoOoO8dDeEnN6nNsShH4hHiI2eElL0lLdD8wWoOoO6oOdD4dDeE2eEnN0nNsSsS8"},
+    {"name": "Gold Coin", "code": "gGoOlL8dDd6cCoO4iInN2nNgG0gGdD8cCoO6oOiI4iInN2nNgG0gGdD8cCoO6oOiI4"},
+    {"name": "Magic Staff", "code": "mMaAgG8iIcC6cCsStT4tTaA2aAfF0fF8wWw6aAnN4dDd2mMaA0aAgG8iIcC6cC4"},
+    {"name": "Crystal Ball", "code": "cCrRyY8sStT6tTaA4aAlL2lLl0bBaA8lLl6lLsS4sStT2tTaA0aAlL8lLl6lLsS4"},
+    {"name": "Leather Boots", "code": "lLeEaA8tThH6eErR4rRbBoO2oOtT0tTsS8bBoO6oOtT4tTsS2sSeE0eElL8lLeE6"},
+    {"name": "Silk Cloak", "code": "sSiIlL8lKk6cClLoO4aAkK2kKcC0cClL8sSiIlL6lKk4kCcC2cClLoO0oOsS8sSiI6"},
+    {"name": "Stone Hammer", "code": "sStToO8nNeE6eEhHh4aAmM2mMeErR0rR8hHaA6aAmM4mMeE2eErR0rRhHaA8aAmM6"},
+    {"name": "Parchment Map", "code": "pPaArR8cChH6hHmMeE4nNnTtT2tTmM0mMaA8pPaArR6rRr4aAdD2dDmM0mMpP8pPaA6"},
+    {"name": "Bronze Ring", "code": "bBrRoO8nNzZ6zZeE4eErRrR2iInN0nNgG8gGrR6rRiI4iInN2nNgG0gGrR8rRiI6"}
+  ]
+}
