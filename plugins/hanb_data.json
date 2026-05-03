@@ -1,0 +1,526 @@
+{
+  "boards": {
+    "full_alphabet": {
+      "name": "Full Alphabet",
+      "data": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.",
+      "style": "edge",
+      "description": "The complete 64-character hanb set laid out on the board"
+    },
+    "spiral_in": {
+      "name": "Spiral In",
+      "data": "ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba9876543210.-",
+      "style": "edge",
+      "description": "Characters spiral inward from the top edge"
+    },
+    "checkerboard": {
+      "name": "Checkerboard",
+      "data": "a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a",
+      "style": "edge",
+      "description": "Alternating dots and a's in a checkerboard-like pattern"
+    },
+    "diamond_dot": {
+      "name": "Diamond Dot",
+      "data": ".............................................................XXXXX",
+      "style": "point",
+      "description": "Mostly dots with X's forming the bottom point"
+    },
+    "ring": {
+      "name": "Outer Ring",
+      "data": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "style": "edge",
+      "description": "A solid ring of B characters around the entire board"
+    },
+    "zero_fill": {
+      "name": "Zero Fill",
+      "data": "00000000000000000000000000000000000000000000000000000000000000000",
+      "style": "point",
+      "description": "All cells filled with zeros"
+    },
+    "dash_border": {
+      "name": "Dash Border",
+      "data": "-------------------------------------------------------------...",
+      "style": "edge",
+      "description": "Dashes on the outside, dots on the inside"
+    },
+    "number_line": {
+      "name": "Number Line",
+      "data": "0123456789012345678901234567890123456789012345678901234567890123456789",
+      "style": "edge",
+      "description": "Repeating 0-9 number sequence across the board"
+    },
+    "letter_waves": {
+      "name": "Letter Waves",
+      "data": "aBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeFgHiJkL",
+      "style": "point",
+      "description": "Alternating upper and lowercase letters in wave pattern"
+    },
+    "hex_chars": {
+      "name": "Hex Chars",
+      "data": "0123456789ABCDEFabcdef0123456789ABCDEFabcdef0123456789ABCDEFabcdef01",
+      "style": "edge",
+      "description": "Hexadecimal characters repeating across the board"
+    },
+    "punctuation": {
+      "name": "Punctuation Party",
+      "data": "-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.",
+      "style": "point",
+      "description": "Dots and dashes alternating like Morse code"
+    },
+    "binary_board": {
+      "name": "Binary Board",
+      "data": "1010101010101010101010101010101010101010101010101010101010101010101",
+      "style": "edge",
+      "description": "Alternating 1s and 0s like binary data"
+    },
+    "center_burst": {
+      "name": "Center Burst",
+      "data": ".............................................................aBcDe",
+      "style": "point",
+      "description": "Empty board with characters bursting from the bottom point"
+    },
+    "ascending": {
+      "name": "Ascending Order",
+      "data": "abcdefghijklmnopqrstuvwxyz0123456789-.-.9876543210ZYXWVUTSRQPONMLKJI",
+      "style": "edge",
+      "description": "Ascending then descending through the character set"
+    },
+    "corner_marks": {
+      "name": "Corner Marks",
+      "data": "X..............................................................X..",
+      "style": "point",
+      "description": "X marks in the corners with dots filling the rest"
+    },
+    "morse_border": {
+      "name": "Morse Border",
+      "data": "-----.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-",
+      "style": "edge",
+      "description": "Dashes around the edge, dots in the interior"
+    },
+    "random_seed": {
+      "name": "Random Seed",
+      "data": "t7t82Ry18okmA1HCr0R8zi0HncVQyGtTo5xGo-44PXA4NRK0ND-sbVrT8fJMt",
+      "style": "point",
+      "description": "A pseudorandom board from the original hanb spec examples"
+    },
+    "interstellar": {
+      "name": "Interstellar",
+      "data": "lmXDMBOHISwvumSev7rZtf449JmaUfPIN0EGWHK-yu782UobkdRNNhrkkDVTS",
+      "style": "edge",
+      "description": "A deep-space hanb board from the original spec"
+    },
+    "quantum": {
+      "name": "Quantum State",
+      "data": "fMTNqDeeIKrPQAqveHdY5.BZRDtHxMDlotxyR3y2Cy-5VnrnDpxX6Ssk1LRps",
+      "style": "point",
+      "description": "Quantum-inspired character arrangement from the original spec"
+    },
+    "genesis": {
+      "name": "Genesis",
+      "data": "19i7oMvDURxQzfHiVVCbA4dL278J-XvPfgL.rTOgcQrrK03nlCBJ3RMXHdOyP",
+      "style": "edge",
+      "description": "The beginning of a new hanb universe"
+    },
+    "entropy": {
+      "name": "Entropy",
+      "data": "aYfqpEOK1s5gtDE-ocemVoUH45Ef88Pp9POLKF7cH97WADGBa2dBC6kL6wljU",
+      "style": "point",
+      "description": "Maximum entropy hanb configuration from the original spec"
+    },
+    "reversal": {
+      "name": "Reversal",
+      "data": ".-9876543210ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba",
+      "style": "edge",
+      "description": "The full alphabet in reverse order"
+    },
+    "double_helix": {
+      "name": "Double Helix",
+      "data": "aAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaA",
+      "style": "point",
+      "description": "Alternating lowercase and uppercase A's like DNA base pairs"
+    },
+    "noise_floor": {
+      "name": "Noise Floor",
+      "data": "acuXsBJ18dV-dXTD3pi8hDD6_bDFIQ94wi9vFNbZyCa3ZL8NNN6Bb2zVzoqRE",
+      "style": "edge",
+      "description": "Background noise pattern from the original hanb examples"
+    },
+    "cross_pattern": {
+      "name": "Cross Pattern",
+      "data": "....X....X....X....X....X....X....X....X....X....X....X....X....X",
+      "style": "point",
+      "description": "X marks forming a cross-like pattern across the hex grid"
+    },
+    "wave_form": {
+      "name": "Wave Form",
+      "data": "~~~~.~~~~.~~~~.~~~~.~~~~.~~~~.~~~~.~~~~.~~~~.~~~~.~~~~.~~~~.~~~~.~",
+      "style": "edge",
+      "description": "Tilde waves with dot separators across the board"
+    },
+    "matrix": {
+      "name": "The Matrix",
+      "data": "0101010101010101010101010101010101010101010101010101010101010101010",
+      "style": "point",
+      "description": "Green... I mean, binary rain pattern"
+    },
+    "palindrome": {
+      "name": "Palindrome",
+      "data": "abcdEFGhIjKlMnOpQrStUvWxYz.-.zYxWvUtSrQpOnMlKjIhGFEdcba..........",
+      "style": "edge",
+      "description": "Reads the same forwards and backwards (mostly)"
+    },
+    "concentric": {
+      "name": "Concentric Rings",
+      "data": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaaaaaaaaaaa",
+      "style": "point",
+      "description": "Outer ring of uppercase A, inner cells lowercase a"
+    },
+    "gradient": {
+      "name": "Gradient",
+      "data": "aaaaaaaaaaaaabbbbbbbbbbbccccccccccddddddddddeeeeeeeeeffffffffffggg",
+      "style": "edge",
+      "description": "Smooth character gradient from a through g"
+    },
+    "starfield": {
+      "name": "Starfield",
+      "data": "...*...*...*...*...*...*...*...*...*...*...*...*...*...*...*...*..",
+      "style": "point",
+      "description": "Dots and asterisks like stars in the night sky"
+    },
+    "fortress": {
+      "name": "Fortress",
+      "data": "#########.........#######.........#####.........###.........#.....",
+      "style": "edge",
+      "description": "Concentric square-ish layers getting smaller toward the center"
+    },
+    "heartbeat": {
+      "name": "Heartbeat",
+      "data": ".___/-\\___/-\\___/-\\___/-\\___/-\\___/-\\___/-\\___/-\\___/-\\___/-\\___/",
+      "style": "point",
+      "description": "ECG-like heartbeat waveform stretched across the hex board"
+    },
+    "island": {
+      "name": "Island",
+      "data": "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~aaaaaaa",
+      "style": "edge",
+      "description": "Ocean of tildes with a tiny island of a's in the center"
+    },
+    "dna_strand": {
+      "name": "DNA Strand",
+      "data": "ATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGA",
+      "style": "point",
+      "description": "DNA nucleotide bases repeating across the board"
+    },
+    "snowflake": {
+      "name": "Snowflake",
+      "data": "*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*.*",
+      "style": "edge",
+      "description": "Delicate snowflake-like asterisk and dot pattern"
+    },
+    "labyrinth": {
+      "name": "Labyrinth",
+      "data": "#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#.#",
+      "style": "point",
+      "description": "Maze-like hash and dot pattern on the hex grid"
+    },
+    "spectrum": {
+      "name": "Spectrum",
+      "data": "aaaaabbbbbcccccdddddeeeeefffffggggghhhhhiiiiijjjjjkkkkklllllmmmmm",
+      "style": "edge",
+      "description": "Full visible spectrum from a to m across the board"
+    },
+    "void": {
+      "name": "The Void",
+      "data": "...............................................................",
+      "style": "point",
+      "description": "Pure emptiness - all 61 cells are dots"
+    },
+    "big_bang": {
+      "name": "Big Bang",
+      "data": "...............................................................X",
+      "style": "point",
+      "description": "Nothingness with a single point of creation at the bottom"
+    },
+    "constellation": {
+      "name": "Constellation",
+      "data": "...*.....*...........*...*.........*.*.....*.........*....*......*.",
+      "style": "edge",
+      "description": "Scattered stars forming a constellation pattern"
+    },
+    "rain": {
+      "name": "Rain",
+      "data": "|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||",
+      "style": "point",
+      "description": "Vertical bars like rain falling through the hex grid"
+    },
+    "brick_wall": {
+      "name": "Brick Wall",
+      "data": "===---===---===---===---===---===---===---===---===---===---===---=",
+      "style": "edge",
+      "description": "Alternating equals and dashes like a brick pattern"
+    },
+    "barcode": {
+      "name": "Barcode",
+      "data": "|||..|||..|||..|||..|||..|||..|||..|||..|||..|||..|||..|||..|||.",
+      "style": "point",
+      "description": "Barcode-like pattern of bars and spaces"
+    },
+    "leaf": {
+      "name": "Leaf",
+      "data": "...aaa...aaaa..aaaaa..aaaa...aaa....a............................",
+      "style": "edge",
+      "description": "A leaf-like shape made of a's fading into dots"
+    },
+    "tsunami": {
+      "name": "Tsunami",
+      "data": "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+      "style": "point",
+      "description": "A wall of water (tildes) approaching"
+    },
+    "zodiac": {
+      "name": "Zodiac",
+      "data": "ariesTaurGemCancLeoVirgLibrScorSagiCaprAquarPiscariesTaurGemCancLeo",
+      "style": "edge",
+      "description": "Zodiac sign abbreviations cycling across the board"
+    },
+    "pi_approx": {
+      "name": "Pi Approximation",
+      "data": "3141592653589793238462643383279502884197169399375105820974944592307",
+      "style": "point",
+      "description": "First 61 digits of Pi mapped to the hex board"
+    },
+    "e_constant": {
+      "name": "Euler's Number",
+      "data": "2718281828459045235360287471352662497757247093699959574966967627724",
+      "style": "edge",
+      "description": "First 61 digits of Euler's number e on the hex board"
+    },
+    "phi_ratio": {
+      "name": "Golden Ratio",
+      "data": "1618033988749894848204586834365638117720309179805762862135448622705",
+      "style": "point",
+      "description": "Digits of the golden ratio phi spread across the board"
+    },
+    "sqrt2": {
+      "name": "Square Root of 2",
+      "data": "1414213562373095048801688724209698078569671875376948073176679737990",
+      "style": "edge",
+      "description": "First 61 digits of sqrt(2) on the hex grid"
+    },
+    "planck": {
+      "name": "Planck",
+      "data": "662607015e-34..299792458m/s.602214076e23.1380649e-23..91093837e-31kg",
+      "style": "point",
+      "description": "Fundamental physical constants encoded on the board"
+    },
+    "periodic": {
+      "name": "Periodic",
+      "data": "HHHeLiBeBCNOFNeNaMgAlSiPSClArKCaScTiVCrMnFeCoNiCuZnGaGeAsSeBrKr",
+      "style": "edge",
+      "description": "Periodic table element symbols cycling across the board"
+    },
+    "chess_board": {
+      "name": "Chess Board",
+      "data": "KQRBNPKQRBNPKQRBNPKQRBNPKQRBNPKQRBNPKQRBNPKQRBNPKQRBNPKQRBNPKQRBNP",
+      "style": "point",
+      "description": "Chess piece letters repeating across the hexagonal board"
+    },
+    "music_notes": {
+      "name": "Music Notes",
+      "data": "CDEFGABCDEF GABCDEF GABCDE F GABCDEF GABCDEF GABCDEF GABCDEF GABCDEF",
+      "style": "edge",
+      "description": "Musical scale notes cycling through the board"
+    },
+    "morse_code": {
+      "name": "Morse Code",
+      "data": ".-..-...-....-.--..---.-..-.----.....----..--.-..-.-.-.-.-.-.-.-.",
+      "style": "point",
+      "description": "Random morse code dots and dashes pattern"
+    },
+    "up_down": {
+      "name": "Up Down",
+      "data": "^^^^vvvv^^^^vvvv^^^^vvvv^^^^vvvv^^^^vvvv^^^^vvvv^^^^vvvv^^^^vvvv^^",
+      "style": "edge",
+      "description": "Caret arrows pointing up and down alternately"
+    },
+    "eyes": {
+      "name": "Eyes",
+      "data": "O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o.O.o",
+      "style": "point",
+      "description": "A field of watching eyes across the hexagonal grid"
+    },
+    "barcode_v2": {
+      "name": "Barcode V2",
+      "data": "||--||--||--||--||--||--||--||--||--||--||--||--||--||--||--||--|",
+      "style": "edge",
+      "description": "Thick and thin barcode bars across the board"
+    },
+    "tictactoe": {
+      "name": "Tic Tac Toe",
+      "data": "XOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXOXO",
+      "style": "point",
+      "description": "X and O alternating like a never-ending tic-tac-toe game"
+    },
+    "forty_two": {
+      "name": "Forty Two",
+      "data": "4242424242424242424242424242424242424242424242424242424242424242424",
+      "style": "edge",
+      "description": "The answer to life, the universe, and everything (x61)"
+    },
+    "pizza_slice": {
+      "name": "Pizza Slice",
+      "data": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((",
+      "style": "point",
+      "description": "A triangular pizza slice made of parentheses"
+    },
+    "cloud": {
+      "name": "Cloud",
+      "data": "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@",
+      "style": "edge",
+      "description": "A fluffy cloud of at-signs"
+    },
+    "snake_skin": {
+      "name": "Snake Skin",
+      "data": "ssssssssssssSSSSSSSSSSSSssssssssssssSSSSSSSSSSSSssssssssssssSSSSSS",
+      "style": "point",
+      "description": "Snake skin pattern with alternating case"
+    },
+    "telegraph": {
+      "name": "Telegraph",
+      "data": ".-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.",
+      "style": "edge",
+      "description": "Classic telegraph signal pattern"
+    },
+    "lattice": {
+      "name": "Lattice",
+      "data": "+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+",
+      "style": "point",
+      "description": "Plus and minus signs forming a lattice structure"
+    },
+    "star_burst": {
+      "name": "Star Burst",
+      "data": "*************************************************************.....",
+      "style": "edge",
+      "description": "Stars filling the top, dots at the bottom"
+    },
+    "circuit": {
+      "name": "Circuit",
+      "data": "0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1-0-1",
+      "style": "point",
+      "description": "Digital circuit signal pattern"
+    },
+    "ripple": {
+      "name": "Ripple",
+      "data": "~~~~~~~~~........~~~~~~~~~........~~~~~~~~~........~~~~~~~~~.......",
+      "style": "edge",
+      "description": "Concentric ripple waves of tildes and dots"
+    },
+    "staircase": {
+      "name": "Staircase",
+      "data": "#######......#######......#######......#######......#######......##",
+      "style": "point",
+      "description": "Stepping pattern of hashes and dots going down"
+    },
+    "weave": {
+      "name": "Weave",
+      "data": "//////\\\\\\\\\\//////\\\\\\\\\\//////\\\\\\\\\\//////\\\\\\\\\\//////\\\\\\\\\\///",
+      "style": "edge",
+      "description": "Over-under weaving pattern of slashes"
+    },
+    "crystal": {
+      "name": "Crystal",
+      "data": "<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>",
+      "style": "point",
+      "description": "Diamond-shaped crystal pattern of angle brackets"
+    },
+    "fence": {
+      "name": "Fence",
+      "data": "|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+|+",
+      "style": "edge",
+      "description": "A fence of pipes and pluses"
+    },
+    "barcode_v3": {
+      "name": "Barcode V3",
+      "data": "I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I!I",
+      "style": "point",
+      "description": "Exclamation bars with I-beam separators"
+    },
+    "fractal_seed": {
+      "name": "Fractal Seed",
+      "data": "x...x...x...........x...x...x...............x...x...x...........x",
+      "style": "edge",
+      "description": "Self-similar x pattern that could seed a fractal"
+    },
+    "abacus": {
+      "name": "Abacus",
+      "data": "OoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoOoO",
+      "style": "point",
+      "description": "Abacus beads pattern with alternating O and o"
+    },
+    "typewriter": {
+      "name": "Typewriter",
+      "data": "the quick brown fox jumps over the lazy dog. the quick brown fox jum",
+      "style": "edge",
+      "description": "The classic pangram filling the hexagonal board"
+    },
+    "lorem_ipsum": {
+      "name": "Lorem Ipsum",
+      "data": "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmo",
+      "style": "point",
+      "description": "Beginning of the famous placeholder text"
+    },
+    "haiku": {
+      "name": "Haiku Board",
+      "data": "an old silent pond a frog jumps into the pond splash silence again....",
+      "style": "edge",
+      "description": "Basho's famous frog haiku encoded on the board"
+    },
+    "zen": {
+      "name": "Zen",
+      "data": "................................................................",
+      "style": "point",
+      "description": "The sound of one hex clapping"
+    },
+    "tictactoe_win": {
+      "name": "Tic Tac Toe Win",
+      "data": "XXX...OOO...XXX...OOO...XXX...OOO...XXX...OOO...XXX...OOO...XXX...",
+      "style": "edge",
+      "description": "X wins every time on this board"
+    },
+    "loading": {
+      "name": "Loading",
+      "data": "[====-----][====-----][====-----][====-----][====-----][====-----][",
+      "style": "point",
+      "description": "Progress bar loading animation frames"
+    },
+    "equalizer": {
+      "name": "Equalizer",
+      "data": "=====..===..=====..===..=====..===..=====..===..=====..===..=====.",
+      "style": "edge",
+      "description": "Audio equalizer bar heights pattern"
+    },
+    "domino": {
+      "name": "Domino",
+      "data": "1.2.3.4.5.6.1.2.3.4.5.6.1.2.3.4.5.6.1.2.3.4.5.6.1.2.3.4.5.6.1.2",
+      "style": "point",
+      "description": "Domino tile values laid end to end"
+    },
+    "pixel_art": {
+      "name": "Pixel Art",
+      "data": "##########..........##########..........##########..........######",
+      "style": "edge",
+      "description": "Blocky pixel art bricks pattern"
+    },
+    "railroad": {
+      "name": "Railroad",
+      "data": "===+===+===+===+===+===+===+===+===+===+===+===+===+===+===+===+=",
+      "style": "point",
+      "description": "Railroad tracks stretching across the board"
+    },
+    "barcode_final": {
+      "name": "Barcode Final",
+      "data": "||:::||:::||:::||:::||:::||:::||:::||:::||:::||:::||:::||:::||:::",
+      "style": "edge",
+      "description": "The ultimate barcode with varying bar widths"
+    }
+  }
+}
