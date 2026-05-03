@@ -1,0 +1,46 @@
+{
+  "name": "animals",
+  "description": "Animal-based hanb boards representing creature habitats",
+  "boards": [
+    {
+      "name": "Wolf Den",
+      "code": "wWoOlL8fFf6pPaA4cCkK2dDeE0eEnN8wWw6hHoO4wWw2lLl0wWw8pPaA6aAlL4lLsS2"
+    },
+    {
+      "name": "Eagle Nest",
+      "code": "eEaA8gGg6lLeE4nNeEsStT0aArR8rRr6yYy4fFlL2iIgG0hHtT8nNeEe6sStT4"
+    },
+    {
+      "name": "Bear Cave",
+      "code": "bBeEaArR8cCaA6vVeE4bBb2aArR0dDeE8nNn6eEsStT4bBeE2eErR0rRr8aAwW6"
+    },
+    {
+      "name": "Fox Burrow",
+      "code": "fFoOxX8bBuU6rRr4oOwW2lLeEaRr0rRdD8eEnN6nNiIfF4fFoO2xXx0xXeEsStT6"
+    },
+    {
+      "name": "Dolphin Pod",
+      "code": "dDoOlL8pPhH6hHiI4nNn2sSwWw0iImM8aArR6rRr4fFf2lLoO0oOpP8dDd6"
+    },
+    {
+      "name": "Ant Colony",
+      "code": "aAnNtT8cCoO6lLoO4nNeE2rRr0yYy8qQuU6uUu4eEnN2tTsS0wWw8aArR6kKrR4"
+    },
+    {
+      "name": "Bee Hive",
+      "code": "bBeEeEhH8iIvVv6eEe4cCoO2mMm0bBb8eEeEe6nNeEsStT4cCoO2oOmM0bBb8"
+    },
+    {
+      "name": "Snake Pit",
+      "code": "sSnNaA8kKeE6eEsSsS4lLl2iInNgG0cCoO8iIlLl6dDeE4eEsS2sStT0pPiI8tT6"
+    },
+    {
+      "name": "Owl Roost",
+      "code": "oOwWlL8rRoO6oOsStT4tTrReEeE2nNn0hHh8tTwWw6iIgGhH4tTsS0eEe8rReE6"
+    },
+    {
+      "name": "Shark Waters",
+      "code": "sShHhA8aRr6rKk4wWaA2tTeEe0rRsS8sShHaA6rRr4kKk2wWw0tTeEe8rRsSsS6"
+    }
+  ]
+}
