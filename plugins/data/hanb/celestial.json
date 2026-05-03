@@ -1,0 +1,16 @@
+{
+  "name": "celestial",
+  "description": "Celestial hanb boards representing cosmic formations",
+  "boards": [
+    {"name": "Solar Flare", "code": "sSoOlL8aArR6rRfFlL4lLaArR2rReE0eEsStT8tTsSuU6uUnNnN4nNdDsStT2tThH0hHeE8"},
+    {"name": "Lunar Eclipse", "code": "lLuUnN8aArR6rReEcC4cClL2lLiIpP0pPsS8sSeEeE6eEsShH4hHaA2aAdD0dDoOwW8wW6"},
+    {"name": "Nebula Cloud", "code": "nNeEbB8uUlL6lLaAcClL4oOuUuU2dDdCChH0hH8sStTaA6aArR4rRsS2sSpP0pPiInN8nN6"},
+    {"name": "Black Hole", "code": "bBlLaA8cCkK6kKhHoOlL4lLeE2eEaAbB0bB8sSiInN6nNgGgG4gGuUu2uUlL0lLtThH8hH6"},
+    {"name": "Comet Trail", "code": "cCoOmM8eEtT6tTtTrR4rRaA2aAiIlL0lL8sStTaA6aArR4rRsS2sStT0tTdDsStT8tT6"},
+    {"name": "Star Cluster", "code": "sStTaA8rRrCclL6lLlLuU4uUsStT2tTeErR0rR8gGrR6rRrRaA4aApP2pPsS0sStTaA8aA6"},
+    {"name": "Galaxy Spiral", "code": "gGaAlL8aAxX6xXyYySsSpP4pPiIrR2rRaAlL0lL8aArR6rRmMmM4mMsS2sStT0tTaA8aArR6"},
+    {"name": "Asteroid Belt", "code": "aAsStT8eErR6rRoOiIdD4dDbBeElL2lLtTtT0tT8sSmMaA6aAlL4lLsStT2sSeE0eEtTtT8"},
+    {"name": "Pulsar Wave", "code": "pPuUlL8sSaA6aArRrRwWw4wWvVeE2eEpP0pPlL8sSiIgG6gGnNaA4aAlL2lLtT0tTdDsS8sS6"},
+    {"name": "Quasar Beam", "code": "qQuUaA8sSaA6aArRrRbBeE4eEmMmM2mMeE0eErR8rRaAdD6dDiIiIaA4aAtT2tTeE0eEmM8mM6"}
+  ]
+}
