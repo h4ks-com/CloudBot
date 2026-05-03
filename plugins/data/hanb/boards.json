@@ -1,0 +1,98 @@
+{
+  "universes": {
+    "universe_with_two": {
+      "name": "Universe with two universes",
+      "board": "aaaaa9aa98aaa.aa931aa90aa9aaaa.aaaa8aaa3aaaaaaaaaaaaaaaaaaaaa",
+      "description": "A universe matrix containing two universes"
+    },
+    "single_universe": {
+      "name": "Single universe",
+      "board": "aaaaa--aaa----a-----a---------aa---------aa---------a------a-----a---------aa---------aa---------a------a----3---a---39---a---------a---------a---82---a---------aa---------a---------a-----------a--",
+      "description": "A single universe expanding through scales"
+    },
+    "province": {
+      "name": "Province (size P board)",
+      "board": "aaaaaaaaaaaaOaaaaaaaaaaaaNNNNNNNLLLLNNOOONLKLKKKKOONNNLKKNOKKLLOaOLOaKaOaKOLKKMKKLaKLaNLN",
+      "description": "A province-scale board showing boroughs, neighborhoods, and lots"
+    },
+    "insect": {
+      "name": "Insect (size I board)",
+      "board": "aaaaaaaaaaaaGaaaaaGGGGGaaaaGGGGaHHaHHHHHaaaaaHHaaaaaHHHHHHaa",
+      "description": "An insect/coin-scale board showing organic structure"
+    }
+  },
+  "examples": {
+    "full_alphabet": {
+      "name": "Full alphabet example",
+      "board": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.",
+      "description": "Each cell contains the next character from the hanb alphabet"
+    },
+    "readme_example_1": {
+      "name": "README example 1",
+      "board": "tFZ2fD1LbWJYCkaB-feYB7wkEVjINP.-taGiY8iAef7R1noBhM-uz.Bdwgmld",
+      "description": "Example board from the hanb README"
+    },
+    "readme_example_2": {
+      "name": "README example 2",
+      "board": "lmXDMBOHISwvumSev7rZtf449JmaUfPIN0EGWHK-yu782UobkdRNNhrkkDVTS",
+      "description": "Another example board from the hanb README"
+    },
+    "readme_example_3": {
+      "name": "README example 3",
+      "board": "acuXsBJ18dV-dXTD3pi8hDD6_bDFIQ94wi9vFNbZyCa3ZL8NNN6Bb2zVzoqRE",
+      "description": "Example board from the hanb README"
+    },
+    "readme_example_4": {
+      "name": "README example 4",
+      "board": "fMTNqDeeIKrPQAqveHdY5.BZRDtHxMDlotxyR3y2Cy-5VnrnDpxX6Ssk1LRps",
+      "description": "Example board from the hanb README"
+    },
+    "readme_example_5": {
+      "name": "README example 5",
+      "board": "19i7oMvDURxQzfHiVVCbA4dL278J-XvPfgL.rTOgcQrrK03nlCBJ3RMXHdOyP",
+      "description": "Example board from the hanb README"
+    },
+    "readme_example_6": {
+      "name": "README example 6",
+      "board": "aYfqpEOK1s5gtDE-ocemVoUH45Ef88Pp9POLKF7cH97WADGBa2dBC6kL6wljU",
+      "description": "Example board from the hanb README"
+    },
+    "readme_example_7": {
+      "name": "README example 7",
+      "board": "t7t82Ry18okmA1HCr0R8zi0HncVQyGtTo5xGo-44PXA4NRK0ND-sbVrT8fJMt",
+      "description": "Example board from the hanb README"
+    }
+  },
+  "structures": {
+    "single_planet": {
+      "name": "Single planet in galaxy",
+      "board": "aaaaaaaaaaaaRaaaaaaaaaaa998aaa.a931aa90aa9aaaa.aaaa8aaa3aaaaaaaaaaaaaaaaaaaaa",
+      "description": "A planet R located somewhere in a galaxy of size 6"
+    },
+    "quantum_foam": {
+      "name": "Pure quantum foam",
+      "board": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "description": "A board filled entirely with quantum foam particles"
+    },
+    "empty_universe": {
+      "name": "Empty universe",
+      "board": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "description": "Quantum foam -- the base state before matter forms"
+    },
+    "dense_galaxy": {
+      "name": "Dense galaxy cluster",
+      "board": "6666666666666666666666666666666666666666666666666666666666666666666",
+      "description": "A board at galaxy cluster scale"
+    },
+    "solar_system": {
+      "name": "Solar system scale",
+      "board": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      "description": "A board at complete star system scale (10 Tm)"
+    },
+    "planet_surface": {
+      "name": "Planet surface",
+      "board": "KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK",
+      "description": "A board at person scale (1 m)"
+    }
+  }
+}
