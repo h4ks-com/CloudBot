@@ -1,0 +1,16 @@
+{
+  "name": "buildings",
+  "description": "Building hanb boards representing structures and architecture",
+  "boards": [
+    {"name": "Stone Tower", "code": "sStToO8nNeE6eEtToOwWeErR4rRfFlL2lLfFlL0lL8sStToO6oOnNnN4nNdDoO0oOrRrR8rR6"},
+    {"name": "Wooden Cabin", "code": "wWoOoO8dDeEnN6nNcCaAbBiI4iInNnN2nNlLoOgG0gG8sStToO6oOnNhHhH4hHoOuUsSeE0eE8"},
+    {"name": "Castle Keep", "code": "cCaAsS8tTlLeE6eEkKeEpP4pPwWaA2aAlLlL0lL8dDrRaA6aAwWwWnN4nNtTrR0rRsSsS8sS6"},
+    {"name": "Temple Shrine", "code": "tTeEmM8pPlLeE6eEsShHhHrRiInN4nNeEeE2eEsStT0tT8aAlLtT6tTaAaArR4rRdDeE0eEsS8sS6"},
+    {"name": "Library Hall", "code": "lLiIbBrR8rArRyYy6yYhHaAlL4lLlLbBoO2oOkKsS0sS8sShHeE6eElLfFfF4fFsS2sStT0tTeE8eE6"},
+    {"name": "Market Stall", "code": "mMaArR8kKeEtT6tTsStTaAlL4lLlLwWaA2aArReE0eE8gGoOoO6oOdDdDsS4sSwWw2wWaA0aArR8rR6"},
+    {"name": "Inn Tavern", "code": "iInNnN8tTaAvVeErR6rRnNbBeE4eEdDdDrR2rRoOoO0oO8bBeEeE6eErRrRbBeE4eEsS2sStT0tThH8hH6"},
+    {"name": "Bridge Span", "code": "bBrRiIdD8gGeE6eEsSpPaAnN4nNsStTtToO2oOnN0nN8aArRcChH6hHsStToO4oOnN2nNkKeE0eE8"},
+    {"name": "Windmill", "code": "wWiInN8dDmMiIlL6lLbBlLaAdDeE4eEsSsStToOoOnN2nN8gGrRiInNdD6dDsStToO4oOnN2nN8"},
+    {"name": "Lighthouse", "code": "lLiIgGhHtThHoOuUsSeE8eEbBeEaAmM6mMlLaAnNdDdD4dDgGuUuUiIdDeE2eEsStTaA0aArR8rR6"}
+  ]
+}
