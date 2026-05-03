@@ -1,0 +1,16 @@
+{
+  "name": "magic",
+  "description": "Magic hanb boards representing arcane energies and spells",
+  "boards": [
+    {"name": "Arcane Circle", "code": "aArRcCaA8nNeEcCiIrR6rRcClLeE4eEsSsSpP2pPeElL0lL8oOfF6fFmMaA4aAgGiIcC0cCcC8cC6"},
+    {"name": "Spell Rune", "code": "sSpPeElL8lLrRuU6uUnNeE4eEoOfF2fFmMaA0aA8gGlL6lLyYyPpP4pPoOwWeE2eErR0rRsS8sS6"},
+    {"name": "Mana Well", "code": "mMaAnN8aAwWeElL6lLfFlLoO4oOwWwEeE2eErR0rR8sSpPiIrR6rRkKeE4eElL2lLtT0tTsS8sS6"},
+    {"name": "Void Rift", "code": "vVoOiIdD8dDrRiIfFtT6tTwWoOrR4rRlLdD2dDsSpP0pP8eEnNrR6rRgGyY4yYsS2sSsS0sShH8hH6"},
+    {"name": "Frost Ward", "code": "fFrRoOsStT8tTwWaA6aArRdDdD4dDeEeEgGlL2lLiInN0nN8iIcCeE6eEcClL4lLaAmM0mMsS8sS6"},
+    {"name": "Shadow Veil", "code": "sShHaA8dDoOwW6wWvVeEiIlL4lLsSpPeE2eEaAdD0dD8dDaArR6rRkKnN4nNeEsS0sStT8tT6"},
+    {"name": "Light Seal", "code": "lLiIgGhHtT8tTsSeEaAlL6lLcChHaAiInN2nNgG0gG8bBlLeEsS6sSsS4sShH0hHiInN8nNeE6"},
+    {"name": "Chaos Storm", "code": "cChHaA8oOsSsS6sStToOrR4rRmMmM2mMfFlL0lL8aArR6rRkKeE4eEwWw2wWaAvV0vVeE8eE6"},
+    {"name": "Soul Gem", "code": "sSoOuUlL8lGg6gGeEmMmM4mMeEsSoOuU2uUlL0lL8bBiInN6nNdDdD4dDwWw2wWeErR0rRsS8sS6"},
+    {"name": "Wish Scroll", "code": "wWiIsShH8hSsScCrR6rRoOlL4lLlLlL2lLwWiIsShH0hH8mMaAgG6gGiIcC4cCcCoO0oOnN8nN6"}
+  ]
+}
