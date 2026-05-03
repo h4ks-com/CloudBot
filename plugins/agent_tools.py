@@ -3,6 +3,8 @@ import asyncio
 import base64
 import importlib
 import json
+import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,6 +26,8 @@ from cloudbot.util.browserless import (
     is_configured as browserless_configured,
     take_screenshot,
 )
+
+logger = logging.getLogger("cloudbot")
 
 _MEMORY_TABLE = Table(
     "agent_memory",
@@ -824,10 +828,29 @@ def _extract_mcp_content(result: dict) -> str:
 
 
 _SSE_FIELDS = ("data:", "event:", "id:", "retry:")
+_SHA_PATTERN = re.compile(r"\(SHA:\s*([0-9a-f]{6,64})\)")
 
 
-def _parse_sse(text: str) -> str | None:
-    """Parse an SSE response body and return the first JSON-RPC result content.
+def _extract_file_sha(result: dict) -> str | None:
+    """Pull blob SHA out of GitHub MCP get_file_contents text content.
+
+    The MCP server formats the success note as: "successfully downloaded
+    text file (SHA: <sha>)..." — we scan all text items for that pattern.
+    """
+    content = result.get("content", [])
+    if not isinstance(content, list):
+        return None
+    for c in content:
+        if not isinstance(c, dict) or c.get("type") != "text":
+            continue
+        match = _SHA_PATTERN.search(c.get("text") or "")
+        if match:
+            return match.group(1)
+    return None
+
+
+def _parse_sse(text: str) -> dict | None:
+    """Parse an SSE response body and return the first JSON-RPC result dict.
 
     GitHub MCP embeds literal (unescaped) newlines inside JSON string values,
     so one SSE data: event spans many physical lines. We collect continuation
@@ -848,8 +871,6 @@ def _parse_sse(text: str) -> str | None:
                 break
             chunk_parts.append(ln)
             j += 1
-        # Join with JSON newline escape — the literal newlines in the response
-        # are inside JSON string values and must be re-escaped before parsing.
         chunk = "\\n".join(chunk_parts).strip()
         i = j
         if not chunk or chunk == "[DONE]":
@@ -859,12 +880,17 @@ def _parse_sse(text: str) -> str | None:
         except json.JSONDecodeError:
             continue
         if isinstance(parsed, dict) and "result" in parsed:
-            return _extract_mcp_content(parsed["result"])
+            result = parsed["result"]
+            return result if isinstance(result, dict) else {}
     return None
 
 
-async def _github_mcp_call(event, tool_name: str, args: dict) -> str:
-    """JSON-RPC 2.0 call to the GitHub MCP HTTP server (same protocol as sandbox MCP)."""
+async def _github_mcp_call_raw(event, tool_name: str, args: dict) -> dict | str:
+    """JSON-RPC 2.0 call returning the raw MCP result dict, or an error string.
+
+    Returns dict on success, or a string starting with "(error" / "(mcp error"
+    on failure. Callers that need the extracted text use _github_mcp_call.
+    """
     bot = event.bot
     if not event.conn.permissions.has_perm_mask(event.mask, "botcontrol"):
         return f"(error: GitHub MCP tools require botcontrol permission — {event.nick} is not authorised)"
@@ -921,11 +947,26 @@ async def _github_mcp_call(event, tool_name: str, args: dict) -> str:
             return result if result is not None else "(no result in SSE stream)"
 
         data = resp2.json()
-        if "error" in data:
-            return f"(mcp error: {data['error'].get('message', str(data['error']))})"
-        return _extract_mcp_content(data.get("result", {}))
+        if isinstance(data, dict) and "error" in data:
+            err = data["error"]
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            return f"(mcp error: {msg})"
+        result = data.get("result", {}) if isinstance(data, dict) else {}
+        return result if isinstance(result, dict) else {}
     except requests.RequestException as e:
+        logger.warning("github_mcp %s request failed: %s", tool_name, e)
         return f"(error calling github mcp: {e})"
+    except (ValueError, KeyError, AttributeError, TypeError) as e:
+        logger.exception("github_mcp %s parsing failed", tool_name)
+        return f"(error parsing github mcp response: {type(e).__name__}: {str(e)[:200]})"
+
+
+async def _github_mcp_call(event, tool_name: str, args: dict) -> str:
+    """JSON-RPC 2.0 call returning extracted text content (or error string)."""
+    raw = await _github_mcp_call_raw(event, tool_name, args)
+    if isinstance(raw, str):
+        return raw
+    return _extract_mcp_content(raw)
 
 
 def _build_list_repo_files_tool() -> FunctionTool:
@@ -971,28 +1012,34 @@ def _build_read_github_file_tool() -> FunctionTool:
         start_line = data.get("start_line")
         if not repo or not path:
             return "(error: repo and path required)"
-        raw = await _github_mcp_call(
+        raw_result = await _github_mcp_call_raw(
             ctx.context, "get_file_contents",
             {"owner": repo.split("/")[0], "repo": repo.split("/")[-1],
              "path": path, "ref": branch},
         )
+        if isinstance(raw_result, str):
+            return raw_result
+        body = _extract_mcp_content(raw_result)
+        sha = _extract_file_sha(raw_result)
+        sha_line = f"SHA: {sha}\n" if sha else ""
         if start_line is not None:
             try:
                 center = int(start_line)
-                lines = raw.splitlines()
+                lines = body.splitlines()
                 lo = max(0, center - 30)
                 hi = min(len(lines), center + 120)
                 excerpt = "\n".join(f"{lo+i+1}: {l}" for i, l in enumerate(lines[lo:hi]))
-                return f"(lines {lo+1}-{hi} of {len(lines)})\n{excerpt}"
+                return f"{sha_line}(lines {lo+1}-{hi} of {len(lines)})\n{excerpt}"
             except (ValueError, AttributeError):
                 pass
-        return raw[:8000]
+        return f"{sha_line}{body[:8000]}"
 
     return FunctionTool(
         name="read_github_file",
         description=(
             "Read the contents of a file from any GitHub repo. "
-            "repo format: 'owner/repo'. Returns raw file text (up to 8000 chars from top). "
+            "repo format: 'owner/repo'. Returns raw file text (up to 8000 chars from top), "
+            "with a 'SHA: <hash>' header line — the SHA is the file's blob SHA on that branch. "
             "If you know the line number of interest (e.g. from ghsource), pass start_line "
             "to get ±100 lines around that line instead of reading from the top. "
             "Always read a file before editing it."
@@ -1115,19 +1162,31 @@ def _build_edit_github_file_tool() -> FunctionTool:
         content = str(data.get("content") or "")
         message = str(data.get("message") or "Update file via CloudBot AGI").strip()
         branch = str(data.get("branch") or "main").strip()
+        sha = str(data.get("sha") or "").strip()
         if not repo or not path or not content:
             return "(error: repo, path, and content required)"
-        return await _github_mcp_call(
-            ctx.context, "create_or_update_file",
-            {"owner": repo.split("/")[0], "repo": repo.split("/")[-1],
-             "path": path, "content": content, "message": message, "branch": branch},
-        )
+        owner, repo_name = repo.split("/")[0], repo.split("/")[-1]
+        if not sha:
+            probe = await _github_mcp_call_raw(
+                ctx.context, "get_file_contents",
+                {"owner": owner, "repo": repo_name, "path": path, "ref": branch},
+            )
+            if isinstance(probe, dict):
+                sha = _extract_file_sha(probe) or ""
+        args = {"owner": owner, "repo": repo_name, "path": path,
+                "content": content, "message": message, "branch": branch}
+        if sha:
+            args["sha"] = sha
+        return await _github_mcp_call(ctx.context, "create_or_update_file", args)
 
     return FunctionTool(
         name="edit_github_file",
         description=(
             "Create or overwrite a file in a GitHub repo on the given branch. "
             "Provide the COMPLETE new file content — this is a full replacement, not a patch. "
+            "If the file already exists on the branch its blob SHA is required by GitHub; "
+            "this tool auto-fetches the current SHA, so you do NOT need to supply it. "
+            "Optionally pass sha if you already have it from read_github_file. "
             "Always read_github_file first to get the current content before editing. "
             "Always create_github_branch before editing."
         ),
@@ -1139,6 +1198,7 @@ def _build_edit_github_file_tool() -> FunctionTool:
                 "content": {"type": "string", "description": "Complete new file content"},
                 "message": {"type": "string", "description": "Commit message"},
                 "branch": {"type": "string", "description": "Branch to commit to"},
+                "sha": {"type": "string", "description": "Optional blob SHA (auto-fetched if omitted)"},
             },
             "required": ["repo", "path", "content", "branch"],
         },

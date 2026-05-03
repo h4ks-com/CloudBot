@@ -7,6 +7,7 @@ with Z.AI glm-5 (primary) and OpenRouter (fallback).
 import asyncio
 import json
 import logging
+import re
 import time
 from datetime import datetime
 from typing import Any, Optional
@@ -113,9 +114,28 @@ AGENT_INSTRUCTIONS = (
     "2) Use fork_github_repo if needed (wait ~10s after forking). "
     "3) Use create_github_branch with a name like 'fix/command-name'. "
     "4) Use edit_github_file with the COMPLETE new file content (not a diff — full file). "
+    "   edit_github_file auto-fetches the file's blob SHA when overwriting an existing file, "
+    "   so you do NOT need to pass sha. If a previous edit_github_file call returned an error "
+    "   about SHA mismatch, simply call it again — the tool will re-fetch the latest SHA. "
     "5) Use open_github_pr and report the PR URL to the channel. "
     "Always read the full file before editing. You cannot run or test code, so reason carefully about correctness."
 )
+
+_SECRET_PATTERNS = [
+    re.compile(r"Bearer\s+[A-Za-z0-9_\-\.]+", re.I),
+    re.compile(r"\bgithubmcp_[A-Za-z0-9]+", re.I),
+    re.compile(r"\bgh[ps]_[A-Za-z0-9]{20,}", re.I),
+    re.compile(r"sk-[A-Za-z0-9_\-]{20,}"),
+    re.compile(r"\bapikey[\"':=\s]+[^\s\"',]+", re.I),
+]
+
+
+def _sanitise_err_message(msg: str) -> str:
+    """Strip credentials and tokens from an exception message before pasting."""
+    for pat in _SECRET_PATTERNS:
+        msg = pat.sub("<redacted>", msg)
+    return msg
+
 
 class _RunTracker(RunHooks):
     """Per-run hook that tracks tool call sequence for safe failure summaries.
@@ -158,16 +178,18 @@ class _RunTracker(RunHooks):
     def failure_paste_md(self, err: BaseException, prompt: str, backends: list[str]) -> str:
         """Build a paste-safe markdown failure report.
 
-        Contains ONLY: prompt (already public in IRC), tool names, timing,
-        error class name, backends tried. Never includes tool args, tool
-        outputs, exception messages, or any API/config values.
+        Contains: prompt (already public in IRC), tool names, timing,
+        error class+sanitised message, backends tried. The message is
+        scrubbed of bearer tokens / api keys / Kong key strings before
+        inclusion so paste links are safe to share.
         """
         err_type = type(err).__name__
         elapsed = time.monotonic() - self._start
+        msg = _sanitise_err_message(str(err))[:300]
         lines = [
             "# Agent Failure Report",
             "",
-            f"**Error**: `{err_type}`",
+            f"**Error**: `{err_type}: {msg}`" if msg else f"**Error**: `{err_type}`",
             f"**Elapsed**: {elapsed:.1f}s",
             f"**Backends tried**: {', '.join(backends)}",
             f"**Prompt**: {prompt}",
