@@ -1,0 +1,16 @@
+{
+  "name": "crafting",
+  "description": "Crafting hanb boards representing smithing and creation processes",
+  "boards": [
+    {"name": "Iron Forge", "code": "iIrRoO8nNn6fFoOrR4rRgGeE2eEbBlL0lL8aAnNiI6iIlL4lLvVeE2eErR0rRsSsS8sS6"},
+    {"name": "Enchant Table", "code": "eEnNcChH8aAnN6nNtTtT4tTaAbB2bBlL0lL8eE8eEnN6nNcChH4hHaAnN2nNtT0tTaA8aA6"},
+    {"name": "Alchemy Lab", "code": "aAlLcChH8eEmM6mMyYyLl4lLaAbB2bBtTeE0eE8sStTuU6uUdDiI4iIsStT2sSpP0pPoO8oO6"},
+    {"name": "Loom Workshop", "code": "lLoOoO8mMmWw6wWoOrR4rRsShHoO2oOpP0pP8tThH6hHeEaA4aAdD2dDsStT0tTrReE8eE6"},
+    {"name": "Gem Cutter", "code": "gGeEmM8cCuU6uUtTtT4tTeErR2rRrR0rR8gGgG6gGpPoO4oOlL2lLiIsShH0hHeE8eEdD6"},
+    {"name": "Pottery Wheel", "code": "pPoOtT8tTrR6rRyYyWw4wWhHeEeE2eElL0lL8cClL6lLaAyY4yYmMmM2mMeErR0rRsS8sS6"},
+    {"name": "Bow Maker", "code": "bBoOwW8wWmM6mMaAkKeErR2rReErR0rR8sStTrR6rRiInN4nNgGgG2gGhH0hHeEdD8dD6"},
+    {"name": "Brew Kettle", "code": "bBrReE8eEwWw6wWkKeEtT4tTtTlL2lLeE0eE8pPoOtT6tTiIoO4oOnNnN2nNsS0sStT8tT6"},
+    {"name": "Tannery Rack", "code": "tTaAnN8nNrR6rRyYyRr4rRaAcC2cCkK0kK8lLeEaA6aAtTtThH4hHeErR0rRsSkKiI8iI6"},
+    {"name": "Glass Blower", "code": "gGlLaA8sSsS6sSlLlBb4bBlLlWoO2oOrRrR0rR8fFiIrR6rReE4eEsSsS2sSmM0mMoOlL8lL6"}
+  ]
+}
