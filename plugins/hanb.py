@@ -1,341 +1,272 @@
+# -*- coding: utf-8 -*-
 """
-hanb - IRC command for the hanb hexagonal board universe modeling system.
+hanb.py - hanb hexagonal board viewer plugin
 
 hanb is a simple language for creating model universes at any scale.
-It uses a 61-cell hexagonal board with 64 characters (a-z, A-Z, 0-9, -, .)
-representing different spatial scales from Planck length to the entire universe.
+Each board is a 61-cell hexagonal grid where each cell contains a character
+from the set: a-z, A-Z, 0-9, - and .
 
-Usage:
-  .hanb                   - Show a random hanb board
-  .hanb <category>        - List boards in a category
-  .hanb <name>            - Show a specific board
-  .hanb scale <char>      - Show what scale a hanb character represents
-  .hanb time <char>       - Show what time scale a hanb character represents
-  .hanb render <board>    - Render a 61-char board string as hex grid
-  .hanb logic [n]          - Show hanb logic operation (0-15)
-  .hanb categories        - List all board categories
-  .hanb info              - Show hanb overview
-  .hanb random            - Generate a random board
+Boards are stored in plugins/hanb_data.json and loaded dynamically.
 """
 
 import os
+import json
 import random
 import re
-from pathlib import Path
-
 from cloudbot import hook
 
-# ---------------------------------------------------------------------------
-# Dynamic loading of hanb data modules
-# ---------------------------------------------------------------------------
+# Board templates for the two rotation styles
+# Positions are hardcoded based on the hex grid layout from the hanb spec
 
-_DATA_DIR = Path(__file__).parent / "hanb_data"
-_BOARDS_CACHE = {}
-_SCALES_CACHE = None
+# Edge-top rotation (flat top)
+# Row offsets and cell counts: [padding, cell_count]
+# The 61 cells map to positions in this layout:
+EDGE_TEMPLATE = [
+    "        {0}   {1}   {2}   {3}   {4}",
+    "      {5}   {6}   {7}   {8}   {9}   {10}",
+    "    {11}   {12}   {13}   {14}   {15}   {16}   {17}",
+    "  {18}   {19}   {20}   {21}   {22}   {23}   {24}   {25}",
+    "{26}   {27}   {28}   {29}   {30}   {31}   {32}   {33}   {34}",
+    "  {35}   {36}   {37}   {38}   {39}   {40}   {41}   {42}",
+    "    {43}   {44}   {45}   {46}   {47}   {48}   {49}",
+    "      {50}   {51}   {52}   {53}   {54}   {55}",
+    "        {56}   {57}   {58}   {59}   {60}",
+]
+
+# Point-top rotation
+# The 61 cells in point-top layout use a different index mapping
+# From the original hanb spec, the b[] array maps edge indices to point positions
+# b = [e4, e3, e10, e2, e9, e17, e1, e8, e16, e25, e0, e7, e15, e24, e34,
+#      e6, e14, e23, e33, e5, e13, e22, e32, e42, e12, e21, e31, e41, e11,
+#      e20, e30, e40, e49, e19, e29, e39, e48, e18, e28, e38, e47, e55,
+#      e27, e37, e46, e54, e26, e36, e45, e53, e60, e35, e44, e52, e59,
+#      e43, e51, e58, e50, e57, e56, e61, e62, e63]
+POINT_INDEX_MAP = [
+    4, 3, 10, 2, 9, 17, 1, 8, 16, 25, 0, 7, 15, 24, 34,
+    6, 14, 23, 33, 5, 13, 22, 32, 42, 12, 21, 31, 41, 11,
+    20, 30, 40, 49, 19, 29, 39, 48, 18, 28, 38, 47, 55,
+    27, 37, 46, 54, 26, 36, 45, 53, 60, 35, 44, 52, 59,
+    43, 51, 58, 50, 57, 56, 61, 62, 63,
+]
+
+POINT_TEMPLATE = [
+    "                    {0}",
+    "               {1}         {2}",
+    "          {3}         {4}         {5}",
+    "     {6}         {7}         {8}         {9}",
+    "{10}         {11}         {12}         {13}         {14}",
+    "     {15}         {16}         {17}         {18}",
+    "{19}         {20}         {21}         {22}         {23}",
+    "     {24}         {25}         {26}         {27}",
+    "{28}         {29}         {30}         {31}         {32}",
+    "     {33}         {34}         {35}         {36}",
+    "{37}         {38}         {39}         {40}         {41}",
+    "     {42}         {43}         {44}         {45}",
+    "{46}         {47}         {48}         {49}         {50}",
+    "     {51}         {52}         {53}         {54}",
+    "          {55}         {56}         {57}",
+    "               {58}         {59}",
+    "                    {60}",
+]
+
+# Load board data
+_data_path = os.path.join(os.path.dirname(__file__), "hanb_data.json")
+_boards = {}
+
+try:
+    with open(_data_path, "r", encoding="utf-8") as f:
+        _raw = json.load(f)
+    _boards = _raw.get("boards", {})
+except (FileNotFoundError, json.JSONDecodeError):
+    pass
 
 
-def _load_boards():
-    """Dynamically load all board data from hanb_data package."""
-    global _BOARDS_CACHE
-    if _BOARDS_CACHE:
-        return _BOARDS_CACHE
-
-    # Import all .py files in hanb_data that define a BOARDS dict
-    for fname in sorted(os.listdir(_DATA_DIR)):
-        if fname.endswith(".py") and fname != "__init__.py":
-            mod_name = f"plugins.hanb_data.{fname[:-3]}"
-            try:
-                mod = __import__(mod_name, fromlist=["BOARDS"])
-                if hasattr(mod, "BOARDS"):
-                    _BOARDS_CACHE.update(mod["BOARDS"])
-            except Exception:
-                pass
-
-    return _BOARDS_CACHE
+def _pad_char(c):
+    """Pad a single character to ensure consistent display width."""
+    return c if c else " "
 
 
-def _load_scales():
-    """Load scale definitions."""
-    global _SCALES_CACHE
-    if _SCALES_CACHE:
-        return _SCALES_CACHE
-    try:
-        mod = __import__("plugins.hanb_data.scales", fromlist=[
-            "HANB_ALPHABET", "SPATIAL_SCALES", "TIME_SCALES",
-            "LOGIC_OPERATIONS", "HEX_ROWS",
-        ])
-        _SCALES_CACHE = {
-            "alphabet": mod.HANB_ALPHABET,
-            "spatial": mod.SPATIAL_SCALES,
-            "time": mod.TIME_SCALES,
-            "logic": mod.LOGIC_OPERATIONS,
-            "hex_rows": mod.HEX_ROWS,
-        }
-    except Exception:
-        _SCALES_CACHE = {}
-    return _SCALES_CACHE
-
-
-# ---------------------------------------------------------------------------
-# Board rendering
-# ---------------------------------------------------------------------------
-
-def render_board(board_str):
-    """Render a 61-character hanb board string as a hex grid."""
-    scales = _load_scales()
-    hex_rows = scales.get("hex_rows", [
-        (4, 5), (3, 6), (2, 7), (1, 8), (0, 9),
-        (1, 8), (2, 7), (3, 6), (4, 5),
-    ])
-
-    if len(board_str) != 61:
-        return f"Invalid board length ({len(board_str)}), expected 61"
-
+def _render_edge(board_str):
+    """Render a 61-char board string in edge-top rotation."""
+    chars = list(board_str.ljust(61)[:61])
+    cells = [_pad_char(c) for c in chars]
     lines = []
-    idx = 0
-    for indent, count in hex_rows:
-        prefix = " " * (indent * 2)
-        cells = []
-        for _ in range(count):
-            if idx < len(board_str):
-                cells.append(board_str[idx])
-                idx += 1
-            else:
-                cells.append(" ")
-        lines.append(prefix + "  ".join(cells))
-
+    for row in EDGE_TEMPLATE:
+        # The template uses {0}..{60} as indices
+        line = row.format(*cells)
+        lines.append(line)
     return "\n".join(lines)
 
 
-def get_categories():
-    """Get all board categories and their board names."""
-    boards = _load_boards()
-    categories = {}
-    for name in sorted(boards.keys()):
-        cat, _, board_name = name.partition("_")
-        categories.setdefault(cat, []).append(board_name)
-    return categories
+def _render_point(board_str):
+    """Render a 61-char board string in point-top rotation."""
+    chars = list(board_str.ljust(61)[:61])
+    # Map edge indices to point indices
+    point_cells = [_pad_char(chars[POINT_INDEX_MAP[i]]) for i in range(61)]
+    lines = []
+    for row in POINT_TEMPLATE:
+        line = row.format(*point_cells)
+        lines.append(line)
+    return "\n".join(lines)
 
 
-def find_board(name):
-    """Find a board by name, trying various matching strategies."""
-    boards = _load_boards()
-
-    # Exact match
-    if name in boards:
-        return name, boards[name]
-
-    # Try with common prefixes
-    for prefix in ["cosmic_", "planetary_", "geographic_", "city_",
-                    "nature_", "object_", "creature_", "structure_",
-                    "vehicle_", "weapon_", "magic_", "terrain_",
-                    "element_", "abstract_", "food_"]:
-        key = prefix + name
-        if key in boards:
-            return key, boards[key]
-
-    # Case-insensitive search
-    name_lower = name.lower()
-    for key, val in boards.items():
-        if key.lower() == name_lower:
-            return key, val
-        if key.lower().endswith(name_lower):
-            return key, val
-
-    # Partial match
-    for key, val in boards.items():
-        if name_lower in key.lower():
-            return key, val
-
-    return None, None
+def _render_board(board_str, style="edge"):
+    """Render a board string in the given style."""
+    if style == "point":
+        return _render_point(board_str)
+    return _render_edge(board_str)
 
 
-def generate_random_board():
-    """Generate a random 61-character hanb board."""
-    scales = _load_scales()
-    alphabet = scales.get("alphabet", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.")
-    return "".join(random.choice(alphabet) for _ in range(61))
+def _get_board(name=None):
+    """Get a board by name or pick a random one. Returns (name, data_dict) or None."""
+    if not _boards:
+        return None
+    if name:
+        key = name.lower().strip()
+        # Exact match first
+        if key in _boards:
+            return key, _boards[key]
+        # Try matching partial names
+        for bname, bdata in _boards.items():
+            if key in bname.lower() or bname.lower() in key:
+                return bname, bdata
+        return None
+    # Random board
+    name = random.choice(list(_boards.keys()))
+    return name, _boards[name]
 
 
-# ---------------------------------------------------------------------------
-# Commands
-# ---------------------------------------------------------------------------
+@hook.command("hanb", autohelp=False)
+def hanb(text, notice):
+    """
+    .hanb [name|list|count] - Display a hanb hexagonal board.
+    .hanb list - List available board names.
+    .hanb count - Show number of available boards.
+    .hanb <name> - Show a specific board by name.
+    .hanb - Show a random board.
+    """
+    text = text.strip().lower()
 
-@hook.command("hanb")
-def hanb_cmd(text, notice, message):
-    """<name|category|scale <char>|time <char>|render <board>|logic [n]|categories|info|random> - hanb hexagonal board universe system"""
-    if not text.strip():
-        # No argument - show random board
-        boards = _load_boards()
-        if boards:
-            name = random.choice(list(boards.keys()))
-            board = boards[name]
-            rendered = render_board(board)
-            cat = name.split("_")[0] if "_" in name else "?"
-            bname = name.split("_", 1)[1] if "_" in name else name
-            message(f"[{cat}/{bname}]")
-            for line in rendered.split("\n"):
-                message(line)
-            message(f"Board: {board}")
-        else:
-            message("No hanb boards loaded.")
-        return
+    if text == "list":
+        if not _boards:
+            return "No hanb boards loaded."
+        names = ", ".join(sorted(_boards.keys()))
+        # Split into multiple messages if too long
+        if len(names) > 400:
+            parts = []
+            current = "Available boards: "
+            for n in sorted(_boards.keys()):
+                addition = n + ", "
+                if len(current) + len(addition) > 400:
+                    parts.append(current.rstrip(", "))
+                    current = ""
+                current += addition
+            parts.append(current.rstrip(", "))
+            return parts
+        return f"Available boards: {names}"
 
-    parts = text.strip().split(None, 1)
-    cmd = parts[0].lower()
-    arg = parts[1] if len(parts) > 1 else ""
+    if text == "count":
+        return f"There are {len(_boards)} hanb boards available."
 
-    if cmd == "info":
-        scales = _load_scales()
-        alpha = scales.get("alphabet", "?")
-        boards = _load_boards()
-        cats = get_categories()
-        message("hanb - hexagonal board universe modeling system")
-        message(f"Alphabet ({len(alpha)} chars): {alpha}")
-        message(f"Boards loaded: {len(boards)} across {len(cats)} categories")
-        message(f"Categories: {', '.join(sorted(cats.keys()))}")
-        message("Each board is a 61-cell hex grid. Characters represent spatial scales")
-        message("from Planck length (b) to the entire universe (.)")
-        message("Use .hanb <name> to view a board, .hanb categories to list all")
-
-    elif cmd == "categories":
-        cats = get_categories()
-        if not cats:
-            message("No categories found.")
-            return
-        for cat in sorted(cats.keys()):
-            names = cats[cat]
-            message(f"{cat}: {', '.join(names[:8])}" +
-                   (f" (+{len(names)-8} more)" if len(names) > 8 else ""))
-
-    elif cmd == "scale" or cmd == "spatial":
-        if not arg:
-            notice("Usage: .hanb scale <hanb_char>")
-            return
-        char = arg.strip()[0]
-        scales = _load_scales()
-        spatial = scales.get("spatial", {})
-        if char in spatial:
-            name, desc = spatial[char]
-            label = f'"{name}" ' if name else ""
-            message(f"Spatial scale '{char}': {label}({desc})")
-        else:
-            message(f"Unknown hanb character: '{char}'")
-
-    elif cmd == "time":
-        if not arg:
-            notice("Usage: .hanb time <hanb_char>")
-            return
-        char = arg.strip()[0]
-        scales = _load_scales()
-        time_scales = scales.get("time", {})
-        if char in time_scales:
-            name, desc = time_scales[char]
-            label = f'"{name}" ' if name else ""
-            message(f"Time scale '{char}': {label}({desc})")
-        else:
-            message(f"Unknown hanb character: '{char}'")
-
-    elif cmd == "render":
-        if not arg:
-            notice("Usage: .hanb render <61-char board string>")
-            return
-        board_str = arg.strip().strip("'\"").strip("`")
-        rendered = render_board(board_str)
-        for line in rendered.split("\n"):
-            message(line)
-
-    elif cmd == "logic":
-        scales = _load_scales()
-        logic = scales.get("logic", {})
-        if not arg:
-            # Show all logic operations
-            lines = []
-            for num in sorted(logic.keys()):
-                name, desc = logic[num]
-                lines.append(f"  {num:2d}: {name:16s} - {desc}")
-            # Send in chunks to avoid flood
-            chunk = []
-            for line in lines:
-                chunk.append(line)
-                if len(chunk) >= 5:
-                    message("16 hanb logic operations:")
-                    for l in chunk:
-                        message(l)
-                    chunk = []
-            if chunk:
-                for l in chunk:
-                    message(l)
-        else:
-            try:
-                num = int(arg.strip())
-                if num in logic:
-                    name, desc = logic[num]
-                    message(f"Logic op {num}: {name} - {desc}")
-                else:
-                    message(f"Unknown logic operation. Use 0-15.")
-            except ValueError:
-                message("Usage: .hanb logic [0-15]")
-
-    elif cmd == "random":
-        board = generate_random_board()
-        rendered = render_board(board)
-        for line in rendered.split("\n"):
-            message(line)
-        message(f"Random board: {board}")
-
-    elif cmd == "count":
-        boards = _load_boards()
-        cats = get_categories()
-        total = len(boards)
-        message(f"Total boards: {total}")
-        for cat in sorted(cats.keys()):
-            message(f"  {cat}: {len(cats[cat])}")
-
-    elif cmd == "search":
-        if not arg:
-            notice("Usage: .hanb search <query>")
-            return
-        boards = _load_boards()
-        query = arg.strip().lower()
-        matches = [name for name in boards if query in name.lower()]
-        if matches:
-            for m in matches[:10]:
-                message(f"  {m}")
-            if len(matches) > 10:
-                message(f"  ... and {len(matches)-10} more")
-        else:
-            message(f"No boards matching '{arg}'")
-
+    if text:
+        result = _get_board(text)
+        if not result:
+            return f"Board '{text}' not found. Use .hanb list to see available boards."
+        name, data = result
     else:
-        # Try to find a board
-        full_text = text.strip()
-        name, board = find_board(full_text)
+        result = _get_board()
+        if not result:
+            return "No hanb boards loaded."
+        name, data = result
 
-        if board is None:
-            # Check if it's a category listing
-            cats = get_categories()
-            cat_name = full_text.lower()
-            if cat_name in cats:
-                names = cats[cat_name]
-                for n in names:
-                    message(f"  {n}")
-            else:
-                # Search for partial matches
-                matches = [k for k in boards if cat_name in k.lower()]
-                if matches:
-                    message(f"Did you mean one of these?")
-                    for m in matches[:5]:
-                        message(f"  {m}")
-                else:
-                    message(f"Unknown hanb board '{full_text}'. Use .hanb categories to see available boards.")
-            return
+    board_str = data.get("data", "." * 61)
+    style = data.get("style", "edge")
+    desc = data.get("description", "")
+    display_name = data.get("name", name)
 
-        # Render the board
-        cat = name.split("_")[0] if "_" in name else "?"
-        bname = name.split("_", 1)[1] if "_" in name else name
-        rendered = render_board(board)
-        message(f"[{cat}/{bname}]")
-        for line in rendered.split("\n"):
-            message(line)
-        message(f"Board: {board}")
+    rendered = _render_board(board_str, style)
+
+    lines = rendered.split("\n")
+    output = f"\x02[hanb]\x02 {display_name}"
+    if desc:
+        output += f" — {desc}"
+    output += "\n" + "\n".join(lines)
+
+    return output
+
+
+@hook.command("hanbadd", autohelp=False)
+def hanbadd(text, notice, chan, is_admin):
+    """
+    .hanbadd <name> <style> <61-char-data> [description] - Add a new hanb board (admin only).
+    Style: edge or point. Data must be exactly 61 characters from a-zA-Z0-9-.
+    """
+    if not is_admin:
+        return notice("Only admins can add hanb boards.")
+
+    parts = text.strip().split(None, 3)
+    if len(parts) < 3:
+        return notice("Usage: .hanbadd <name> <style> <61-char-data> [description]")
+
+    name = parts[0].lower().strip()
+    name = re.sub(r'[^a-z0-9_]', '_', name)
+    style = parts[1].lower().strip()
+    data = parts[2]
+    desc = parts[3] if len(parts) > 3 else ""
+
+    if style not in ("edge", "point"):
+        return notice("Style must be 'edge' or 'point'.")
+
+    if len(data) != 61:
+        return notice(f"Data must be exactly 61 characters, got {len(data)}.")
+
+    valid_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.")
+    if not all(c in valid_chars for c in data):
+        return notice("Data contains invalid characters. Use only a-z, A-Z, 0-9, -, and .")
+
+    if name in _boards:
+        return notice(f"Board '{name}' already exists.")
+
+    _boards[name] = {
+        "name": name.replace("_", " ").title(),
+        "data": data,
+        "style": style,
+        "description": desc,
+    }
+
+    # Save to file
+    try:
+        save_data = {"boards": _boards}
+        with open(_data_path, "w", encoding="utf-8") as f:
+            json.dump(save_data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return notice(f"Failed to save: {e}")
+
+    return f"Added hanb board '{name}' ({style} rotation). Use .hanb {name} to view it."
+
+
+@hook.command("hanbdel", autohelp=False)
+def hanbdel(text, notice, is_admin):
+    """
+    .hanbdel <name> - Remove a hanb board (admin only).
+    """
+    if not is_admin:
+        return notice("Only admins can delete hanb boards.")
+
+    name = text.strip().lower()
+    if not name:
+        return notice("Usage: .hanbdel <name>")
+
+    if name not in _boards:
+        return notice(f"Board '{name}' not found.")
+
+    del _boards[name]
+
+    try:
+        save_data = {"boards": _boards}
+        with open(_data_path, "w", encoding="utf-8") as f:
+            json.dump(save_data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return notice(f"Failed to save: {e}")
+
+    return f"Deleted hanb board '{name}'."
