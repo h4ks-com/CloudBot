@@ -1,0 +1,16 @@
+{
+  "name": "elements",
+  "description": "Elemental hanb boards representing natural forces",
+  "boards": [
+    {"name": "Fire Storm", "code": "fFiIrR8eEsStT6tToO4rRrMm2mMaA0aAlL8lLeEeE6eEfF4fFiI2iIrR0rReE8eEfF6"},
+    {"name": "Water Fall", "code": "wWaAtTeE8rRrFf6fFaAlL4lLlLsS2SsTt0tTwW8wWaA6aAtT4tTeE2eErR0rRsS8sS6"},
+    {"name": "Earth Quake", "code": "eEaArR8tThH6hHqQuU4uUaA2aAkK0kKeE8eEaArR6rRtThH4hHqQ2qQuU0uUeE8eE6"},
+    {"name": "Wind Gale", "code": "wWiInN8dDgG6gGaAlLeE4eEsSsS2tTrR0rReEeE8eEwWw6wWiI4iInN2nNdD0dDgG8gG6"},
+    {"name": "Ice Shard", "code": "iIcCeE8sShH6hHaArR4rRdDd2dDfFrR0rReE8eEzZeE6eEfFrR2rReEeE0eE8fFrR6"},
+    {"name": "Lightning Bolt", "code": "lLiIgG8hHtT6tTnNiI4iInNnNgG0gGbBoO8oOlL6lLtT4tTsS2sStT0tTbBoO8oOlL6"},
+    {"name": "Lava Flow", "code": "lLaAvV8aAfF6fFlLoO4oOwWw2wWmM0mMgG8gGmMaA6aAmM4mMeE2eElL0lLtTaA8aAmM6"},
+    {"name": "Mist Veil", "code": "mMiIsS8tTvV6vVeEeE4iIlL2lLlL0lL8fFoO6oOgGgG4gGsS2sSmM0mMtTiI8iIsS6"},
+    {"name": "Sand Storm", "code": "sSaAnN8dDsStT6tToOoO4rRrMm2mMeErR0rR8eEdD6dDuUuU4uUnN2nNdD0dDdDsS8sS6"},
+    {"name": "Void Abyss", "code": "vVoOiIdD8dDaAbB6bByYySsS4sSwWaA2aAlLlL0lL8oOfF6fFtThH4hHeE2eEdD0dDpP8pP6"}
+  ]
+}
