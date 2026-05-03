@@ -1,0 +1,16 @@
+{
+  "name": "mythical",
+  "description": "Mythical hanb boards representing legendary creatures and places",
+  "boards": [
+    {"name": "Dragon Lair", "code": "dDrRaA8gGoO6nNlLaA4aAiIrR2rRhH0hH8tTrReE6eEsSsS4sShHoO2oOrR0rReE8eEdD6"},
+    {"name": "Phoenix Nest", "code": "pPhHoO8eEnN6nNiIxX4xXnNeEsStT0tT8aAsHh6hHhAa4aAsS2sShH0hHeE8eErR6rR"},
+    {"name": "Unicorn Meadow", "code": "uUnNiI8cCoO6oOrRrRnN4nNmMeE2eEdD0dD8wWw6wWhHh4hHhOoO2oOrR0rRnN8nNcCoO6"},
+    {"name": "Kraken Depths", "code": "kKrRaA8kKeE6eEnNnN4nNdDeE2eEpP0pPtThH8hHsS6sSeEeE4eEaA2aA0aAkK8kKrR6"},
+    {"name": "Griffin Peak", "code": "gGrRiI8fFfF6iInNnNpPeEaA2aAkK0kK8mMtT6tTwWiInNgG4gGsS2sStT0tThHhH8hH6"},
+    {"name": "Hydra Swamp", "code": "hHyYdD8rRaA6aAsSwWw4wWmMpP2pPdDeE0eE8hHeEaA6aAdD4dDsS2sSwWw0wWaA8aAmM6"},
+    {"name": "Golem Forge", "code": "gGoOlL8eEmM6mMfFoOrR4rRgGeE2eEsStT0tT8sStToO6oOnNeE4eEhHh2hHeE0eEdD8dD6"},
+    {"name": "Sphinx Riddle", "code": "sSpPhH8iInN6nNxXxXrR4rRdDdDlL2lLeE0eE8mMyYy6yYtThH4hHsS2sSpP0pPhH8hH6"},
+    {"name": "Basilisk Gaze", "code": "bBaAsS8iIlL6lLiIsSkK4kKgGzZaA2aAzZ0zZ8eEyY6yYeEeEsS4sStT2tToO0oOnN8nN6"},
+    {"name": "Elven Glade", "code": "eElLvV8eEnN6nNgGlL4lLaAdD2dDeE0eE8fFoOrR6rReEsStT4tTrReE2eEsS0sStT8tT6"}
+  ]
+}
