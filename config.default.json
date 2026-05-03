@@ -177,8 +177,8 @@
                 "github_token_config_path": "github",
                 "self_repo": "h4ks-com/CloudBot"
             },
-            "max_turns": 25,
-            "timeout_s": 120,
+            "max_turns": 40,
+            "timeout_s": 900,
             "reply_max_chars": 420,
             "enabled_channels": [],
             "include": [],

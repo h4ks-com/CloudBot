@@ -12,6 +12,7 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+import requests
 from agents import Agent, FunctionTool, RunContextWrapper, RunHooks, Runner
 from agents.exceptions import MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
@@ -118,7 +119,31 @@ AGENT_INSTRUCTIONS = (
     "   so you do NOT need to pass sha. If a previous edit_github_file call returned an error "
     "   about SHA mismatch, simply call it again — the tool will re-fetch the latest SHA. "
     "5) Use open_github_pr and report the PR URL to the channel. "
-    "Always read the full file before editing. You cannot run or test code, so reason carefully about correctness."
+    "Always read the full file before editing. You cannot run or test code, so reason carefully about correctness. "
+    "EFFICIENCY RULES (you have a hard turn limit — exceed it and the run dies with no PR): "
+    "(a) Prefer ONE big file over many small files. If asked to add 30 items, put them in ONE data file or ONE list, "
+    "    not 30 separate files. Each edit_github_file costs ~30s sequential + 2 API calls. "
+    "    If the user explicitly asks for separated files, cap at 6 total files MAX. "
+    "(b) Call fork_github_repo AT MOST ONCE per task. If you forked already, the fork persists — reuse it. "
+    "(c) Call create_github_branch AT MOST ONCE per task. If it returned 'already exists' or '(error:', the "
+    "    branch is fine — proceed to edits, do not retry. "
+    "(d) After fork+branch, do all edits SEQUENTIALLY (never parallel — parallel commits on the "
+    "    same branch race and stomp each other), then immediately open_github_pr. "
+    "(e) If you've already made >5 edit_github_file calls and the PR isn't open, STOP editing and open the PR with what you have. "
+    "(f) Do not re-read files you just wrote. The MCP did the commit — trust the success response. "
+    "    BUT: before creating any 'new' file, you MUST read_github_file at that path first. "
+    "    If it returns existing substantive content (more than a few lines), pick a different name — "
+    "    DO NOT silently overwrite an existing plugin. "
+    "(g) HARD CAP: 3 read_github_file + 2 list_repo_files calls TOTAL before starting any edits. "
+    "    Do NOT read the same file twice. Do NOT list the same dir twice. "
+    "    Each tool result eats context — at ~30 reads you hit the model's input limit and the run dies. "
+    "(h) If a tool result starts with '(error:' do NOT retry the same call with the same args — change approach or stop. "
+    "(i) Always finish with open_github_pr and report the URL — a task without a PR is a failure. "
+    "(j) web_fetch on a URL once. If it fails, move on — do NOT retry the same URL with variations. "
+    "(k) Do NOT call paste_markdown to write a 'plan' or 'summary' before doing the work. The user "
+    "    wants the PR, not a plan paste. The only paste should be your final reply if too long. "
+    "(l) Do NOT use browser_screenshot/browser_console/browser_evaluate for code research — those are "
+    "    for live web app testing, not for reading source. Use read_github_file instead."
 )
 
 _SECRET_PATTERNS = [
@@ -182,6 +207,9 @@ class _RunTracker(RunHooks):
         error class+sanitised message, backends tried. The message is
         scrubbed of bearer tokens / api keys / Kong key strings before
         inclusion so paste links are safe to share.
+
+        Tools called within the same 0.5s window are grouped as one
+        parallel batch so the timeline isn't dominated by `gather()` bursts.
         """
         err_type = type(err).__name__
         elapsed = time.monotonic() - self._start
@@ -192,14 +220,30 @@ class _RunTracker(RunHooks):
             f"**Error**: `{err_type}: {msg}`" if msg else f"**Error**: `{err_type}`",
             f"**Elapsed**: {elapsed:.1f}s",
             f"**Backends tried**: {', '.join(backends)}",
+            f"**Tool calls**: {len(self._calls)} ({len(self._errors)} errored)",
             f"**Prompt**: {prompt}",
             "",
-            f"## Tool Call Sequence ({len(self._calls)} calls)",
+            "## Tool Call Sequence",
             "",
         ]
+        # Group calls into parallel batches by start offset (within 0.5s).
+        batches: list[list[tuple[int, str, float]]] = []
         for i, (name, offset) in enumerate(self._calls):
-            flag = " ❌" if i in self._errors else ""
-            lines.append(f"{i + 1}. `{name}`{flag}  *(+{offset:.1f}s)*")
+            if batches and offset - batches[-1][0][2] < 0.5:
+                batches[-1].append((i, name, offset))
+            else:
+                batches.append([(i, name, offset)])
+        for b_idx, batch in enumerate(batches, 1):
+            offset = batch[0][2]
+            if len(batch) == 1:
+                i, name, _ = batch[0]
+                flag = " ❌" if i in self._errors else ""
+                lines.append(f"{b_idx}. `{name}`{flag}  *(+{offset:.1f}s)*")
+            else:
+                lines.append(f"{b_idx}. **parallel batch** ({len(batch)} calls)  *(+{offset:.1f}s)*")
+                for i, name, _ in batch:
+                    flag = " ❌" if i in self._errors else ""
+                    lines.append(f"   - `{name}`{flag}")
         if not self._calls:
             lines.append("*(no tools were called)*")
         return "\n".join(lines)
@@ -343,11 +387,37 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
     return tools
 
 
+def _fetch_github_username(bot) -> Optional[str]:
+    """Look up the GitHub PAT's owning username so the agent knows its fork prefix."""
+    token = bot.config.get_api_key("github")
+    if not token:
+        return None
+    try:
+        r = requests.get("https://api.github.com/user",
+                         headers={"Authorization": f"Bearer {token}",
+                                  "Accept": "application/vnd.github+json"},
+                         timeout=5)
+        r.raise_for_status()
+        return r.json().get("login")
+    except (requests.RequestException, ValueError, KeyError):
+        logger.warning("agent: github /user lookup failed", exc_info=True)
+        return None
+
+
 def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
     key = id(bot)
     if key in _AGENT_CACHE:
         return _AGENT_CACHE[key]
     instructions = cfg.get("instructions") or AGENT_INSTRUCTIONS
+    gh_user = _fetch_github_username(bot)
+    if gh_user:
+        instructions = instructions + (
+            f" Your GitHub username (the PAT owner) is '{gh_user}'. "
+            f"When you fork_github_repo on owner/repo, the fork lives at '{gh_user}/repo'. "
+            f"ALL subsequent create_github_branch and edit_github_file calls MUST use '{gh_user}/repo' "
+            f"as the repo arg — NOT the parent owner. Calling them on the parent will 404 because you "
+            f"don't have write access there."
+        )
     agent = Agent(name="CloudBot", instructions=instructions, tools=tools)
     _AGENT_CACHE[key] = agent
     return agent
@@ -487,6 +557,13 @@ async def _run_agent(event, prompt: str) -> None:
             except MaxTurnsExceeded as e:
                 # Model exhausted turns — retrying on a fallback backend repeats the same loop.
                 logger.warning("agent: %s hit max turns (%s)", backend, max_turns)
+                last_err = e
+                break
+            except TypeError as e:
+                # Provider returned a malformed response (e.g. choices=null) under heavy
+                # context. Fallback would replay the same conversation and likely fail
+                # the same way — bail out and report the actual cause instead.
+                logger.warning("agent: %s returned malformed response: %s", backend, e)
                 last_err = e
                 break
             except Exception as e:

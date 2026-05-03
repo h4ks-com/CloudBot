@@ -812,19 +812,26 @@ def _extract_mcp_content(result: dict) -> str:
       - type='resource': the actual file text in resource.text
 
     We prefer resource.text when present; fall back to plain text items.
+    If the MCP server set isError=true, the output is prefixed "(error: …)"
+    so the agent and tracker treat it as a failure (otherwise the model
+    keeps retrying e.g. "branch already exists" forever).
     """
+    is_err = bool(result.get("isError"))
     content = result.get("content", [])
     if not isinstance(content, list):
-        return json.dumps(result)[:8000]
-    resource_parts = [
-        c["resource"]["text"]
-        for c in content
-        if c.get("type") == "resource" and isinstance(c.get("resource"), dict) and "text" in c["resource"]
-    ]
-    if resource_parts:
-        return "\n".join(resource_parts)
-    text_parts = [c.get("text", "") for c in content if c.get("type") == "text"]
-    return "\n".join(text_parts) if text_parts else json.dumps(result)[:8000]
+        body = json.dumps(result)[:8000]
+    else:
+        resource_parts = [
+            c["resource"]["text"]
+            for c in content
+            if c.get("type") == "resource" and isinstance(c.get("resource"), dict) and "text" in c["resource"]
+        ]
+        if resource_parts:
+            body = "\n".join(resource_parts)
+        else:
+            text_parts = [c.get("text", "") for c in content if c.get("type") == "text"]
+            body = "\n".join(text_parts) if text_parts else json.dumps(result)[:8000]
+    return f"(error: {body})" if is_err else body
 
 
 _SSE_FIELDS = ("data:", "event:", "id:", "retry:")
@@ -966,22 +973,99 @@ async def _github_mcp_call(event, tool_name: str, args: dict) -> str:
     raw = await _github_mcp_call_raw(event, tool_name, args)
     if isinstance(raw, str):
         return raw
-    return _extract_mcp_content(raw)
+    try:
+        return _extract_mcp_content(raw)
+    except (TypeError, KeyError, AttributeError, ValueError) as e:
+        logger.exception("github_mcp %s extract failed", tool_name)
+        return f"(error extracting mcp content: {type(e).__name__}: {str(e)[:200]})"
+
+
+_TOOL_BOUNDARY_ERRORS = (
+    TypeError, KeyError, AttributeError, ValueError,
+    requests.RequestException, json.JSONDecodeError,
+    OSError, RuntimeError,
+)
+
+# Per-run budgets to stop the model from infinite-exploring before any edit.
+# Counters live on the IRC event (one event = one .ask invocation) so they
+# reset between user prompts.
+_BUDGETS = {
+    "explore": 8,    # read_github_file + list_repo_files combined
+    "edit": 12,      # edit_github_file
+    "fork": 1,       # fork_github_repo
+    "branch": 1,     # create_github_branch
+}
+
+
+def _bump_budget(event, kind: str) -> str | None:
+    """Increment the named per-event counter; return error string if over budget."""
+    counters = getattr(event, "_agent_budget", None)
+    if counters is None:
+        counters = {}
+        event._agent_budget = counters
+    counters[kind] = counters.get(kind, 0) + 1
+    cap = _BUDGETS.get(kind, 999)
+    if counters[kind] > cap:
+        if kind == "explore":
+            return (f"(error: exploration budget exhausted ({counters[kind]}/{cap} read+list calls). "
+                    f"STOP reading. You have enough info — fork, branch, edit, open PR now.)")
+        if kind == "edit":
+            return (f"(error: edit budget exhausted ({counters[kind]}/{cap}). "
+                    f"STOP editing. Call open_github_pr now with what you have.)")
+        if kind == "fork":
+            return (f"(error: already forked once. Reuse the existing fork — "
+                    f"do not call fork_github_repo again.)")
+        if kind == "branch":
+            return (f"(error: already created a branch. Reuse it — "
+                    f"do not call create_github_branch again.)")
+        return f"(error: {kind} budget exceeded)"
+    return None
+
+
+def _safe_tool(fn):
+    """Wrap a FunctionTool's on_invoke so boundary errors return strings.
+
+    openai-agents wraps any tool exception as UserError that aborts the
+    entire run. For GitHub MCP tools we want unexpected errors to be
+    visible to the model as a tool result so it can recover or stop.
+    """
+    async def wrapped(ctx, args_json):
+        try:
+            return await fn(ctx, args_json)
+        except _TOOL_BOUNDARY_ERRORS as e:
+            logger.exception("agent tool %s crashed", fn.__qualname__)
+            return f"(tool error: {type(e).__name__}: {str(e)[:200]})"
+    return wrapped
 
 
 def _build_list_repo_files_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        over = _bump_budget(ctx.context, "explore")
+        if over:
+            return over
         data = _parse_args(args_json)
         repo = str(data.get("repo") or "").strip()
         path = str(data.get("path") or "").strip()
         branch = str(data.get("branch") or "main").strip()
         if not repo:
             return "(error: repo required, e.g. 'owner/repo')"
-        return await _github_mcp_call(
+        raw = await _github_mcp_call(
             ctx.context, "get_file_contents",
             {"owner": repo.split("/")[0], "repo": repo.split("/")[-1],
              "path": path, "ref": branch},
         )
+        # Compress dir listings: GitHub returns a JSON array of file objects,
+        # each ~200 chars. For large dirs (plugins/ has 200+ files) this
+        # blows context. Reduce to "name (type)" lines, capped at 80 entries.
+        try:
+            entries = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return raw[:3000]
+        if not isinstance(entries, list):
+            return raw[:3000]
+        lines = [f"{e.get('name')} ({e.get('type')})" for e in entries[:80] if isinstance(e, dict)]
+        more = f"\n… +{len(entries) - 80} more entries (filter via path)" if len(entries) > 80 else ""
+        return "\n".join(lines) + more
 
     return FunctionTool(
         name="list_repo_files",
@@ -1005,6 +1089,9 @@ def _build_list_repo_files_tool() -> FunctionTool:
 
 def _build_read_github_file_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        over = _bump_budget(ctx.context, "explore")
+        if over:
+            return over
         data = _parse_args(args_json)
         repo = str(data.get("repo") or "").strip()
         path = str(data.get("path") or "").strip()
@@ -1032,7 +1119,11 @@ def _build_read_github_file_tool() -> FunctionTool:
                 return f"{sha_line}(lines {lo+1}-{hi} of {len(lines)})\n{excerpt}"
             except (ValueError, AttributeError):
                 pass
-        return f"{sha_line}{body[:8000]}"
+        # Cap to ~4000 chars to keep conversation context bounded —
+        # if the model needs more, it can pass start_line for a targeted window.
+        if len(body) > 4000:
+            return f"{sha_line}(file truncated to 4000/{len(body)} chars — pass start_line=N for window around line N)\n{body[:4000]}"
+        return f"{sha_line}{body}"
 
     return FunctionTool(
         name="read_github_file",
@@ -1061,6 +1152,9 @@ def _build_read_github_file_tool() -> FunctionTool:
 
 def _build_search_github_code_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        over = _bump_budget(ctx.context, "explore")
+        if over:
+            return over
         data = _parse_args(args_json)
         query = str(data.get("query") or "").strip()
         repo = str(data.get("repo") or "").strip()
@@ -1092,6 +1186,9 @@ def _build_search_github_code_tool() -> FunctionTool:
 
 def _build_fork_github_repo_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        over = _bump_budget(ctx.context, "fork")
+        if over:
+            return over
         data = _parse_args(args_json)
         repo = str(data.get("repo") or "").strip()
         if not repo:
@@ -1122,6 +1219,9 @@ def _build_fork_github_repo_tool() -> FunctionTool:
 
 def _build_create_github_branch_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        over = _bump_budget(ctx.context, "branch")
+        if over:
+            return over
         data = _parse_args(args_json)
         repo = str(data.get("repo") or "").strip()
         branch = str(data.get("branch") or "").strip()
@@ -1154,8 +1254,14 @@ def _build_create_github_branch_tool() -> FunctionTool:
     )
 
 
+_STALE_SHA_PATTERN = re.compile(r"Current file SHA is ([0-9a-f]{6,64})", re.I)
+
+
 def _build_edit_github_file_tool() -> FunctionTool:
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
+        over = _bump_budget(ctx.context, "edit")
+        if over:
+            return over
         data = _parse_args(args_json)
         repo = str(data.get("repo") or "").strip()
         path = str(data.get("path") or "").strip()
@@ -1166,18 +1272,44 @@ def _build_edit_github_file_tool() -> FunctionTool:
         if not repo or not path or not content:
             return "(error: repo, path, and content required)"
         owner, repo_name = repo.split("/")[0], repo.split("/")[-1]
-        if not sha:
+
+        async def fetch_sha() -> str:
             probe = await _github_mcp_call_raw(
                 ctx.context, "get_file_contents",
                 {"owner": owner, "repo": repo_name, "path": path, "ref": branch},
             )
-            if isinstance(probe, dict):
-                sha = _extract_file_sha(probe) or ""
-        args = {"owner": owner, "repo": repo_name, "path": path,
-                "content": content, "message": message, "branch": branch}
-        if sha:
-            args["sha"] = sha
-        return await _github_mcp_call(ctx.context, "create_or_update_file", args)
+            return (_extract_file_sha(probe) or "") if isinstance(probe, dict) else ""
+
+        if not sha:
+            sha = await fetch_sha()
+
+        result = "(error: edit_github_file produced no result)"
+        for attempt in range(3):
+            args = {"owner": owner, "repo": repo_name, "path": path,
+                    "content": content, "message": message, "branch": branch}
+            if sha:
+                args["sha"] = sha
+            result = await _github_mcp_call(ctx.context, "create_or_update_file", args)
+            # Recover from parallel-commit / stale-SHA races by parsing the
+            # MCP error which carries the current SHA, then retry.
+            if "SHA mismatch" in result or "is stale" in result:
+                m = _STALE_SHA_PATTERN.search(result)
+                if m:
+                    sha = m.group(1)
+                    logger.info("edit_github_file: stale SHA, retrying with %s", sha[:12])
+                    continue
+                sha = await fetch_sha()
+                continue
+            # File-already-exists message arrives when caller passed no SHA
+            # AND probe missed (e.g. branch was created moments ago and the
+            # cache hadn't propagated yet). Fetch fresh and retry.
+            if "File already exists" in result and "must provide" in result:
+                sha = await fetch_sha()
+                if not sha:
+                    return result
+                continue
+            return result
+        return result
 
     return FunctionTool(
         name="edit_github_file",
@@ -1292,3 +1424,12 @@ CUSTOM_TOOLS: list[FunctionTool] = [
     _build_edit_github_file_tool(),
     _build_open_github_pr_tool(),
 ]
+
+_GITHUB_TOOL_NAMES = {
+    "list_repo_files", "read_github_file", "search_github_code",
+    "fork_github_repo", "create_github_branch", "edit_github_file",
+    "open_github_pr",
+}
+for _t in CUSTOM_TOOLS:
+    if _t.name in _GITHUB_TOOL_NAMES:
+        _t.on_invoke_tool = _safe_tool(_t.on_invoke_tool)
