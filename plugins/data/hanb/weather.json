@@ -1,0 +1,16 @@
+{
+  "name": "weather",
+  "description": "Weather hanb boards representing atmospheric conditions",
+  "boards": [
+    {"name": "Thunder Storm", "code": "tThHuU8nNdDeErR6rRsStToO4oOrRrRmMmM2mMlLiIgG0gG8hHtT6tTnNnNaA4aApP0pPsSsS8sS6"},
+    {"name": "Snow Blizzard", "code": "sSnNoO8wWwBb6bBlLiIiIzZaA4aArRrRdDdD2dDcChH0hH8iIlL6lLeEeEsS4sShHoO2oOrR0rR8"},
+    {"name": "Rain Shower", "code": "rRaAiInN8nSsShHoOwWeErR6rRdDrRoO4oOpPsS2sSwWw0wW8cClLoO6oOuUdDsS4sSlL2lLeE0eE8"},
+    {"name": "Fog Mist", "code": "fFoOgG8mMiIsStT6tTfFoOgGgG4gGwWrR2rRaApP0pPsS8sShHhH6hHhOoO4oOvVeE2eErR0rRsS8sS6"},
+    {"name": "Hail Storm", "code": "hHaAiIlL8lSsStToO6oOrRrRmMmM4mMhHaA2aAlLiI0iI8cChHuU6uUnNnNkKkK4kKsStT0tTsS8sS6"},
+    {"name": "Tornado Funnel", "code": "tToOrR8nNaAdDoOfFuU6uUnNnNnNeElL4lLwWwW2wWiInN0nN8dDsStT6tTrReEeE4eEsSpP0pPiI8iI6"},
+    {"name": "Sunset Glow", "code": "sSuUnN8sSeEtT6tTgGlLlLoOwWw4wWcClL2lLoOuU0uDd8dDsSkK6kKhHoO4oOrRiIzZ0zZeEnN8nN6"},
+    {"name": "Aurora Sky", "code": "aAuUrR8oOrRaA6aAsSkKyYyLl4lLiIgGhHtT2tTnNiIgG0gHh8hHtT6tTbBeE4eAlLlL2lLsSeE0eE8"},
+    {"name": "Dry Heat", "code": "dDrRyYy8hHeEaAtT6tTwWaAvVeE4eEsSsSsS2sSlLeE0eE8sSuUnN6nNbBrRrRaA4aAzZeE0eEdD8dD6"},
+    {"name": "Calm Breeze", "code": "cCaAlL8mMbBrReEeEzZeE6eEsSoOfFtT4tTwWiInNdD2dDgGgG0gG8rRuUsShH6hHeEsS4sSpP0pPeE8eE6"}
+  ]
+}
