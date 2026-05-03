@@ -555,15 +555,6 @@ def gptwiki(
     return edit_wiki(bot, reply, chan, nick, text, history)
 
 
-@hook.command("agiwiki", autohelp=False)
-def agiwiki(
-    bot, reply, text: str, chan: str, nick: str, conn
-) -> list[str] | str:
-    """<text> - Create or edit a wiki page on demand from AI prompt"""
-    messages = generate_agi_history(conn, chan)
-    return edit_wiki(bot, reply, chan, nick, text, messages)
-
-
 @hook.command("gptsummarize", "gptsum", "gpts", autohelp=False)
 def gptsummarize(
     bot, reply, text: str, chan: str, nick: str, conn
