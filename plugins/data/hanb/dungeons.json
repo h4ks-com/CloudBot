@@ -1,0 +1,46 @@
+{
+  "name": "dungeons",
+  "description": "Dungeon hanb boards representing underground labyrinths",
+  "boards": [
+    {
+      "name": "Skeleton Crypt",
+      "code": "sSkKeE8lLeE6eEtToO4oOnNnNcCrR2rRyYy0yY8pPtT6tTbBoO4oOnNeE2eEsS0sStT8tT6"
+    },
+    {
+      "name": "Spider Cavern",
+      "code": "sSpPiI8dDeE6eErRrRcCaA4aAvVeE2eErRnN0nN8wWeE6eEbBbB4bBtTsS2sSpP0pPiI8iI6"
+    },
+    {
+      "name": "Goblin Warren",
+      "code": "gGoObB8lLiInN6nNwWaA4aArRrReEnN0nN8tTrR6rRaAaApP4pPsS2sStT0tThHhH8hH6"
+    },
+    {
+      "name": "Slime Pit",
+      "code": "sSlLiI8mMeE6eEpPiItT4tTtTdDeE2eEpP0pP8sSlLuU6uUmMmMeE4eEsS2sShH0hHeE8eE6"
+    },
+    {
+      "name": "Ghost Hall",
+      "code": "gGhHoO8sStT6tThHaA4aAlLlLlL2lLeEeE0eE8pPhHaA6aAnNnNtT4tToO2oOmM0mMsS8sS6"
+    },
+    {
+      "name": "Troll Bridge",
+      "code": "tTrRoOlL8lBb6bBrRrRiIdD4dDgGeE2eEhHh0hH8cCaA6aAvVeE4eErRnN2nNeEsS0sStT8tT6"
+    },
+    {
+      "name": "Mimic Chest",
+      "code": "mMiImM8iIcC6cChHeEsStT4tTtTcChH2hHeEsStT0tT8tTrR6rRaAaApP4pPsS2sSeE0eEtT8tT6"
+    },
+    {
+      "name": "Lich Throne",
+      "code": "lLiIcChH8hTt6tThHrRoO4oOnNeE2eEoOfF0fF8uUnN6nNdDeEaAdD4dDkKnN2nNiIgGhHtT8tT6"
+    },
+    {
+      "name": "Wraith Tomb",
+      "code": "wWrRaA8iItT6tThHhHtToO4oOmMmMbB2bBsStT0tT8eEcChH6hHoOoO4oOsSpP0pPiItT8tT6"
+    },
+    {
+      "name": "Orc Camp",
+      "code": "oOrRcC8cCaA6aAmMmMpP4pPtTeEnN2nNtTsS0sS8fFiIrR6rReEsSsS4sShH0hHeErR8rR6"
+    }
+  ]
+}
