@@ -997,6 +997,51 @@ _BUDGETS = {
 }
 
 
+_GITHUB_USERNAME_CACHE: dict[str, str] = {}
+
+
+async def _resolve_github_username(token: str) -> str | None:
+    """Look up the PAT owner once, cache the result."""
+    if token in _GITHUB_USERNAME_CACHE:
+        return _GITHUB_USERNAME_CACHE[token]
+    loop = asyncio.get_running_loop()
+    try:
+        resp = await loop.run_in_executor(
+            None, lambda: requests.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"Bearer {token}",
+                         "Accept": "application/vnd.github+json"},
+                timeout=5),
+        )
+        resp.raise_for_status()
+        login = resp.json().get("login")
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+    if login:
+        _GITHUB_USERNAME_CACHE[token] = login
+    return login
+
+
+async def _wait_for_fork(token: str, owner: str, repo: str, max_attempts: int = 10) -> bool:
+    """Poll until the fork exists (default branch resolves) or timeout."""
+    loop = asyncio.get_running_loop()
+    for _ in range(max_attempts):
+        try:
+            resp = await loop.run_in_executor(
+                None, lambda: requests.get(
+                    f"https://api.github.com/repos/{owner}/{repo}",
+                    headers={"Authorization": f"Bearer {token}",
+                             "Accept": "application/vnd.github+json"},
+                    timeout=5),
+            )
+            if resp.status_code == 200 and resp.json().get("default_branch"):
+                return True
+        except requests.RequestException:
+            pass
+        await asyncio.sleep(3)
+    return False
+
+
 def _bump_budget(event, kind: str) -> str | None:
     """Increment the named per-event counter; return error string if over budget."""
     counters = getattr(event, "_agent_budget", None)
@@ -1193,10 +1238,25 @@ def _build_fork_github_repo_tool() -> FunctionTool:
         repo = str(data.get("repo") or "").strip()
         if not repo:
             return "(error: repo required)"
+        owner, repo_name = repo.split("/")[0], repo.split("/")[-1]
         result = await _github_mcp_call(
             ctx.context, "fork_repository",
-            {"owner": repo.split("/")[0], "repo": repo.split("/")[-1]},
+            {"owner": owner, "repo": repo_name},
         )
+        # GitHub returns 202 "Fork is in progress" for first-time forks.
+        # Poll the fork's default branch until it exists (max ~30s) so the
+        # next branch/edit calls don't 404. If the fork already exists this
+        # returns immediately on the first poll.
+        bot = ctx.context.bot
+        token = bot.config.get_api_key("github") or ""
+        if token:
+            fork_owner = await _resolve_github_username(token)
+            if fork_owner:
+                ready = await _wait_for_fork(token, fork_owner, repo_name, max_attempts=10)
+                if ready:
+                    return f"{result}\n\n(fork verified ready at {fork_owner}/{repo_name})"
+                return (f"{result}\n\n(warning: fork at {fork_owner}/{repo_name} not yet "
+                        f"propagated after 30s — branch creation may 404; retry the workflow once if so)")
         return result
 
     return FunctionTool(

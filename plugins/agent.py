@@ -110,7 +110,16 @@ AGENT_INSTRUCTIONS = (
     "The GitHub tools (list_repo_files, read_github_file, search_github_code, fork_github_repo, "
     "create_github_branch, edit_github_file, open_github_pr) are ALREADY CONFIGURED and authenticated — "
     "call them directly without speculating about credentials or setup. If a tool fails, report the error. "
-    "When asked to fix, improve, or add a bot command or plugin: "
+    "WHEN TO OPEN A PR — only when the user EXPLICITLY asks. Trigger phrases: "
+    "'open a PR', 'create a PR', 'make a pull request', 'submit a fix', 'commit this to github', "
+    "'push this to the bot', 'add this to your code', 'fix yourself'. "
+    "If the user just asks to BUILD or SHOW something with no PR/repo intent, prefer: "
+    "(1) web_app for HTML/JS apps the user can view in a browser (RETURNS A URL — preferred for demos, games, visualizations, calculators), "
+    "(2) paste_markdown for code snippets / docs they want to read, "
+    "(3) chat reply for short answers. "
+    "Do NOT fork/branch/edit/PR for casual 'make me a thing' or 'what does X do' or 'can you write' requests — "
+    "use web_app or just answer in chat. The github_* tools are ONLY for modifying the bot's own source. "
+    "When asked to fix/improve/add a bot command or plugin: "
     "1) Call ghsource <command> first, extract file path and line number from the URL, then call read_github_file with start_line set to that line number. "
     "2) Use fork_github_repo if needed (wait ~10s after forking). "
     "3) Use create_github_branch with a name like 'fix/command-name'. "
@@ -162,6 +171,31 @@ def _sanitise_err_message(msg: str) -> str:
     return msg
 
 
+_PR_URL_RE = re.compile(r"https://github\.com/[\w.\-]+/[\w.\-]+/pull/\d+")
+_PR_CLAIM_RE = re.compile(r"\b(PR (?:opened|created)|pull request (?:opened|created))", re.I)
+
+
+def _guard_pr_hallucination(answer: str, real_urls: list[str]) -> str:
+    """Refuse to let the model claim a PR was opened when none actually was.
+
+    The model sometimes invents URLs like 'pull/forkowner:branchname' when
+    open_github_pr never returned a valid URL. We replace any such claim
+    with an explicit failure note and prepend the real URL when one exists.
+    """
+    if real_urls:
+        # Make sure the real URL is the first thing the user sees.
+        first_url = real_urls[0]
+        if first_url in answer:
+            return answer
+        return f"PR opened: {first_url}\n\n{answer}"
+    if _PR_CLAIM_RE.search(answer) or "/pull/" in answer:
+        # Model claimed PR but no real URL was captured — strip invented urls.
+        cleaned = _PR_URL_RE.sub("<no-pr>", answer)
+        return ("(failed to open PR — open_github_pr returned no valid URL; "
+                "the bot's claim below is hallucinated)\n\n" + cleaned)
+    return answer
+
+
 class _RunTracker(RunHooks):
     """Per-run hook that tracks tool call sequence for safe failure summaries.
 
@@ -174,6 +208,7 @@ class _RunTracker(RunHooks):
         self._start = time.monotonic()
         self._calls: list[tuple[str, float]] = []  # (name, offset_from_start)
         self._errors: set[int] = set()
+        self._pr_urls: list[str] = []  # real URLs from open_github_pr success
 
     async def on_tool_start(self, context, agent, tool) -> None:
         logger.info("agent: tool invoked: %s", tool.name)
@@ -181,13 +216,18 @@ class _RunTracker(RunHooks):
 
     async def on_tool_end(self, context, agent, tool, result) -> None:
         # Only inspect the very start of result to detect errors — never log full content.
-        prefix = str(result or "")[:20]
-        if prefix.startswith("(error") or prefix.startswith("(mcp"):
+        result_str = str(result or "")
+        prefix = result_str[:20]
+        if prefix.startswith("(error") or prefix.startswith("(mcp") or prefix.startswith("(tool error"):
             # Find the latest unresolved call for this tool name (handles parallel calls).
             for i in range(len(self._calls) - 1, -1, -1):
                 if self._calls[i][0] == tool.name and i not in self._errors:
                     self._errors.add(i)
                     break
+        elif tool.name == "open_github_pr":
+            m = re.search(r"https://github\.com/[\w.\-]+/[\w.\-]+/pull/\d+", result_str)
+            if m:
+                self._pr_urls.append(m.group(0))
 
     def failure_summary(self, err: BaseException) -> str:
         err_type = type(err).__name__
@@ -404,19 +444,51 @@ def _fetch_github_username(bot) -> Optional[str]:
         return None
 
 
+def _fetch_self_repo_push(bot) -> bool:
+    """Check whether the PAT can push to the configured self_repo.
+
+    Used to decide fork vs direct-edit at agent build time.
+    """
+    token = bot.config.get_api_key("github")
+    cfg = ((bot.config.get("plugins") or {}).get("agent") or {}).get("github_mcp") or {}
+    self_repo = cfg.get("self_repo") if isinstance(cfg, dict) else None
+    if not token or not self_repo:
+        return False
+    try:
+        r = requests.get(f"https://api.github.com/repos/{self_repo}",
+                         headers={"Authorization": f"Bearer {token}",
+                                  "Accept": "application/vnd.github+json"},
+                         timeout=5)
+        r.raise_for_status()
+        return bool(r.json().get("permissions", {}).get("push"))
+    except (requests.RequestException, ValueError, KeyError):
+        return False
+
+
 def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
     key = id(bot)
     if key in _AGENT_CACHE:
         return _AGENT_CACHE[key]
     instructions = cfg.get("instructions") or AGENT_INSTRUCTIONS
     gh_user = _fetch_github_username(bot)
-    if gh_user:
+    can_push = _fetch_self_repo_push(bot)
+    self_repo = (((bot.config.get("plugins") or {}).get("agent") or {})
+                 .get("github_mcp") or {}).get("self_repo") or "h4ks-com/CloudBot"
+    if can_push:
+        instructions = instructions + (
+            f" GOOD NEWS: your PAT has direct push access to '{self_repo}'. "
+            f"Skip fork_github_repo entirely. Call create_github_branch on '{self_repo}' directly, "
+            f"then edit_github_file on '{self_repo}', then open_github_pr with head='<branch-name>' "
+            f"(not 'user:branch'). Faster and avoids fork-race issues."
+        )
+    elif gh_user:
         instructions = instructions + (
             f" Your GitHub username (the PAT owner) is '{gh_user}'. "
-            f"When you fork_github_repo on owner/repo, the fork lives at '{gh_user}/repo'. "
-            f"ALL subsequent create_github_branch and edit_github_file calls MUST use '{gh_user}/repo' "
-            f"as the repo arg — NOT the parent owner. Calling them on the parent will 404 because you "
-            f"don't have write access there."
+            f"You do NOT have direct push access to '{self_repo}', so fork_github_repo first; "
+            f"the fork lives at '{gh_user}/repo'. ALL subsequent create_github_branch and "
+            f"edit_github_file calls MUST use '{gh_user}/repo' as the repo arg — NOT the parent. "
+            f"For open_github_pr, set head='{gh_user}:branch-name' (cross-fork) and base='main', "
+            f"target repo is '{self_repo}'."
         )
     agent = Agent(name="CloudBot", instructions=instructions, tools=tools)
     _AGENT_CACHE[key] = agent
@@ -580,6 +652,7 @@ async def _run_agent(event, prompt: str) -> None:
                 logger.debug("agent: result.to_input_list() unavailable in this SDK version")
 
             answer = str(result.final_output or "").strip() or "(no answer)"
+            answer = _guard_pr_hallucination(answer, tracker._pr_urls)
             event.reply(*_format_answer(answer, cfg))
             return
 
