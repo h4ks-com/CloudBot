@@ -1,0 +1,16 @@
+{
+  "name": "vegetables",
+  "description": "Vegetable-based hanb boards representing plant structures",
+  "boards": [
+    {"name": "Carrot Root", "code": "cA2rR8oT5tEnV7gX3bL9mK1jH4fD6sZ0wPqYuIiOoPaSdFgHjKlMnBvNcXzAbCdE012"},
+    {"name": "Broccoli Crown", "code": "bR4oCc8lI2fL6eEe0nH3gGd5jK1mN9oPqRrSsTtUuVvWwXxYyZzAaBbCcDdEeFf012"},
+    {"name": "Potato Tuber", "code": "pO4tA8tT2oEe6bBb0lL3aAn5dDd9eEe1fFf7gGg3hHh5iIi7jJj9kKlLmMnOoPp12"},
+    {"name": "Tomato Vine", "code": "tT8oM6aA4tT2oOe0eEm4pP2lL6aAn8tT0eEe2sS4uUu6vVv8wWxXyYzZzAaBbCcDd12"},
+    {"name": "Corn Stalk", "code": "cCoO8rR6nN4sS2tT0aAlL6kK4eEe2bBb0lL8yYy6wWw4hHh2sS0sStT8iIi6nNgG4"},
+    {"name": "Pepper Pod", "code": "pPeE8ePp6pPp4eErR2rRr0oOrR8dDd6pPp4lLl2aAnN0tTt8eEe6hHh4bBeE2rRr0"},
+    {"name": "Onion Layer", "code": "oOnNiIoOnN6iIoOnN4oOnNiI2oOnNiI0oOnNiI8oOnNiI6oOnNiI4oOnNiI2oOnNiI0"},
+    {"name": "Lettuce Leaf", "code": "lLeE8eAaFf6lLeEeAa4aLfF2fLeEe0AaFf8lLeEe6aAfFlL4eAa2fFlLe0EeAa8fFlL6"},
+    {"name": "Cucumber Vine", "code": "cCuU8uMm6mBbEe4rRr2sStT0lLeEe8vVvIi6nNn4gGg2hHh0sSs8wWwAa6tTeE4"},
+    {"name": "Spinach Patch", "code": "sSpPiI8nNn6aAcC4hHh2lLeEaA0fFgG8eEeDd6dDeE4lLeEe2AaRr0rRr8tTsSs6"}
+  ]
+}
