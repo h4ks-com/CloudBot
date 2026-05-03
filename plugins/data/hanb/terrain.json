@@ -1,0 +1,16 @@
+{
+  "name": "terrain",
+  "description": "Terrain hanb boards representing landscapes and biomes",
+  "boards": [
+    {"name": "Mountain Peak", "code": "mMoOuUnN8tTaAiInN6nNpPeEaA4aAkKkK2kKsStT0tT8sSnNoO6oOwWwW4wWcClL2lLaAmM0mMpP8pP6"},
+    {"name": "Forest Clearing", "code": "fFoOrReEsStT8tTcClL6lLeEaArR4rRiInN2nNgGgG0gG8sSuU6uUnNnNgGlL4lLoOoO2oOtT0tT8"},
+    {"name": "Ocean Depths", "code": "oOcCeEaAnN8nDd6dDeEpPtThH4hHsSsSwWaA2aAlL0lL8cCuUrR6rRrReEnN4nNtTsS2sSwWw0wW8"},
+    {"name": "Desert Dune", "code": "dDeEsSeErR8rTdDuU6uUnNeEsSaA4aAnNdDdD2dDsSaA0aA8nNdDdD6dDwWaA4aAvVeE2eEsS0sS8"},
+    {"name": "Swamp Bog", "code": "sSwWaAmM8mPp6pPbBoOgGgG4gGmMuU2uUdDdD0dD8fFoOgG6gGgGrReE4eEsS2sSmM0mMsS8sS6"},
+    {"name": "Tundra Plain", "code": "tTuUnN8dDrRrRaA6aApPlL4lLaAiInN2nNsSnN0nN8sStTeE6eEpPeErR4rRfFrR2rRzZ0zZeE8eE6"},
+    {"name": "Volcano Crater", "code": "vVoOlLcCaA8nNoOcCrR6rRaAtTeErR4rRlLaA2aAvVaA0aA8mMaA6aAgGmMaA4aAlL2lLtT0tTeE8eE6"},
+    {"name": "Coral Reef", "code": "cCoOrRaAlL8lRr6rReEeEfFfF4fFwWaA2aAtTeErR0rR8sShHeE6eElLlLfF4fFsS2sShHoO0oO8"},
+    {"name": "Canyon Rift", "code": "cCaAnN8yYoOnN6nNrRiIfFtT4tTcClL2lLiImM0mBb8bBdDdD6dDwWaA4aAlLlL2lLsStT0tTeE8eE6"},
+    {"name": "Ice Field", "code": "iIcCeE8fFiIeElLdDdD6dDsSnNoO4oOwWwWfFlL2lLaAkK0kEe8eEfFrR6rRsStT4tThHhH2hHeE0eE8"}
+  ]
+}
