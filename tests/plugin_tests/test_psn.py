@@ -4,6 +4,7 @@ Integration tests for psn.py plugin.
 Run with:
     uv run pytest tests/plugin_tests/test_psn.py -v -s
 """
+
 from plugins.psn import Game, search_game
 
 

@@ -5,7 +5,6 @@ from responses.matchers import query_param_matcher
 
 from plugins import openweather
 
-
 BASE_FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
 
@@ -23,16 +22,22 @@ def make_slot(
             "temp_max": temp + 2,
             "humidity": 60,
         },
-        "weather": [{"id": weather_id, "description": "clear sky", "icon": icon}],
+        "weather": [
+            {"id": weather_id, "description": "clear sky", "icon": icon}
+        ],
         "wind": {"speed": 3.5},
     }
 
 
 def noon_ts(year: int, month: int, day: int) -> int:
-    return int(datetime(year, month, day, 12, 0, 0, tzinfo=timezone.utc).timestamp())
+    return int(
+        datetime(year, month, day, 12, 0, 0, tzinfo=timezone.utc).timestamp()
+    )
 
 
-def make_forecast_response(city: str = "Berlin", country: str = "DE", slots: list | None = None) -> dict:
+def make_forecast_response(
+    city: str = "Berlin", country: str = "DE", slots: list | None = None
+) -> dict:
     if slots is None:
         base = noon_ts(2024, 3, 15)
         slots = [make_slot(base + i * 3 * 3600) for i in range(9)]
@@ -89,7 +94,16 @@ def test_forecast_returns_lines(mock_api_keys, mock_requests):
         "GET",
         BASE_FORECAST_URL,
         json=data,
-        match=[query_param_matcher({"q": "Berlin", "appid": "APIKEY", "units": "metric", "cnt": "9"})],
+        match=[
+            query_param_matcher(
+                {
+                    "q": "Berlin",
+                    "appid": "APIKEY",
+                    "units": "metric",
+                    "cnt": "9",
+                }
+            )
+        ],
     )
 
     result = openweather.forecast("Berlin")
@@ -114,7 +128,16 @@ def test_forecast_slots_contain_emojis(mock_api_keys, mock_requests):
         "GET",
         BASE_FORECAST_URL,
         json=data,
-        match=[query_param_matcher({"q": "Berlin", "appid": "APIKEY", "units": "metric", "cnt": "9"})],
+        match=[
+            query_param_matcher(
+                {
+                    "q": "Berlin",
+                    "appid": "APIKEY",
+                    "units": "metric",
+                    "cnt": "9",
+                }
+            )
+        ],
     )
 
     result = openweather.forecast("Berlin")
@@ -149,7 +172,9 @@ def _multi_day_slots() -> list:
     for day in range(15, 19):  # 15, 16, 17, 18 March 2024
         base = noon_ts(2024, 3, day)
         for offset in range(4):  # 4 slots per day (every 3h around noon)
-            slots.append(make_slot(base + offset * 3 * 3600, temp=float(15 + day - 15)))
+            slots.append(
+                make_slot(base + offset * 3 * 3600, temp=float(15 + day - 15))
+            )
     return slots
 
 
@@ -172,7 +197,16 @@ def test_forecast_week_returns_lines(mock_api_keys, mock_requests):
         "GET",
         BASE_FORECAST_URL,
         json=data,
-        match=[query_param_matcher({"q": "Berlin", "appid": "APIKEY", "units": "metric", "cnt": "40"})],
+        match=[
+            query_param_matcher(
+                {
+                    "q": "Berlin",
+                    "appid": "APIKEY",
+                    "units": "metric",
+                    "cnt": "40",
+                }
+            )
+        ],
     )
 
     result = openweather.forecast_week("Berlin")
@@ -189,7 +223,16 @@ def test_forecast_week_four_days(mock_api_keys, mock_requests):
         "GET",
         BASE_FORECAST_URL,
         json=data,
-        match=[query_param_matcher({"q": "Berlin", "appid": "APIKEY", "units": "metric", "cnt": "40"})],
+        match=[
+            query_param_matcher(
+                {
+                    "q": "Berlin",
+                    "appid": "APIKEY",
+                    "units": "metric",
+                    "cnt": "40",
+                }
+            )
+        ],
     )
 
     result = openweather.forecast_week("Berlin")
@@ -210,7 +253,11 @@ def test_forecast_week_contains_day_names(mock_api_keys, mock_requests):
 
     forecast_line = result[1]
     # noon_ts 2024-03-15 = Friday
-    days_present = [d for d in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun") if d in forecast_line]
+    days_present = [
+        d
+        for d in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        if d in forecast_line
+    ]
     assert len(days_present) == 4
 
 

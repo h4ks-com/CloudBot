@@ -55,7 +55,9 @@ def time_command(text: str) -> str:
     }
 
     try:
-        response = get_session().get(url, params=params, headers=headers, timeout=10)
+        response = get_session().get(
+            url, params=params, headers=headers, timeout=10
+        )
         response.raise_for_status()
 
         results = response.json()
@@ -106,7 +108,11 @@ def astronomy(text: str) -> str:
     location = text.strip()
 
     geo_url = "https://nominatim.openstreetmap.org/search"
-    geo_params: dict[str, str | int] = {"q": location, "format": "json", "limit": 1}
+    geo_params: dict[str, str | int] = {
+        "q": location,
+        "format": "json",
+        "limit": 1,
+    }
     headers: dict[str, str] = {
         "User-Agent": "CloudBot/IRC (https://github.com/TotallyNotRobots/CloudBot)"
     }
@@ -130,9 +136,15 @@ def astronomy(text: str) -> str:
         simple_name = ", ".join(parts[:2]) if len(parts) >= 2 else parts[0]
 
         astro_url = "https://api.sunrise-sunset.org/json"
-        astro_params: dict[str, float | int] = {"lat": lat, "lng": lon, "formatted": 0}
+        astro_params: dict[str, float | int] = {
+            "lat": lat,
+            "lng": lon,
+            "formatted": 0,
+        }
 
-        astro_response = get_session().get(astro_url, params=astro_params, timeout=10)
+        astro_response = get_session().get(
+            astro_url, params=astro_params, timeout=10
+        )
         astro_response.raise_for_status()
 
         astro_data = astro_response.json()
@@ -142,8 +154,12 @@ def astronomy(text: str) -> str:
 
         results = astro_data["results"]
 
-        sunrise_utc = datetime.fromisoformat(results["sunrise"].replace("Z", "+00:00"))
-        sunset_utc = datetime.fromisoformat(results["sunset"].replace("Z", "+00:00"))
+        sunrise_utc = datetime.fromisoformat(
+            results["sunrise"].replace("Z", "+00:00")
+        )
+        sunset_utc = datetime.fromisoformat(
+            results["sunset"].replace("Z", "+00:00")
+        )
         solar_noon_utc = datetime.fromisoformat(
             results["solar_noon"].replace("Z", "+00:00")
         )

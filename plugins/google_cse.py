@@ -23,7 +23,8 @@ from plugins.youtube import get_client, get_video_id, get_video_info
 
 last_gse_url: dict[tuple[str, str], str] = {}
 
-SEARCHXNG_URL="https://searx.h4ks.com"
+SEARCHXNG_URL = "https://searx.h4ks.com"
+
 
 def searx_search(query: str, category: str = "general"):
     base_url = bot.config.get_api_key("searxng_url") or SEARCHXNG_URL

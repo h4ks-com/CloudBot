@@ -19,7 +19,12 @@ BASE_URL = "https://www.metacritic.com"
 # Metacritic's own search page is Cloudflare-protected; use DuckDuckGo instead.
 CATEGORY_MAP = {"all": None, "games": 13, "movies": 2, "shows": 1, "people": 3}
 # Category slugs used in Metacritic URLs, for filtering DDG results
-CATEGORY_SLUG = {"games": "/game/", "movies": "/movie/", "shows": "/tv/", "people": "/person/"}
+CATEGORY_SLUG = {
+    "games": "/game/",
+    "movies": "/movie/",
+    "shows": "/tv/",
+    "people": "/person/",
+}
 NUMBER_OF_RESULTS = 3
 
 
@@ -92,7 +97,9 @@ def search_metacritic(query: str, category: Optional[int] = None) -> List[str]:
 
         # DDG wraps result URLs as: //duckduckgo.com/l/?uddg=ENCODED_URL&rut=...
         # Extract and decode the actual destination URLs
-        raw = re.findall(r'uddg=(https%3A%2F%2Fwww\.metacritic\.com[^&"]+)', r.text)
+        raw = re.findall(
+            r'uddg=(https%3A%2F%2Fwww\.metacritic\.com[^&"]+)', r.text
+        )
         seen: set[str] = set()
         result_urls = []
         for encoded in raw:
@@ -102,7 +109,10 @@ def search_metacritic(query: str, category: Optional[int] = None) -> List[str]:
             # Skip review sub-pages; keep main title pages only
             path = url.replace(BASE_URL, "").strip("/")
             parts = path.split("/")
-            if len(parts) < 2 or any(p in parts for p in ("critic-reviews", "user-reviews", "details", "faq")):
+            if len(parts) < 2 or any(
+                p in parts
+                for p in ("critic-reviews", "user-reviews", "details", "faq")
+            ):
                 continue
             seen.add(url)
             result_urls.append(url)
@@ -129,7 +139,8 @@ def metan(text, chan, nick):
         return "No [more] results found for " + nick
 
     results = [
-        SearchResult.from_url(urls.pop()) for _ in range(min(NUMBER_OF_RESULTS, len(urls)))
+        SearchResult.from_url(urls.pop())
+        for _ in range(min(NUMBER_OF_RESULTS, len(urls)))
     ]
 
     return [

@@ -48,7 +48,11 @@ def weather(text: str) -> str:
 
     try:
         url = "https://api.openweathermap.org/data/2.5/weather"
-        params: dict[str, str] = {"q": location, "appid": api_key, "units": "metric"}
+        params: dict[str, str] = {
+            "q": location,
+            "appid": api_key,
+            "units": "metric",
+        }
 
         response = get_session().get(url, params=params, timeout=10)
         response.raise_for_status()
@@ -117,7 +121,9 @@ def forecast(text: str) -> list[str] | str:
         slots = []
         for item in data["list"]:
             dt = datetime.fromtimestamp(item["dt"])
-            emoji = weather_emoji(item["weather"][0]["id"], item["weather"][0]["icon"])
+            emoji = weather_emoji(
+                item["weather"][0]["id"], item["weather"][0]["icon"]
+            )
             temp = round(item["main"]["temp"])
             slots.append(f"{emoji} {dt.strftime('%H:%M')} {temp}°C")
 
@@ -178,14 +184,17 @@ def forecast_week(text: str) -> list[str] | str:
             temps = [item["main"]["temp"] for item in items]
             # Pick noon-ish slot for the representative condition/emoji
             midday = min(
-                items, key=lambda x: abs(datetime.fromtimestamp(x["dt"]).hour - 12)
+                items,
+                key=lambda x: abs(datetime.fromtimestamp(x["dt"]).hour - 12),
             )
             emoji = weather_emoji(
                 midday["weather"][0]["id"], midday["weather"][0]["icon"]
             )
             high = round(max(temps))
             low = round(min(temps))
-            day_summaries.append(f"\x02{day.strftime('%a')}\x02 {emoji} {high}/{low}°C")
+            day_summaries.append(
+                f"\x02{day.strftime('%a')}\x02 {emoji} {high}/{low}°C"
+            )
 
         header = f"\x02{city}, {country}\x02 📅 {len(day_summaries[:5])}-Day:"
         return [header, " │ ".join(day_summaries[:5])]

@@ -5,6 +5,9 @@ Importing this package eagerly triggers tool registration via
 at import time).
 """
 
+# Eager import so all @tool decorators run and the registry is populated
+# before any caller invokes build_custom_tools().
+import cloudbot.agent.tools  # noqa: F401, E402
 from cloudbot.agent.common import (
     fetch_github_username,
     fetch_self_repo_push,
@@ -18,10 +21,6 @@ from cloudbot.agent.common import (
 from cloudbot.agent.instructions import AGENT_INSTRUCTIONS
 from cloudbot.agent.registry import build_custom_tools
 from cloudbot.agent.tools.web import upload_markdown_paste
-
-# Eager import so all @tool decorators run and the registry is populated
-# before any caller invokes build_custom_tools().
-import cloudbot.agent.tools  # noqa: F401, E402
 
 __all__ = [
     "AGENT_INSTRUCTIONS",

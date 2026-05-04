@@ -69,7 +69,9 @@ def raise_error(data):
     try:
         error = data["error"]
     except KeyError as e:
-        raise WordnikAPIError("Unknown error, unable to retrieve error data") from e
+        raise WordnikAPIError(
+            "Unknown error, unable to retrieve error data"
+        ) from e
 
     err: Exception
     try:
@@ -127,7 +129,9 @@ class WordLookupRequest:
 
     @staticmethod
     def sanitize(text: str) -> str:
-        return urllib.parse.quote(text.translate({ord("\\"): None, ord("/"): None}))
+        return urllib.parse.quote(
+            text.translate({ord("\\"): None, ord("/"): None})
+        )
 
     @property
     def endpoint(self) -> str:
@@ -152,7 +156,9 @@ class WordLookupRequest:
 
         return True
 
-    def get_filtered_results(self, min_results: int = 1) -> Iterable[Dict[str, Any]]:
+    def get_filtered_results(
+        self, min_results: int = 1
+    ) -> Iterable[Dict[str, Any]]:
         count = 0
         tries = 0
         results = []
@@ -202,7 +208,9 @@ class ExamplesLookupRequest(WordLookupRequest):
         self.result_limit = 10
 
     def get_results(self):
-        return api_request_single(self.endpoint, params=self.get_params())["examples"]
+        return api_request_single(self.endpoint, params=self.get_params())[
+            "examples"
+        ]
 
 
 class PronounciationLookupRequest(WordLookupRequest):
@@ -243,18 +251,22 @@ def define(text, event):
     try:
         data = lookup.first()
     except WordNotFound:
-        return colors.parse("I could not find a definition for $(b){}$(b).").format(
-            text
-        )
+        return colors.parse(
+            "I could not find a definition for $(b){}$(b)."
+        ).format(text)
     except WordnikAPIError as e:
         event.reply(e.user_msg())
         raise
 
     data["url"] = web.try_shorten(WEB_URL.format(data["word"]))
     data["attrib"] = format_attrib(data["sourceDictionary"])
-    data["text"] = BeautifulSoup(data["text"]).text  # Make sure to remove xml tags
+    data["text"] = BeautifulSoup(
+        data["text"]
+    ).text  # Make sure to remove xml tags
 
-    return colors.parse("$(b){word}$(b): {text} - {url} ({attrib})").format_map(data)
+    return colors.parse("$(b){word}$(b): {text} - {url} ({attrib})").format_map(
+        data
+    )
 
 
 @hook.command("wordusage", "wordexample", "usage")
@@ -271,7 +283,9 @@ def word_usage(text, event):
         event.reply(e.user_msg())
         raise
 
-    out = colors.parse("$(b){word}$(b): {text}").format(word=text, text=example["text"])
+    out = colors.parse("$(b){word}$(b): {text}").format(
+        word=text, text=example["text"]
+    )
     return out
 
 
@@ -283,9 +297,9 @@ def pronounce(text, event):
     try:
         pronounce_response = list(lookup.get_filtered_results())[:5]
     except WordNotFound:
-        return colors.parse("Sorry, I don't know how to pronounce $(b){}$(b).").format(
-            text
-        )
+        return colors.parse(
+            "Sorry, I don't know how to pronounce $(b){}$(b)."
+        ).format(text)
     except WordnikAPIError as e:
         event.reply(e.user_msg())
         raise

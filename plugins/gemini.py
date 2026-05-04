@@ -37,7 +37,10 @@ def _check_ratelimit():
 def _get_api_key():
     api_key = bot.config.get_api_key("gemini")
     if not api_key:
-        return None, "Gemini API key not configured. Set 'gemini' in api_keys config."
+        return (
+            None,
+            "Gemini API key not configured. Set 'gemini' in api_keys config.",
+        )
     return api_key, None
 
 
@@ -71,14 +74,25 @@ def _call_gemini(api_key, parts, chan, nick):
         return "Gemini returned no results. Check logs for details."
 
     candidate = candidates[0]
-    logger.info("[gemini] Candidate: %s", {k: v for k, v in candidate.items() if k != "content"})
+    logger.info(
+        "[gemini] Candidate: %s",
+        {k: v for k, v in candidate.items() if k != "content"},
+    )
 
     if "finishReason" in candidate:
         reason = candidate["finishReason"]
         if reason != "STOP":
             logger.warning("[gemini] Unusual finish reason: %s", reason)
             if "finishMessage" in candidate:
-                msg = candidate["finishMessage"].replace("[send feedback]", "").replace("(https://ai.google.dev/gemini-api/docs/troubleshooting)", "").strip()
+                msg = (
+                    candidate["finishMessage"]
+                    .replace("[send feedback]", "")
+                    .replace(
+                        "(https://ai.google.dev/gemini-api/docs/troubleshooting)",
+                        "",
+                    )
+                    .strip()
+                )
                 return msg
             if reason in ("SAFETY", "RECITATION", "PROHIBITED_CONTENT"):
                 return f"Gemini refused to generate: {reason}"
@@ -98,7 +112,10 @@ def _call_gemini(api_key, parts, chan, nick):
         if "text" in part:
             text_parts.append(part["text"])
 
-    logger.warning("[gemini] No image in response. Parts: %s", [list(p.keys()) for p in parts])
+    logger.warning(
+        "[gemini] No image in response. Parts: %s",
+        [list(p.keys()) for p in parts],
+    )
     if text_parts:
         text = " ".join(text_parts)[:150]
         return f"Gemini returned text only: {text}..."

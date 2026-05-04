@@ -98,16 +98,14 @@ def upload_history(nick: str, messages: list[Message], header: str) -> str:
         for m in messages
     ]
     safe_title = (
-        header
-        .replace("&", "&amp;")
+        header.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
     template = _HISTORY_TEMPLATE_PATH.read_text(encoding="utf-8")
     html = (
-        template
-        .replace("__TITLE__", safe_title)
+        template.replace("__TITLE__", safe_title)
         .replace("__TITLE_JSON__", _js_safe_json(header))
         .replace("__MESSAGES_JSON__", _js_safe_json(msgs_data))
     )

@@ -203,7 +203,9 @@ def track_seen(event, db):
     """
     # keep private messages private
     now = time.time()
-    if event.chan[:1] == "#" and not re.findall("^s/.*/.*/$", event.content.lower()):
+    if event.chan[:1] == "#" and not re.findall(
+        "^s/.*/.*/$", event.content.lower()
+    ):
         res = db.execute(
             seen_table.update()
             .values(time=now, quote=event.content, host=str(event.mask))
@@ -286,14 +288,22 @@ def lastlink(text: str, chan: str, conn, db) -> str:
             user_urls_table.c.nick,
         ]
     )
-    last_url_query = last_url_query.where(user_urls_table.c.network == conn.name)
-    last_url_query = last_url_query.where(user_urls_table.c.chan == chan.lower())
+    last_url_query = last_url_query.where(
+        user_urls_table.c.network == conn.name
+    )
+    last_url_query = last_url_query.where(
+        user_urls_table.c.chan == chan.lower()
+    )
 
     if search_text:
         # User-specific last link
-        last_url_query = last_url_query.where(user_urls_table.c.nick == target_nick)
+        last_url_query = last_url_query.where(
+            user_urls_table.c.nick == target_nick
+        )
 
-    last_url_query = last_url_query.order_by(desc(user_urls_table.c.timestamp)).limit(1)
+    last_url_query = last_url_query.order_by(
+        desc(user_urls_table.c.timestamp)
+    ).limit(1)
 
     url_result = db.execute(last_url_query).fetchone()
 
@@ -308,7 +318,9 @@ def lastlink(text: str, chan: str, conn, db) -> str:
     url_title = title or "No title available"
 
     # Format timestamp
-    formatted_date = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    formatted_date = datetime.fromtimestamp(timestamp).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
     # Format output with title
     if search_text:
@@ -392,7 +404,9 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
 
     # Format output as 3 lines with titles and URLs
     formatted_lines = []
-    for i, (url, title, timestamp) in enumerate(page_results[:URLS_PER_PAGE], 1):
+    for i, (url, title, timestamp) in enumerate(
+        page_results[:URLS_PER_PAGE], 1
+    ):
         url_title = title or "No title available"
         # Truncate long titles
         if len(url_title) > 50:
@@ -406,9 +420,7 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
     )
 
     if len(all_url_results) > URLS_PER_PAGE:
-        output_prefix += (
-            f"(showing {URLS_PER_PAGE} of {len(all_url_results)}, use .urlsn for more)"
-        )
+        output_prefix += f"(showing {URLS_PER_PAGE} of {len(all_url_results)}, use .urlsn for more)"
 
     return output_prefix + "\n" + "\n".join(formatted_lines)
 
@@ -442,14 +454,18 @@ def urls_next(text: str, chan: str, conn, nick: str) -> str:
     # Format output
     output_lines = []
     start_number = (len(queued_results) - len(remaining_results)) + 1
-    for i, (url, title, timestamp) in enumerate(next_page_results, start_number):
+    for i, (url, title, timestamp) in enumerate(
+        next_page_results, start_number
+    ):
         url_title = title or "No title available"
         if len(url_title) > 50:
             url_title = formatting.truncate(url_title, 47) + "..."
         output_lines.append(f"{i}. {url_title} - {url}")
 
     more_links_prefix = (
-        f"More links for {search_text}: " if search_text else "More links in channel: "
+        f"More links for {search_text}: "
+        if search_text
+        else "More links in channel: "
     )
 
     if len(remaining_results) > URLS_PER_PAGE:
@@ -486,7 +502,9 @@ def searchword(text, chan, conn):
                 date = datetime.fromtimestamp(message_time).strftime(
                     "%Y-%m-%d %H:%M:%S"
                 )
-                message = message.replace("\x01ACTION ", "* ").replace("\x01", "")
+                message = message.replace("\x01ACTION ", "* ").replace(
+                    "\x01", ""
+                )
                 message = message.replace(text, f"\x02{text}\x02")
                 return f"{date} {nick}: {message}"
 

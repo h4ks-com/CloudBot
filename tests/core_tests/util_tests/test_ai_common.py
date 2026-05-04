@@ -9,10 +9,10 @@ from cloudbot.util.ai_common import (
     upload_history,
 )
 
-
 # ---------------------------------------------------------------------------
 # _safe_content
 # ---------------------------------------------------------------------------
+
 
 class TestSafeContent:
     def test_plain_text_unchanged(self):
@@ -76,7 +76,7 @@ class TestSafeContent:
         html = (
             '<!doctype html>\n<html lang="en">\n<head>\n'
             '<meta charset="utf-8" />\n'
-            '<style>html,body{height:100%;margin:0;background:#ddd7cc}</style>\n'
+            "<style>html,body{height:100%;margin:0;background:#ddd7cc}</style>\n"
             "</head>\n<body>\n"
             '<div class="controls"><button id="prevBtn">Previous</button></div>\n'
             "</body>\n</html>"
@@ -90,6 +90,7 @@ class TestSafeContent:
 # ---------------------------------------------------------------------------
 # _js_safe_json
 # ---------------------------------------------------------------------------
+
 
 class TestJsSafeJson:
     def test_plain_string(self):
@@ -136,6 +137,7 @@ class TestJsSafeJson:
 # ---------------------------------------------------------------------------
 # upload_history integration
 # ---------------------------------------------------------------------------
+
 
 def _extract_msgs(page: str) -> list[dict]:
     """Parse the MSGS array out of the generated HTML page."""
@@ -209,10 +211,10 @@ class TestUploadHistory:
         # leaked their <style> into the page and made all bubbles look identical.
         html_response = (
             '<!doctype html>\n<html lang="en">\n<head>\n'
-            '<style>html,body{height:100%;background:#ddd7cc}</style>\n'
-            '</head>\n<body>\n'
+            "<style>html,body{height:100%;background:#ddd7cc}</style>\n"
+            "</head>\n<body>\n"
             '<div class="controls"><button>Previous</button></div>\n'
-            '</body>\n</html>'
+            "</body>\n</html>"
         )
         messages = self._make_messages(
             ("user", "make a book"),
@@ -247,7 +249,7 @@ class TestUploadHistory:
         # the <title> tag — a </title><script> would otherwise break out.
         messages = self._make_messages(("user", "hi"), ("assistant", "hi"))
         paste, captured = _fake_paste()
-        malicious_header = 'x</title><script>alert(1)</script><title>y'
+        malicious_header = "x</title><script>alert(1)</script><title>y"
         with patch("cloudbot.util.ai_common.web.paste", side_effect=paste):
             upload_history("nick", messages, malicious_header)
 
@@ -258,7 +260,10 @@ class TestUploadHistory:
     def test_regular_markdown_not_wrapped(self):
         messages = self._make_messages(
             ("user", "what is blue?"),
-            ("assistant", "Blue is a **color** with wavelength ~450nm.\n\n- short\n- wave"),
+            (
+                "assistant",
+                "Blue is a **color** with wavelength ~450nm.\n\n- short\n- wave",
+            ),
         )
         paste, captured = _fake_paste()
         with patch("cloudbot.util.ai_common.web.paste", side_effect=paste):

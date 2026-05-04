@@ -22,5 +22,6 @@ def request_message_tags():
 def on_message_tags_ack(conn):
     """Log when message-tags capability is enabled"""
     logger.info(
-        "[%s] message-tags capability enabled (enables +typing client tag)", conn.name
+        "[%s] message-tags capability enabled (enables +typing client tag)",
+        conn.name,
     )

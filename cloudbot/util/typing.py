@@ -45,7 +45,9 @@ def _send_typing_done(conn, target: str) -> None:
     conn.send(f"@+typing=done TAGMSG {target}", log=False)
 
 
-async def _typing_sender_loop(conn, target: str, state: ChannelTypingState) -> None:
+async def _typing_sender_loop(
+    conn, target: str, state: ChannelTypingState
+) -> None:
     """Background task that sends typing notifications periodically"""
     try:
         while True:

@@ -99,6 +99,8 @@ async def describe_image(ctx, data):
     except openai.RateLimitError:
         return "(error: vision model rate-limited — try again in a moment)"
     except openai.APIError as e:
-        return f"(error calling vision model: {type(e).__name__}: {str(e)[:200]})"
+        return (
+            f"(error calling vision model: {type(e).__name__}: {str(e)[:200]})"
+        )
     except (requests.RequestException, OSError, ValueError, RuntimeError) as e:
         return f"(error calling vision model: {e})"

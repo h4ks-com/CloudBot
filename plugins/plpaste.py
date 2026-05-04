@@ -29,7 +29,9 @@ Use this to understand how any command works before calling it."""
                     elif "@hook.command" in line and f'"{text}"' in line:
                         for j in range(i, len(lines)):
                             s = lines[j].strip()
-                            if s.startswith("def ") or s.startswith("async def "):
+                            if s.startswith("def ") or s.startswith(
+                                "async def "
+                            ):
                                 line_number = j + 1
                                 break
                         break

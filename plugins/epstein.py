@@ -42,7 +42,9 @@ def get_query_cache():
 def search_files(query: str) -> dict:
     """Search the Epstein files via justice.gov API"""
     params = {"keys": query, "page": "1"}
-    response = requests.get(SEARCH_URL, headers=HEADERS, params=params, timeout=10)
+    response = requests.get(
+        SEARCH_URL, headers=HEADERS, params=params, timeout=10
+    )
     response.raise_for_status()
     return response.json()
 
@@ -74,7 +76,9 @@ def extract_paragraph_context(full_text: str, search_term: str) -> str | None:
     return formatting.truncate(paragraph, CONTEXT_PREVIEW_LENGTH)
 
 
-async def extract_pdf_text_with_context(pdf_url: str, search_query: str) -> str | None:
+async def extract_pdf_text_with_context(
+    pdf_url: str, search_query: str
+) -> str | None:
     """Download PDF, extract text, and find context around search query"""
     cookies = {"justiceGovAgeVerified": "true"}
     async with httpx.AsyncClient(
@@ -179,7 +183,9 @@ async def epstein_next(text: str, chan: str, nick: str, event):
     try:
         results = queue[chan][target_nick]
     except KeyError:
-        return f"No results found for {target_nick}. Try .epstein <query> first."
+        return (
+            f"No results found for {target_nick}. Try .epstein <query> first."
+        )
 
     if len(results) == 0:
         return f"No more results for {target_nick}."

@@ -63,7 +63,9 @@ async def typing_end_hook(result, error, launched_event, launched_hook):
     if not target:
         return
 
-    typing_enabled = launched_event.conn.config.get("typing_notifications", True)
+    typing_enabled = launched_event.conn.config.get(
+        "typing_notifications", True
+    )
     if not typing_enabled:
         return
 

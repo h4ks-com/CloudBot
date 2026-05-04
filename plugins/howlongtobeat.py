@@ -44,7 +44,9 @@ def _format_hours(seconds) -> str:
     if not seconds:
         return "N/A"
     hours = float(seconds) / 3600
-    return f"{int(hours)} Hours" if hours == int(hours) else f"{hours:.1f} Hours"
+    return (
+        f"{int(hours)} Hours" if hours == int(hours) else f"{hours:.1f} Hours"
+    )
 
 
 def _get_token() -> str | None:
@@ -67,13 +69,15 @@ def _parse_items(items: list) -> list[Game]:
     games = []
     for item in items[:5]:
         try:
-            games.append(Game(
-                name=item.get("game_name", "Unknown"),
-                url=f"{BASE_URL}/game/{item.get('game_id', '')}",
-                main_story=_format_hours(item.get("comp_main")),
-                main_extras=_format_hours(item.get("comp_plus")),
-                completionist=_format_hours(item.get("comp_100")),
-            ))
+            games.append(
+                Game(
+                    name=item.get("game_name", "Unknown"),
+                    url=f"{BASE_URL}/game/{item.get('game_id', '')}",
+                    main_story=_format_hours(item.get("comp_main")),
+                    main_extras=_format_hours(item.get("comp_plus")),
+                    completionist=_format_hours(item.get("comp_100")),
+                )
+            )
         except (KeyError, TypeError, ValueError):
             continue
     return games
@@ -97,7 +101,12 @@ def try_api_search(game_name: str) -> list[Game] | None:
                 "sortCategory": "popular",
                 "rangeCategory": "main",
                 "rangeTime": {"min": 0, "max": 0},
-                "gameplay": {"perspective": "", "flow": "", "genre": "", "difficulty": ""},
+                "gameplay": {
+                    "perspective": "",
+                    "flow": "",
+                    "genre": "",
+                    "difficulty": "",
+                },
                 "rangeYear": {"min": "", "max": ""},
                 "modifier": "",
             },
@@ -113,7 +122,11 @@ def try_api_search(game_name: str) -> list[Game] | None:
     try:
         r = get_session().post(
             f"{BASE_URL}/api/finder",
-            headers={**HEADERS, "Content-Type": "application/json", "x-auth-token": token},
+            headers={
+                **HEADERS,
+                "Content-Type": "application/json",
+                "x-auth-token": token,
+            },
             json=payload,
             timeout=10,
         )
@@ -175,7 +188,11 @@ def scrape_hltb_search(game_name: str) -> list[Game] | None:
         try:
             r = get_session().get(search_url, headers=search_headers, timeout=5)
             if r.ok:
-                ids = list(dict.fromkeys(re.findall(r"howlongtobeat\.com/game/(\d+)", r.text)))[:5]
+                ids = list(
+                    dict.fromkeys(
+                        re.findall(r"howlongtobeat\.com/game/(\d+)", r.text)
+                    )
+                )[:5]
                 if ids:
                     game_ids = ids
                     break

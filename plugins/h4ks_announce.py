@@ -51,11 +51,16 @@ async def announce_cmd(text: str, nick: str, bot: CloudBot) -> str:
         return "announce: not configured (missing h4ks.announce_api_url or announce_api_token)"
 
     payload = {"body": message, "author": nick, "source": "bot"}
-    headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/json",
+    }
 
     try:
         async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-            async with session.post(api_url, json=payload, headers=headers) as resp:
+            async with session.post(
+                api_url, json=payload, headers=headers
+            ) as resp:
                 if resp.status == 201:
                     data = await resp.json()
                     return f"announced (id:{data.get('id')}) — {message[:60]}"
@@ -94,20 +99,29 @@ async def syncchat_cmd(text: str, bot: CloudBot, conn: IrcClient) -> str:
         return f"syncchat: no history for {lobby}"
 
     # history entries are (nick, timestamp, message) — take the last `count`, skip bot commands
-    messages = [m for m in channel_history if not m[2].startswith('.')][-count:]
+    messages = [m for m in channel_history if not m[2].startswith(".")][-count:]
 
     if not messages:
         return f"syncchat: no messages in history for {lobby}"
 
-    headers = {"Authorization": f"Bearer {api_token}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/json",
+    }
     sent = 0
     failed = 0
 
     try:
         async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
             for entry_nick, _ts, entry_msg in messages:
-                payload = {"nick": entry_nick, "message": entry_msg, "channel": lobby}
-                async with session.post(api_url, json=payload, headers=headers) as resp:
+                payload = {
+                    "nick": entry_nick,
+                    "message": entry_msg,
+                    "channel": lobby,
+                }
+                async with session.post(
+                    api_url, json=payload, headers=headers
+                ) as resp:
                     if resp.status in (200, 201):
                         sent += 1
                     else:
@@ -116,5 +130,3 @@ async def syncchat_cmd(text: str, bot: CloudBot, conn: IrcClient) -> str:
         return f"syncchat error after {sent} sent: {e}"
 
     return f"syncchat: sent {sent} messages{f', {failed} failed' if failed else ''}"
-
-

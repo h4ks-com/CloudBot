@@ -18,7 +18,11 @@ def make_result_html(
     free_shipping: bool = False,
 ) -> str:
     prime_html = '<i class="a-icon a-icon-prime"></i>' if prime else ""
-    bestseller_html = '<span aria-label="Best Seller">Best Seller</span>' if bestseller else ""
+    bestseller_html = (
+        '<span aria-label="Best Seller">Best Seller</span>'
+        if bestseller
+        else ""
+    )
     shipping_html = "<span>FREE Shipping</span>" if free_shipping else ""
 
     return f"""
@@ -57,7 +61,9 @@ def _run(text: str, page_html: str, parsed: bool | str = False) -> str | None:
     with patch("plugins.amazon.get_session") as mock_session, patch(
         "plugins.amazon.web.try_shorten", side_effect=lambda u, **_: u
     ):
-        mock_session.return_value.get.return_value = _make_mock_response(page_html)
+        mock_session.return_value.get.return_value = _make_mock_response(
+            page_html
+        )
         return amazon.amazon(text, reply, _parsed=parsed)
 
 
@@ -101,7 +107,9 @@ def test_result_with_free_shipping():
 
 
 def test_multiple_tags():
-    html = make_page(make_result_html(prime=True, bestseller=True, free_shipping=True))
+    html = make_page(
+        make_result_html(prime=True, bestseller=True, free_shipping=True)
+    )
     result = _run("python book", html)
 
     assert result is not None
@@ -197,7 +205,9 @@ def test_http_error_calls_reply():
         "plugins.amazon.web.try_shorten", side_effect=lambda u, **_: u
     ):
         mock_resp = _make_mock_response("", status=503)
-        mock_resp.raise_for_status.side_effect = amazon.HTTPError(response=mock_resp)
+        mock_resp.raise_for_status.side_effect = amazon.HTTPError(
+            response=mock_resp
+        )
         mock_session.return_value.get.return_value = mock_resp
 
         with pytest.raises(amazon.HTTPError):
@@ -231,7 +241,11 @@ def test_rating_re(text, expected):
     "url,expected_cc,expected_asin",
     [
         ("https://www.amazon.com/dp/B001234567", "com", "B001234567"),
-        ("https://www.amazon.co.uk/some-product/dp/B00ABCDE12", "co.uk", "B00ABCDE12"),
+        (
+            "https://www.amazon.co.uk/some-product/dp/B00ABCDE12",
+            "co.uk",
+            "B00ABCDE12",
+        ),
         ("https://www.amazon.de/gp/product/B00TEST123", "de", "B00TEST123"),
     ],
 )

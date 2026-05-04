@@ -23,13 +23,13 @@ def validate(text):
     }
 
     try:
-        request = get_session().get(api_url, params=params, headers=headers, timeout=10)
+        request = get_session().get(
+            api_url, params=params, headers=headers, timeout=10
+        )
         request.raise_for_status()
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 429:
-            return (
-                "The W3C validator is rate limiting requests. Please try again later."
-            )
+            return "The W3C validator is rate limiting requests. Please try again later."
         return f"Failed to validate: HTTP {e.response.status_code}"
     except requests.exceptions.RequestException as e:
         return f"Failed to connect to validator: {type(e).__name__}"
@@ -39,7 +39,9 @@ def validate(text):
 
     error_count = sum(1 for m in messages if m.get("type") == "error")
     warning_count = sum(
-        1 for m in messages if m.get("type") == "info" and m.get("subType") == "warning"
+        1
+        for m in messages
+        if m.get("type") == "info" and m.get("subType") == "warning"
     )
 
     out_warning = "warnings" if warning_count != 1 else "warning"

@@ -8,6 +8,7 @@ Both reply immediately with a status line, then post the result when done.
 Backend and model config is shared with plugins/agent.py (plugins.agent section).
 Sandbox connection config lives in plugins.sandbox_agent section.
 """
+
 import asyncio
 import json
 import logging
@@ -18,7 +19,10 @@ import httpx
 from agents import Agent, FunctionTool, RunContextWrapper, Runner
 
 from cloudbot import hook
-from cloudbot.util.typing import start_typing_for_command, stop_typing_for_command
+from cloudbot.util.typing import (
+    start_typing_for_command,
+    stop_typing_for_command,
+)
 from plugins.agent import _format_answer, _make_run_config
 
 logger = logging.getLogger("cloudbot")
@@ -169,7 +173,9 @@ async def _mcp_call(
 
 
 def _make_sandbox_tools(sandbox_url: str, api_key: str) -> list[FunctionTool]:
-    async def _ensure_session(ctx: RunContextWrapper) -> tuple[httpx.AsyncClient, str]:
+    async def _ensure_session(
+        ctx: RunContextWrapper,
+    ) -> tuple[httpx.AsyncClient, str]:
         # ctx.context is a fresh dict per run — session lives there, not in closure.
         run_state = ctx.context
         if "client" not in run_state:
@@ -185,15 +191,24 @@ def _make_sandbox_tools(sandbox_url: str, api_key: str) -> list[FunctionTool]:
         code = str(args.get("code", ""))
         stdin = str(args.get("stdin", ""))
         client, session_id = await _ensure_session(ctx)
-        return await _mcp_call(client, sandbox_url, api_key, session_id, "run_code", {
-            "language": language,
-            "code": code,
-            "stdin": stdin,
-        })
+        return await _mcp_call(
+            client,
+            sandbox_url,
+            api_key,
+            session_id,
+            "run_code",
+            {
+                "language": language,
+                "code": code,
+                "stdin": stdin,
+            },
+        )
 
     async def list_languages(ctx: RunContextWrapper, _args_json: str) -> str:
         client, session_id = await _ensure_session(ctx)
-        return await _mcp_call(client, sandbox_url, api_key, session_id, "list_languages", {})
+        return await _mcp_call(
+            client, sandbox_url, api_key, session_id, "list_languages", {}
+        )
 
     return [
         FunctionTool(
@@ -240,8 +255,12 @@ def _get_agents(cfg: dict) -> tuple[Agent, Agent]:
         sandbox_url = cfg.get("sandbox_url", "https://sandbox.t3ks.com/mcp")
         api_key = cfg.get("sandbox_api_key", "")
         tools = _make_sandbox_tools(sandbox_url, api_key)
-        _PROVE_AGENT = Agent(name="RocqProver", instructions=PROVE_INSTRUCTIONS, tools=tools)
-        _CODE_AGENT = Agent(name="CodeAgent", instructions=CODE_INSTRUCTIONS, tools=tools)
+        _PROVE_AGENT = Agent(
+            name="RocqProver", instructions=PROVE_INSTRUCTIONS, tools=tools
+        )
+        _CODE_AGENT = Agent(
+            name="CodeAgent", instructions=CODE_INSTRUCTIONS, tools=tools
+        )
     return _PROVE_AGENT, _CODE_AGENT
 
 
@@ -257,10 +276,12 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
     prove_agent, code_agent = _get_agents(sandbox_cfg)
     agent = prove_agent if agent_type == "prove" else code_agent
 
-    max_turns = int(sandbox_cfg.get(
-        "prove_max_turns" if agent_type == "prove" else "code_max_turns",
-        20 if agent_type == "prove" else 10,
-    ))
+    max_turns = int(
+        sandbox_cfg.get(
+            "prove_max_turns" if agent_type == "prove" else "code_max_turns",
+            20 if agent_type == "prove" else 10,
+        )
+    )
     timeout = float(sandbox_cfg.get("timeout_s", 300))
 
     backend = agent_cfg.get("backend", "z_ai")
@@ -270,7 +291,9 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
         backends_to_try.append(fallback)
 
     ts = datetime.now().strftime("%H:%M:%S")
-    enriched = f"[channel: {event.chan} | user: {event.nick} | time: {ts}]\n{prompt}"
+    enriched = (
+        f"[channel: {event.chan} | user: {event.nick} | time: {ts}]\n{prompt}"
+    )
 
     typing_id = id(event)
     target = event.chan or event.nick
@@ -282,20 +305,32 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
             try:
                 run_cfg = _make_run_config(agent_cfg, bot, b)
             except Exception as e:
-                logger.warning("sandbox_agent: cannot build run config for %s: %s", b, e)
+                logger.warning(
+                    "sandbox_agent: cannot build run config for %s: %s", b, e
+                )
                 last_err = e
                 continue
             try:
                 result = await asyncio.wait_for(
-                    Runner.run(agent, enriched, context={}, run_config=run_cfg, max_turns=max_turns),
+                    Runner.run(
+                        agent,
+                        enriched,
+                        context={},
+                        run_config=run_cfg,
+                        max_turns=max_turns,
+                    ),
                     timeout=timeout,
                 )
             except asyncio.TimeoutError as e:
-                logger.warning("sandbox_agent: %s timed out after %ss", b, timeout)
+                logger.warning(
+                    "sandbox_agent: %s timed out after %ss", b, timeout
+                )
                 last_err = e
                 continue
             except Exception as e:
-                logger.warning("sandbox_agent: %s failed: %s: %s", b, type(e).__name__, e)
+                logger.warning(
+                    "sandbox_agent: %s failed: %s: %s", b, type(e).__name__, e
+                )
                 last_err = e
                 continue
 

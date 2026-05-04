@@ -92,7 +92,9 @@ def get_completion(messages: list[Message]) -> str:
     z_ai_key = bot.config.get_api_key("z_ai")
 
     if z_ai_key:
-        z_ai_endpoint = bot.config.get("z_ai_endpoint", "https://api.z.ai/api/paas/v4/chat/completions")
+        z_ai_endpoint = bot.config.get(
+            "z_ai_endpoint", "https://api.z.ai/api/paas/v4/chat/completions"
+        )
         z_ai_model = bot.config.get("z_ai_model", "glm-5.1")
 
         token = generate_z_ai_token(z_ai_key)
@@ -107,7 +109,9 @@ def get_completion(messages: list[Message]) -> str:
             "messages": [message.as_dict() for message in messages],
         }
 
-        response = get_session().post(z_ai_endpoint, headers=headers, json=json_data)
+        response = get_session().post(
+            z_ai_endpoint, headers=headers, json=json_data
+        )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
     else:
@@ -133,7 +137,9 @@ def gpt_command(text: str, nick: str, chan: str) -> str:
     """<text> - Get a response from text generating LLM."""
     global gpt_messages_cache
 
-    history = get_or_create_history(gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history = get_or_create_history(
+        gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
+    )
     history.append(Message(role="user", content=text))
     try:
         response = get_completion(list(history))
@@ -149,9 +155,7 @@ def gpt_command(text: str, nick: str, chan: str) -> str:
 
 
 def create_web_app(text: str, history: list[Message] | Deque[Message]) -> str:
-    history.append(
-        Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX)
-    )
+    history.append(Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX))
     try:
         response = get_completion(list(history))
     except requests.HTTPError as e:
@@ -170,7 +174,9 @@ def gpt_app(text: str, nick: str, chan: str) -> str:
     """<text> - Create a single page html web app on the fly with gpt"""
     global gpt_messages_cache
 
-    history = get_or_create_history(gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history = get_or_create_history(
+        gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
+    )
     return create_web_app(text, history)
 
 
@@ -211,7 +217,9 @@ def gpt_copy_command(text: str, nick: str, chan: str) -> str:
     if not target:
         return "Usage: .gptcopy <user>"
 
-    return copy_history(gpt_messages_cache, chan, nick, target, MAX_USER_HISTORY_LENGTH)
+    return copy_history(
+        gpt_messages_cache, chan, nick, target, MAX_USER_HISTORY_LENGTH
+    )
 
 
 @hook.command("gptclear", autohelp=False)
@@ -396,7 +404,6 @@ def generate_agi_history(conn, chan: str) -> list[Message]:
     return [Message(role=role, content=text) for role, _, text in messages]
 
 
-
 @hook.command("agipaste", autohelp=False)
 def agi_paste_command(nick: str, conn, chan: str) -> str:
     """Pastes the AGI context window."""
@@ -551,7 +558,9 @@ def gptwiki(
 ) -> list[str] | str:
     """<text> - Create or edit a wiki page on demand from AI prompt"""
     global gpt_messages_cache
-    history = get_or_create_history(gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history = get_or_create_history(
+        gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
+    )
     return edit_wiki(bot, reply, chan, nick, text, history)
 
 
@@ -584,7 +593,9 @@ def gptsummarize(
             return "Error: Failed to read and convert the source. Make sure it is a supported url"
         prompt = f"Please briefly summarize the contents of the following text:\n{result.markdown}\n\n"
 
-    history = get_or_create_history(gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history = get_or_create_history(
+        gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
+    )
     history.append(Message(role="user", content=prompt))
     try:
         response = get_completion(list(history))

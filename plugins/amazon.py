@@ -61,7 +61,9 @@ def amazon(text, reply, _parsed: bool | str = False):
 
     soup = BeautifulSoup(request.text, "lxml")
 
-    results = soup.find_all("div", attrs={"data-component-type": "s-search-result"})
+    results = soup.find_all(
+        "div", attrs={"data-component-type": "s-search-result"}
+    )
     if not results:
         if not _parsed:
             return "No results found."
@@ -109,8 +111,16 @@ def amazon(text, reply, _parsed: bool | str = False):
                 "a", href=re.compile(r"(customerReviews|product-reviews)")
             )
             # Amazon wraps the count in parens, e.g. "(2.1K)"
-            count = review_link.get_text(strip=True).strip("()") if review_link else ""
-            rating_str = f"{rating}/5 stars ({count} ratings)" if count else f"{rating}/5 stars"
+            count = (
+                review_link.get_text(strip=True).strip("()")
+                if review_link
+                else ""
+            )
+            rating_str = (
+                f"{rating}/5 stars ({count} ratings)"
+                if count
+                else f"{rating}/5 stars"
+            )
 
     if AFFILIATE_TAG:
         url = f"http://www.amazon.com/dp/{asin}/?tag={AFFILIATE_TAG}"

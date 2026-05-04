@@ -6,7 +6,6 @@ import requests
 
 from cloudbot import hook
 from cloudbot.util import web
-from cloudbot.util.web import TimeoutSession
 from cloudbot.util.ai_common import (
     APP_HTML_PROMPT_SUFFIX,
     Message,
@@ -18,6 +17,7 @@ from cloudbot.util.ai_common import (
     upload_history,
     upload_html_app,
 )
+from cloudbot.util.web import TimeoutSession
 
 GEN_API = "https://gen.pollinations.ai"
 MAX_HISTORY_LENGTH = 20
@@ -101,7 +101,9 @@ class PollinationsClient:
         response.raise_for_status()
         return response.json()
 
-    def generate_text(self, messages: list[dict], model: str = "openai") -> dict:
+    def generate_text(
+        self, messages: list[dict], model: str = "openai"
+    ) -> dict:
         url = f"{self.base_url}/v1/chat/completions"
         data = {"model": model, "messages": messages, "stream": False}
         response = self.session.post(url, json=data)
@@ -120,7 +122,9 @@ class PollinationsClient:
         response.raise_for_status()
         return response
 
-    def generate_audio(self, text: str, voice: str = "alloy") -> requests.Response:
+    def generate_audio(
+        self, text: str, voice: str = "alloy"
+    ) -> requests.Response:
         url = f"{self.base_url}/audio/{text}"
         params = {"model": "elevenlabs", "voice": voice}
         response = self.session.get(url, params=params)
@@ -180,7 +184,11 @@ def parse_args(
     option = None
     prompt = text.strip()
 
-    if len(parts) > 1 and available_options and parts[0].lower() in available_options:
+    if (
+        len(parts) > 1
+        and available_options
+        and parts[0].lower() in available_options
+    ):
         option = parts[0].lower()
         prompt = parts[1]
 
@@ -245,9 +253,7 @@ def plmodel_command(text: str, nick: str, chan: str, bot, notice) -> str:
     current_model = user_models.get((chan, nick), "openai")
 
     if not text.strip():
-        return (
-            f"Current model: {current_model}. Use '.plmodels' to list available models."
-        )
+        return f"Current model: {current_model}. Use '.plmodels' to list available models."
 
     new_model = text.strip()
     client = get_client(api_key)
@@ -279,14 +285,18 @@ def plimage_command(text: str, nick: str, chan: str, bot, notice) -> str:
     if text.strip().lower() == "list":
         try:
             models = client.get_image_models()
-            free_models = [m["name"] for m in models if not m.get("paid_only", False)]
+            free_models = [
+                m["name"] for m in models if not m.get("paid_only", False)
+            ]
             return "Available free models: " + ", ".join(free_models)
         except requests.HTTPError as e:
             return f"Error: {e.response.status_code}"
 
     try:
         models = client.get_image_models()
-        free_model_names = [m["name"] for m in models if not m.get("paid_only", False)]
+        free_model_names = [
+            m["name"] for m in models if not m.get("paid_only", False)
+        ]
         model, prompt = parse_args(text, free_model_names)
     except Exception:
         model, prompt = None, text.strip()
@@ -411,7 +421,9 @@ def plmusic_command(text: str, nick: str, chan: str, bot, notice) -> str:
     client = get_client(api_key)
 
     try:
-        music_response = client.generate_music(prompt, duration, instrumental=True)
+        music_response = client.generate_music(
+            prompt, duration, instrumental=True
+        )
         music_url = web.paste(music_response.content, ext="mp3")
         return f"Music for '{prompt}' ({duration}s): {music_url}"
 
@@ -466,7 +478,9 @@ def pltext_command(text: str, nick: str, chan: str, bot, notice) -> str:
     model = user_models.get((chan, nick), "openai")
     client = get_client(api_key)
 
-    history = get_or_create_history(pollinations_messages_cache, chan, nick, MAX_HISTORY_LENGTH)
+    history = get_or_create_history(
+        pollinations_messages_cache, chan, nick, MAX_HISTORY_LENGTH
+    )
     history.append(Message(role="user", content=text))
 
     try:
@@ -502,7 +516,9 @@ def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
     model = user_models.get((chan, nick), "openai")
     client = get_client(api_key)
 
-    history = get_or_create_history(pollinations_messages_cache, chan, nick, MAX_HISTORY_LENGTH)
+    history = get_or_create_history(
+        pollinations_messages_cache, chan, nick, MAX_HISTORY_LENGTH
+    )
     history.append(Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX))
 
     try:
@@ -553,7 +569,9 @@ def plcopy_command(text: str, nick: str, chan: str) -> str:
     if not target:
         return "Usage: .plcopy <user>"
 
-    return copy_history(pollinations_messages_cache, chan, nick, target, MAX_HISTORY_LENGTH)
+    return copy_history(
+        pollinations_messages_cache, chan, nick, target, MAX_HISTORY_LENGTH
+    )
 
 
 @hook.command("plclear", autohelp=False)

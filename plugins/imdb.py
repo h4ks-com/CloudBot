@@ -89,7 +89,9 @@ def get_imdb_info(tt_id: str) -> dict[str, str] | None:
     rating_summary = title_data.get("ratingsSummary") or {}
     rating = rating_summary.get("aggregateRating")
     runtime_seconds = (title_data.get("runtime") or {}).get("seconds")
-    genres = [g["text"] for g in (title_data.get("genres") or {}).get("genres", [])]
+    genres = [
+        g["text"] for g in (title_data.get("genres") or {}).get("genres", [])
+    ]
 
     return {
         "title": (title_data.get("titleText") or {}).get("text", "Unknown"),

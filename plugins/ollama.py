@@ -26,7 +26,13 @@ MODEL_SIZE_LIMIT_BYTES = 7 * 1024**3
 ALLOWED_MODELS_TTL_S = 300
 IMAGE_DEFAULT_SIZE = "512x512"
 # Usecase flags that mark a model as NOT a pure chat LLM.
-_NON_CHAT_FLAGS = {"FLAG_IMAGE", "FLAG_TTS", "FLAG_TRANSCRIPT", "FLAG_EMBEDDING", "FLAG_RERANK"}
+_NON_CHAT_FLAGS = {
+    "FLAG_IMAGE",
+    "FLAG_TTS",
+    "FLAG_TRANSCRIPT",
+    "FLAG_EMBEDDING",
+    "FLAG_RERANK",
+}
 # Inference backends treated as chat-capable LLM runtimes.
 _CHAT_BACKENDS = {"llama-cpp", "vulkan-llama-cpp"}
 
@@ -49,12 +55,16 @@ def _model_is_allowed(api_url: str, headers: dict, mid: str) -> bool:
         return False
 
     try:
-        est = get_session().post(
-            f"{api_url}/api/models/vram-estimate",
-            headers=headers,
-            json={"model": mid},
-            timeout=10,
-        ).json()
+        est = (
+            get_session()
+            .post(
+                f"{api_url}/api/models/vram-estimate",
+                headers=headers,
+                json={"model": mid},
+                timeout=10,
+            )
+            .json()
+        )
         if est.get("sizeBytes", 0) > MODEL_SIZE_LIMIT_BYTES:
             return False
     except (requests.RequestException, ValueError):
@@ -95,7 +105,9 @@ def _fetch_image_models(api_url: str, api_key: str | None) -> list[str]:
 
     base = api_url.rstrip("/")
     headers = {"apikey": api_key} if api_key else {}
-    response = get_session().get(f"{base}/v1/models", headers=headers, timeout=10)
+    response = get_session().get(
+        f"{base}/v1/models", headers=headers, timeout=10
+    )
     response.raise_for_status()
     ids = [m["id"] for m in response.json()["data"]]
     image_ids: list[str] = []
@@ -118,7 +130,9 @@ def _fetch_allowed_models(api_url: str, api_key: str | None) -> list[str]:
 
     base = api_url.rstrip("/")
     headers = {"apikey": api_key} if api_key else {}
-    response = get_session().get(f"{base}/v1/models", headers=headers, timeout=10)
+    response = get_session().get(
+        f"{base}/v1/models", headers=headers, timeout=10
+    )
     response.raise_for_status()
     ids = [m["id"] for m in response.json()["data"]]
     allowed = [mid for mid in ids if _model_is_allowed(base, headers, mid)]
@@ -196,7 +210,9 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
     if model is None:
         model = _fetch_allowed_models(api_url, api_key)[0]
 
-    history = get_or_create_history(ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history = get_or_create_history(
+        ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
+    )
     history.append(Message(role="user", content=text))
     try:
         response = get_completion(api_url, api_key, model, list(history))
@@ -223,9 +239,7 @@ def create_web_app(
     api_key: str,
     model: str,
 ) -> str:
-    history.append(
-        Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX)
-    )
+    history.append(Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX))
     try:
         response = get_completion(api_url, api_key, model, list(history))
     except requests.HTTPError as e:
@@ -260,7 +274,9 @@ def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
     if model is None:
         model = _fetch_allowed_models(api_url, api_key)[0]
 
-    history = get_or_create_history(ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH)
+    history = get_or_create_history(
+        ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
+    )
     return create_web_app(text, history, bot, api_url, api_key, model)
 
 
@@ -292,7 +308,9 @@ def ai_copy_command(text: str, nick: str, chan: str) -> str:
     if not target:
         return "Usage: .aicopy <user>"
 
-    return copy_history(ollama_messages_cache, chan, nick, target, MAX_USER_HISTORY_LENGTH)
+    return copy_history(
+        ollama_messages_cache, chan, nick, target, MAX_USER_HISTORY_LENGTH
+    )
 
 
 @hook.command("aiclear", autohelp=False)
