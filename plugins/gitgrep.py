@@ -3,6 +3,7 @@
 # Date: 02/08/2022
 
 import re
+import time
 from dataclasses import dataclass
 
 import requests
@@ -13,6 +14,8 @@ from cloudbot.util.queue import Queue
 from cloudbot.util.web import get_session
 
 API = "https://grep.app/api/search"
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds
 
 
 @dataclass
@@ -31,8 +34,35 @@ def grep(query: str, **params) -> ([str], [str]):
         **params,
     }
 
-    response = get_session().get(API, params=params)
-    obj = response.json()
+    last_error = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = get_session().get(API, params=params)
+            response.raise_for_status()
+            obj = response.json()
+            break
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 429:
+                last_error = "grep.app rate limit reached. Try again in a moment."
+            else:
+                last_error = f"grep.app returned HTTP {e.response.status_code if e.response is not None else 'error'}."
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+                continue
+            return [], []
+        except requests.exceptions.JSONDecodeError:
+            last_error = "grep.app returned an empty or invalid response."
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+                continue
+            return [], []
+        except requests.exceptions.RequestException as e:
+            last_error = f"Error reaching grep.app: {e}"
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+                continue
+            return [], []
+
     for i in range(len(obj["hits"]["hits"])):
         match = obj["hits"]["hits"][i]
         snippet = match["content"]["snippet"]
@@ -154,6 +184,9 @@ def gitgrep(text, reply, chan, nick):
 
         params["f.lang"] = corrected_langs
         results, langs = grep(text, **params)
+
+    if len(results) == 0:
+        return "No results found from grep.app."
 
     results_queue[chan][nick] = results
     results_queue[chan][nick].metadata.langs = langs
