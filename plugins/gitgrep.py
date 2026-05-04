@@ -1,18 +1,18 @@
-# Search for code in github: https://grep.app
-# Author: Matheus Fillipe
-# Date: 02/08/2022
+# Search code on GitHub via REST search/code API.
+# Replaces grep.app which is now blocked by a Vercel security checkpoint.
+# Author: Matheus Fillipe (rewrite 2026-05-04)
+
+from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
 import requests
-from bs4 import BeautifulSoup
 
 from cloudbot import hook
 from cloudbot.util.queue import Queue
-from cloudbot.util.web import get_session
 
-API = "https://grep.app/api/search"
+API = "https://api.github.com/search/code"
 
 
 @dataclass
@@ -24,53 +24,57 @@ class Result:
 results_queue = Queue()
 
 
-def grep(query: str, **params) -> ([str], [str]):
-    res = []
-    params = {
-        "q": query,
-        **params,
+def _build_query(text: str, lang: list[str] | None, words: bool) -> str:
+    q = text.strip()
+    if words:
+        q = f'"{q}"'
+    if lang:
+        q += " " + " ".join(f"language:{l}" for l in lang)
+    return q
+
+
+def _format_fragment(fragment: str) -> list[str]:
+    lines = []
+    for line in fragment.splitlines():
+        line = line.rstrip()
+        if line.strip():
+            lines.append(line[:300])
+    return lines[:8]
+
+
+def grep(query: str, token: str, **params) -> tuple[list, list]:
+    lang = params.get("f.lang")
+    words = params.get("words") == "true"
+    q = _build_query(query, lang if isinstance(lang, list) else None, words)
+
+    headers = {
+        "Accept": "application/vnd.github.text-match+json",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
 
-    response = get_session().get(API, params=params)
+    response = requests.get(
+        API, params={"q": q, "per_page": "30"}, headers=headers, timeout=10
+    )
+    response.raise_for_status()
     obj = response.json()
-    for i in range(len(obj["hits"]["hits"])):
-        match = obj["hits"]["hits"][i]
-        snippet = match["content"]["snippet"]
 
-        soup = BeautifulSoup(snippet, "html.parser")
+    results = []
+    for item in obj.get("items", []):
+        url = item.get("html_url", "")
+        matches = item.get("text_matches", [])
+        if matches:
+            lines = _format_fragment(matches[0].get("fragment", ""))
+        else:
+            lines = [item.get("path", "")]
+        results.append(Result(url, lines))
 
-        # Find div with class 'lineno'
-        lineno = soup.find("div", class_="lineno")
-        lineno = lineno.text if lineno else "1"
-
-        url = (
-            "https://github.com/"
-            + match["repo"]["raw"]
-            + "/blob/"
-            + match.get("branch", {}).get("raw", "master")
-            + "/"
-            + match["path"]["raw"]
-            + "#L"
-            + lineno
-        )
-
-        lines = []
-        for pre in soup.find_all("tr"):
-            pre.find_all("td")[0].decompose()
-            lines.append(pre.text)
-
-        res.append(Result(url, lines))
-
-    langs = [
-        lang["val"]
-        for lang in obj.get("facets", {}).get("lang", {}).get("buckets", [])
-    ]
-
-    return res, langs
+    return results, []
 
 
 @hook.command("gitgrepn", "grepn", autohelp=False)
-def gitnext(text, reply, chan, nick) -> str:
+def gitnext(text, reply, chan, nick) -> str | None:
     """Gets next result in gitgrep."""
     global results_queue
     results = results_queue[chan][nick]
@@ -88,73 +92,57 @@ def gitnext(text, reply, chan, nick) -> str:
     for line in [line for line in r.lines[:3] if line.strip()]:
         reply(line)
     reply(f"-->  {r.url}")
+    return None
 
 
 @hook.command("gitgrep", "grep")
-def gitgrep(text, reply, chan, nick):
-    """[args] <query> - Searches for <query> in github using grep.app and returns the first url.
-    Optional parameters are: -l <lang>: Language filter (you can use multiple),  -w: Match whole words,
-    -i: ignore case, -e: Use regex query
+def gitgrep(text, bot, reply, chan, nick):
+    """[args] <query> - Search code on GitHub.
+    Optional flags: -l <lang> (filter by language, repeatable), -w (match whole phrase).
+    -e (regex) and -i (case) are no-ops: GitHub code search is case-insensitive and
+    does not support regex.
     """
     global results_queue
-    params = {}
+    params: dict = {}
 
     def findargs(text):
         text = text.strip()
         match = re.match(r"^-l\s+(\S+)", text)
         start = 0
         if match:
-            if "f.lang" not in params:
-                params["f.lang"] = []
-            params["f.lang"].append(match[1])
+            params.setdefault("f.lang", []).append(match[1])
             start = match.end()
-
-        if re.search("^-w ", text):
+        elif re.search(r"^-w\s+", text):
             params["words"] = "true"
             start = 3
-
-        if re.search("^-i ", text):
-            params["case"] = "false"
+        elif re.search(r"^-[ie]\s+", text):
             start = 3
-
-        if re.search("^-e ", text):
-            params["regexp"] = "true"
-            start = 3
-
         if start == 0:
             return text
-        text = text[start:]
-        return findargs(text)
+        return findargs(text[start:])
 
     text = findargs(text)
-    if "case" not in params:
-        params["case"] = "true"
-    else:
-        del params["case"]
+    if not text.strip():
+        return "Usage: .grep [-l lang] [-w] <query>"
 
-    if "regexp" in params and "words" in params:
-        return "You can't use -w and -e at the same time."
+    token = bot.config.get_api_key("github") or ""
+    if not token:
+        return "GitHub PAT not configured (api_keys.github)."
 
-    results, langs = grep(text, **params)
+    try:
+        results, _ = grep(text, token=token, **params)
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response is not None else "?"
+        if status == 403:
+            return "GitHub rate-limited or PAT lacks scope. Try again later."
+        if status == 422:
+            return "Bad query (GitHub rejected it). Simplify the search terms."
+        return f"GitHub API error ({status})."
+    except requests.RequestException as e:
+        return f"Network error: {e}"
 
-    if len(results) == 0 and "f.lang" in params:
-        if len(langs) == 0:
-            return "No results found."
-        corrected_langs = []
-        for lang in langs:
-            for plang in params["f.lang"]:
-                if lang.casefold() == plang.casefold():
-                    corrected_langs.append(lang)
-
-        if len(corrected_langs) == 0:
-            return (
-                "No results found. Suggested langs for this query: "
-                + ", ".join(langs)
-            )
-
-        params["f.lang"] = corrected_langs
-        results, langs = grep(text, **params)
+    if len(results) == 0:
+        return "No results found."
 
     results_queue[chan][nick] = results
-    results_queue[chan][nick].metadata.langs = langs
     return gitnext("", reply, chan, nick)
