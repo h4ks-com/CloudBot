@@ -8,9 +8,9 @@ boundary errors are caught by `safe_tool` rather than aborting the agent run.
 
 from __future__ import annotations
 
+import ast
 import json
 import logging
-from typing import Any
 
 from cloudbot.agent.common import fetch_github_username, split_repo
 from cloudbot.agent.github_client import (
@@ -226,7 +226,7 @@ async def search_github_code(ctx, data):
     repo = str(data.get("repo") or "").strip()
     if not query:
         return "(error: query required)"
-    args: dict[str, Any] = {"query": query}
+    args: dict[str, str] = {"query": query}
     if repo:
         args["query"] = f"{query} repo:{repo}"
     return await mcp_call(ctx.context, "search_code", args)
@@ -460,6 +460,341 @@ async def edit_github_file(ctx, data):
             continue
         return result
     return result
+
+
+async def _fetch_body_sha(
+    ctx, owner: str, repo_name: str, path: str, branch: str
+) -> tuple[str | None, str]:
+    """Return (body, sha) for a file, or (None, error_string) on failure."""
+    raw = await mcp_call_raw(
+        ctx.context,
+        "get_file_contents",
+        {"owner": owner, "repo": repo_name, "path": path, "ref": branch},
+    )
+    if isinstance(raw, str):
+        return None, raw
+    if not isinstance(raw, dict):
+        return None, "(error: unexpected MCP response)"
+    body = extract_mcp_content(raw)
+    if body.startswith("(error:"):
+        return None, body
+    sha = extract_file_sha(raw) or ""
+    return body, sha
+
+
+async def _commit_with_sha_retry(
+    ctx,
+    owner: str,
+    repo_name: str,
+    path: str,
+    branch: str,
+    new_body: str,
+    message: str,
+    sha: str,
+) -> str:
+    """create_or_update_file with stale-SHA / parallel-commit retry. Mirrors
+    edit_github_file's retry loop so str_replace and insert tools share it."""
+    result = "(error: commit produced no result)"
+    for _ in range(3):
+        args: dict[str, str] = {
+            "owner": owner,
+            "repo": repo_name,
+            "path": path,
+            "content": new_body,
+            "message": message,
+            "branch": branch,
+        }
+        if sha:
+            args["sha"] = sha
+        result = await mcp_call(ctx.context, "create_or_update_file", args)
+        if "SHA mismatch" in result or "is stale" in result:
+            m = STALE_SHA_PATTERN.search(result)
+            if m:
+                sha = m.group(1)
+                continue
+            body2, sha2 = await _fetch_body_sha(
+                ctx, owner, repo_name, path, branch
+            )
+            sha = sha2 if body2 is not None else sha
+            continue
+        if "File already exists" in result and "must provide" in result:
+            _, sha = await _fetch_body_sha(ctx, owner, repo_name, path, branch)
+            if not sha:
+                return result
+            continue
+        return result
+    return result
+
+
+@tool(
+    name="str_replace_github_file",
+    description=(
+        "Surgical find-and-replace inside a GitHub file. PREFERRED over edit_github_file "
+        "for any change that targets specific lines (the most common case). You provide "
+        "old_str (must match EXACTLY ONCE in the file, whitespace included) and new_str. "
+        "Server reads the file, replaces, commits — you never touch the rest of the file. "
+        "Eliminates the 'truncated read drops code' problem entirely. "
+        "On no match: 'Error: No match found ...'. On multiple matches: "
+        "'Error: Found N matches ...' — add 3-5 lines of surrounding context to old_str "
+        "to make it unique. Line endings are normalised to LF on both sides before matching. "
+        "Always create_github_branch first; this tool commits to the given branch."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "repo": {
+                "type": "string",
+                "description": "Repo in 'owner/repo' format",
+            },
+            "path": {
+                "type": "string",
+                "description": "File path, e.g. 'plugins/foo.py'",
+            },
+            "branch": {"type": "string", "description": "Branch to commit to"},
+            "old_str": {
+                "type": "string",
+                "description": (
+                    "Exact substring to find (must match exactly once including "
+                    "whitespace). Include 3-5 lines of context if needed for uniqueness."
+                ),
+            },
+            "new_str": {
+                "type": "string",
+                "description": "Replacement string (may be empty for deletion).",
+            },
+            "message": {
+                "type": "string",
+                "description": "Commit message (default: 'Edit via str_replace')",
+            },
+        },
+        "required": ["repo", "path", "branch", "old_str", "new_str"],
+    },
+    wrap_errors=True,
+    is_github=True,
+)
+async def str_replace_github_file(ctx, data):
+    over = bump_budget(ctx.context, "edit")
+    if over:
+        return over
+    repo = str(data.get("repo") or "").strip()
+    path = str(data.get("path") or "").strip()
+    branch = str(data.get("branch") or "main").strip()
+    old_str = str(data.get("old_str") or "")
+    new_str = str(data.get("new_str") or "")
+    message = str(data.get("message") or "Edit via str_replace").strip()
+    if not repo or not path or not branch or not old_str:
+        return "(error: repo, path, branch, and old_str required)"
+    if old_str == new_str:
+        return "(error: old_str equals new_str — nothing to replace)"
+    owner, repo_name = split_repo(repo)
+
+    body, sha_or_err = await _fetch_body_sha(
+        ctx, owner, repo_name, path, branch
+    )
+    if body is None:
+        return f"(error: could not read file: {sha_or_err})"
+    sha = sha_or_err
+
+    body_lf = body.replace("\r\n", "\n")
+    old_lf = old_str.replace("\r\n", "\n")
+    new_lf = new_str.replace("\r\n", "\n")
+    count = body_lf.count(old_lf)
+    if count == 0:
+        return (
+            "Error: No match found for old_str. Re-read the file (read_github_file) "
+            "and try again with text that exists in the current file. Whitespace "
+            "must match byte-for-byte."
+        )
+    if count > 1:
+        return (
+            f"Error: Found {count} matches for old_str. Add more surrounding "
+            f"context (3-5 lines before/after) to make the match unique."
+        )
+    new_body_lf = body_lf.replace(old_lf, new_lf, 1)
+    new_body = (
+        new_body_lf.replace("\n", "\r\n")
+        if "\r\n" in body and "\r\n" not in body_lf
+        else new_body_lf
+    )
+    result = await _commit_with_sha_retry(
+        ctx, owner, repo_name, path, branch, new_body, message, sha
+    )
+    if result.startswith("(error") or result.startswith("Error"):
+        return result
+    return f"Successfully replaced text at exactly one location. {result}"
+
+
+@tool(
+    name="insert_at_line_github_file",
+    description=(
+        "Insert text at a specific line in a GitHub file. after_line=0 prepends to the "
+        "top of the file; after_line=N inserts AFTER the Nth line (1-indexed). Useful "
+        "for adding imports, list entries, or any append where there's no unique anchor "
+        "string for str_replace_github_file. Always create_github_branch first."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "repo": {
+                "type": "string",
+                "description": "Repo in 'owner/repo' format",
+            },
+            "path": {
+                "type": "string",
+                "description": "File path, e.g. 'plugins/foo.py'",
+            },
+            "branch": {"type": "string", "description": "Branch to commit to"},
+            "after_line": {
+                "type": "integer",
+                "description": "Line number to insert AFTER (0 = prepend, file_total = append)",
+            },
+            "text": {
+                "type": "string",
+                "description": "Text to insert. Trailing newline added if missing.",
+            },
+            "message": {
+                "type": "string",
+                "description": "Commit message (default: 'Insert via line tool')",
+            },
+        },
+        "required": ["repo", "path", "branch", "after_line", "text"],
+    },
+    wrap_errors=True,
+    is_github=True,
+)
+async def insert_at_line_github_file(ctx, data):
+    over = bump_budget(ctx.context, "edit")
+    if over:
+        return over
+    repo = str(data.get("repo") or "").strip()
+    path = str(data.get("path") or "").strip()
+    branch = str(data.get("branch") or "main").strip()
+    text = str(data.get("text") or "")
+    message = str(data.get("message") or "Insert via line tool").strip()
+    try:
+        after_line = int(data.get("after_line", -1))
+    except (ValueError, TypeError):
+        return "(error: after_line must be an integer)"
+    if not repo or not path or not branch or after_line < 0 or not text:
+        return "(error: repo, path, branch, after_line>=0, and text required)"
+    owner, repo_name = split_repo(repo)
+
+    body, sha_or_err = await _fetch_body_sha(
+        ctx, owner, repo_name, path, branch
+    )
+    if body is None:
+        return f"(error: could not read file: {sha_or_err})"
+    sha = sha_or_err
+
+    body_lf = body.replace("\r\n", "\n")
+    lines = body_lf.split("\n")
+    if after_line > len(lines):
+        return (
+            f"(error: after_line={after_line} exceeds file length "
+            f"({len(lines)} lines). Use 0 to prepend or {len(lines)} to append.)"
+        )
+    payload = text if text.endswith("\n") else text + "\n"
+    payload_lines = payload.rstrip("\n").split("\n")
+    new_lines = lines[:after_line] + payload_lines + lines[after_line:]
+    new_body_lf = "\n".join(new_lines)
+    new_body = (
+        new_body_lf.replace("\n", "\r\n")
+        if "\r\n" in body and "\r\n" not in body_lf
+        else new_body_lf
+    )
+    result = await _commit_with_sha_retry(
+        ctx, owner, repo_name, path, branch, new_body, message, sha
+    )
+    if result.startswith("(error") or result.startswith("Error"):
+        return result
+    return (
+        f"Successfully inserted {len(payload_lines)} line(s) after line "
+        f"{after_line}. {result}"
+    )
+
+
+@tool(
+    name="read_github_file_meta",
+    description=(
+        "Cheap pre-flight on a file before reading it. Returns size in chars, line count, "
+        "blob SHA, and (for .py files) a top-level symbol map (classes, functions, line "
+        "numbers). Use this BEFORE read_github_file when a file might be large — if size "
+        ">12000 you'd otherwise need offset pagination. The symbol map lets you jump "
+        "straight to a function with read_github_file(start_line=N) instead of reading "
+        "the file from the top."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "repo": {
+                "type": "string",
+                "description": "Repo in 'owner/repo' format",
+            },
+            "path": {
+                "type": "string",
+                "description": "File path, e.g. 'plugins/foo.py'",
+            },
+            "branch": {
+                "type": "string",
+                "description": "Branch (default: main)",
+            },
+        },
+        "required": ["repo", "path"],
+    },
+    wrap_errors=True,
+    is_github=True,
+)
+async def read_github_file_meta(ctx, data):
+    over = bump_budget(ctx.context, "explore")
+    if over:
+        return over
+    repo = str(data.get("repo") or "").strip()
+    path = str(data.get("path") or "").strip()
+    branch = str(data.get("branch") or "main").strip()
+    if not repo or not path:
+        return "(error: repo and path required)"
+    owner, repo_name = split_repo(repo)
+    body, sha_or_err = await _fetch_body_sha(
+        ctx, owner, repo_name, path, branch
+    )
+    if body is None:
+        return f"(error: {sha_or_err})"
+    sha = sha_or_err
+    line_count = body.count("\n") + (0 if body.endswith("\n") else 1)
+    size = len(body)
+    header = f"size: {size} chars, lines: {line_count}, sha: {sha or '?'}"
+    if not path.endswith(".py"):
+        return header
+    # Cap AST parsing input — defends against pathological inputs (deeply nested
+    # expressions can hit CPython's recursion limit, very large files burn CPU).
+    # ast.parse itself never executes code; it only builds a syntax tree, so this
+    # is safe to call on arbitrary GitHub content. The cap is purely DoS hygiene.
+    if size > 500_000:
+        return f"{header}\n(symbol map skipped: file too large for AST parse)"
+    try:
+        tree = ast.parse(body)
+    except SyntaxError as e:
+        return f"{header}\n(symbol map skipped: SyntaxError {e.msg} at line {e.lineno})"
+    except (RecursionError, ValueError, MemoryError) as e:
+        return (
+            f"{header}\n(symbol map skipped: {type(e).__name__} during parse)"
+        )
+    symbols: list[str] = []
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            symbols.append(f"L{node.lineno}: class {node.name}")
+            for sub in node.body:
+                if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    symbols.append(f"L{sub.lineno}:   def {sub.name}")
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            symbols.append(f"L{node.lineno}: def {node.name}")
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id.isupper():
+                    symbols.append(f"L{node.lineno}: {target.id} (constant)")
+    if not symbols:
+        return f"{header}\n(no top-level symbols)"
+    return f"{header}\nTop-level symbols:\n" + "\n".join(symbols)
 
 
 @tool(

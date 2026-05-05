@@ -364,19 +364,25 @@ _PR_CLAIM_RE = re.compile(
 )
 
 
-def _guard_pr_hallucination(answer: str, real_urls: list[str]) -> str:
+def _guard_pr_hallucination(
+    answer: str, real_urls: list[str], pr_tool_called: bool
+) -> str:
     """Refuse to let the model claim a PR was opened when none actually was.
 
     The model sometimes invents URLs like 'pull/forkowner:branchname' when
-    open_github_pr never returned a valid URL. Replace any such claim with
-    an explicit failure note and prepend the real URL when one exists.
+    open_github_pr never returned a valid URL. The guard only fires when the
+    tool was actually called but produced no URL — otherwise references to
+    /pull/N URLs (chat history, user-supplied PR links, repo navigation,
+    str_replace edits to existing PRs) trip a false hallucination warning.
     """
     if real_urls:
         first_url = real_urls[0]
         if first_url in answer:
             return answer
         return f"PR opened: {first_url}\n\n{answer}"
-    if _PR_CLAIM_RE.search(answer) or "/pull/" in answer:
+    if not pr_tool_called:
+        return answer
+    if _PR_CLAIM_RE.search(answer) or _PR_URL_RE.search(answer):
         cleaned = _PR_URL_RE.sub("<no-pr>", answer)
         return (
             "(failed to open PR — open_github_pr returned no valid URL; "
@@ -484,10 +490,38 @@ class _RunTracker(RunHooks):
 _TOOLS_CACHE: dict[int, list[FunctionTool]] = {}
 _AGENT_CACHE: dict[int, Agent] = {}
 
-# Per-channel conversation history so the model remembers its own previous
-# outputs across IRC messages.
-_CONV_CACHE: dict[tuple[str, str], list] = {}
-_CONV_MAX_ITEMS = 12
+# Recent-chat snippet size auto-prepended to each .agi prompt. Gives the model
+# light channel context for trivial follow-ups without burning a chat_history
+# tool call. We deliberately do NOT carry openai-agents SDK history across
+# runs: that history contains prior tool calls and tool outputs, which biased
+# the model to "continue" the previous task even when a different user asked
+# something unrelated. Each .agi invocation is now a fresh agent run; deeper
+# context recall is available via the chat_history / search_history tools.
+_RECENT_CHAT_LINES = 6
+
+
+def _build_recent_chat_snippet(event, n: int) -> str:
+    """Format the last n IRC messages as a plain-text reference block.
+
+    Returned with a header that primes the model to treat the snippet as
+    background context, not as an open task to continue.
+    """
+    try:
+        history = list(event.conn.history[event.chan])
+    except (KeyError, AttributeError):
+        return ""
+    if not history:
+        return ""
+    recent = history[-n:]
+    lines = []
+    for nick, _ts, msg in recent:
+        msg = msg.replace("\x01ACTION ", "* ").replace("\x01", "")
+        lines.append(f"<{nick}> {msg}")
+    body = "\n".join(lines)
+    return (
+        "[recent channel context — reference only, NOT a task to continue]\n"
+        f"{body}\n[end recent context]\n"
+    )
 
 
 class CaptureEvent(CommandEvent):
@@ -722,25 +756,24 @@ async def _run_agent(event, prompt: str) -> None:
         backends_to_try.append(fallback)
 
     ts = datetime.now().strftime("%H:%M:%S")
+    recent_snippet = _build_recent_chat_snippet(event, _RECENT_CHAT_LINES)
     enriched = (
-        f"[channel: {event.chan} | user: {event.nick} | time: {ts}]\n{prompt}"
+        f"{recent_snippet}"
+        f"[channel: {event.chan} | user: {event.nick} | time: {ts}]\n"
+        f"This is a NEW task from {event.nick}. Act on the message below — "
+        f"do not continue any prior work shown in the recent context above.\n"
+        f"{prompt}"
     )
-    conv_key = (event.conn.name, event.chan)
-    prev_history = _CONV_CACHE.get(conv_key, [])
-    agent_input = (
-        prev_history + [{"role": "user", "content": enriched}]
-        if prev_history
-        else enriched
-    )
+    agent_input = enriched
 
     typing_id = id(event)
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
     logger.info(
-        "agent: starting LLM call, backends=%s timeout=%s history_items=%d",
+        "agent: starting LLM call, backends=%s timeout=%s recent_lines=%d",
         backends_to_try,
         timeout,
-        len(prev_history),
+        _RECENT_CHAT_LINES,
     )
     tracker = _RunTracker()
     backends_tried: list[str] = []
@@ -755,7 +788,6 @@ async def _run_agent(event, prompt: str) -> None:
             cfg,
             timeout,
             max_turns,
-            conv_key,
             bot,
         )
         if last_err:
@@ -776,7 +808,6 @@ async def _try_backends(
     cfg,
     timeout,
     max_turns,
-    conv_key,
     bot,
 ) -> Optional[BaseException]:
     """Run the agent against each backend in order. Return the last error (or
@@ -829,16 +860,13 @@ async def _try_backends(
             last_err = e
             continue
 
-        try:
-            new_history = result.to_input_list()
-            _CONV_CACHE[conv_key] = new_history[-_CONV_MAX_ITEMS:]
-        except AttributeError:
-            logger.debug(
-                "agent: result.to_input_list() unavailable in this SDK version"
-            )
-
         answer = str(result.final_output or "").strip() or "(no answer)"
-        answer = _guard_pr_hallucination(answer, tracker._pr_urls)
+        pr_tool_called = any(
+            name == "open_github_pr" for name, _ in tracker._calls
+        )
+        answer = _guard_pr_hallucination(
+            answer, tracker._pr_urls, pr_tool_called
+        )
         event.reply(*_format_answer(answer, cfg))
         return None
     return last_err
