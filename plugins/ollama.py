@@ -20,9 +20,10 @@ from cloudbot.util.ai_common import (
 from cloudbot.util.web import get_session
 
 MAX_USER_HISTORY_LENGTH = 10
-# GGUF weight-file size cap (bytes). At Q4_K_M, ~6GB ≈ 10B params — generous
-# enough to include 9B-Q4 and Gemma "E4B" effective-param models.
-MODEL_SIZE_LIMIT_BYTES = 7 * 1024**3
+# GGUF weight-file size cap (bytes). 16GB lets through 8B-Q4 / 14B-Q4 / 4B-Q8
+# class models — fast enough for IRC. Bigger than that runs at <3 tok/s on
+# the homelab iGPU and is too slow for chat.
+MODEL_SIZE_LIMIT_BYTES = 16 * 1024**3
 ALLOWED_MODELS_TTL_S = 300
 IMAGE_DEFAULT_SIZE = "512x512"
 # Usecase flags that mark a model as NOT a pure chat LLM.
@@ -38,6 +39,8 @@ _CHAT_BACKENDS = {"llama-cpp", "vulkan-llama-cpp"}
 
 _allowed_cache: dict[str, tuple[float, list[str]]] = {}
 _image_models_cache: dict[str, tuple[float, list[str]]] = {}
+_tts_models_cache: dict[str, tuple[float, list[str]]] = {}
+_stt_models_cache: dict[str, tuple[float, list[str]]] = {}
 
 
 def _model_is_allowed(api_url: str, headers: dict, mid: str) -> bool:
@@ -96,10 +99,15 @@ def _get_config_json(base: str, headers: dict, mid: str) -> dict | None:
         return None
 
 
-def _fetch_image_models(api_url: str, api_key: str | None) -> list[str]:
-    """Return model ids whose config advertises FLAG_IMAGE."""
+def _fetch_models_by_flag(
+    api_url: str,
+    api_key: str | None,
+    flag: str,
+    cache: dict[str, tuple[float, list[str]]],
+) -> list[str]:
+    """Return model ids whose config advertises the given known_usecase flag."""
     now = time.monotonic()
-    cached = _image_models_cache.get(api_url)
+    cached = cache.get(api_url)
     if cached and now - cached[0] < ALLOWED_MODELS_TTL_S:
         return cached[1]
 
@@ -110,16 +118,28 @@ def _fetch_image_models(api_url: str, api_key: str | None) -> list[str]:
     )
     response.raise_for_status()
     ids = [m["id"] for m in response.json()["data"]]
-    image_ids: list[str] = []
+    matched: list[str] = []
     for mid in ids:
         cfg = _get_config_json(base, headers, mid)
         if cfg is None:
             continue
-        if "FLAG_IMAGE" in (cfg.get("known_usecases") or []):
-            image_ids.append(mid)
+        if flag in (cfg.get("known_usecases") or []):
+            matched.append(mid)
 
-    _image_models_cache[api_url] = (now, image_ids)
-    return image_ids
+    cache[api_url] = (now, matched)
+    return matched
+
+
+def _fetch_image_models(api_url: str, api_key: str | None) -> list[str]:
+    return _fetch_models_by_flag(api_url, api_key, "FLAG_IMAGE", _image_models_cache)
+
+
+def _fetch_tts_models(api_url: str, api_key: str | None) -> list[str]:
+    return _fetch_models_by_flag(api_url, api_key, "FLAG_TTS", _tts_models_cache)
+
+
+def _fetch_stt_models(api_url: str, api_key: str | None) -> list[str]:
+    return _fetch_models_by_flag(api_url, api_key, "FLAG_TRANSCRIPT", _stt_models_cache)
 
 
 def _fetch_allowed_models(api_url: str, api_key: str | None) -> list[str]:
@@ -446,3 +466,145 @@ def ai_image_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
     paste_url = web.paste(png_bytes, ext="png")
     return f"[{model}] {paste_url}"
+
+
+@hook.command("aiaudio", "tts")
+def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<[voice] text> - Generate speech via LocalAI TTS. '.aiaudio list' to list voices."""
+    api_url, api_key = get_ollama_config(bot)
+    if not api_url:
+        notice(
+            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
+        )
+        return ""
+
+    text = text.strip()
+
+    try:
+        tts_models = _fetch_tts_models(api_url, api_key)
+    except _RateLimited:
+        return "Error: server rate-limited enumeration — bot likely needs enterprise API key."
+    except requests.HTTPError as e:
+        return f"Error listing audio models: {e}"
+    except requests.Timeout:
+        return "Error: Request timed out"
+
+    if text.lower() == "list":
+        if not tts_models:
+            return "No TTS models detected."
+        return f"Available TTS models: {', '.join(tts_models)}"
+
+    if not tts_models:
+        return "No TTS models detected. Try '.aiaudio list'."
+
+    parts = text.split(None, 1)
+    model, prompt = tts_models[0], text
+    if len(parts) == 2:
+        first = parts[0].lower()
+        match = next((m for m in tts_models if m == parts[0]), None) or next(
+            (m for m in tts_models if first in m.lower()), None
+        )
+        if match:
+            model, prompt = match, parts[1]
+
+    if not prompt:
+        return "Usage: .aiaudio [voice] <text>"
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["apikey"] = api_key
+
+    try:
+        response = get_session().post(
+            f"{api_url.rstrip('/')}/v1/audio/speech",
+            headers=headers,
+            json={"model": model, "input": prompt},
+            timeout=180,
+        )
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        return f"Error: {e}"
+    except requests.Timeout:
+        return "Error: speech synthesis timed out"
+
+    wav_bytes = response.content
+    if not wav_bytes or wav_bytes[:4] != b"RIFF":
+        return "Error: server did not return a WAV"
+
+    paste_url = web.paste(wav_bytes, ext="wav")
+    return f"[{model}] {paste_url}"
+
+
+@hook.command("aistt", "stt")
+def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<audio_url> - Transcribe an audio URL via LocalAI Whisper. '.stt list' to list models."""
+    api_url, api_key = get_ollama_config(bot)
+    if not api_url:
+        notice(
+            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
+        )
+        return ""
+
+    text = text.strip()
+
+    try:
+        stt_models = _fetch_stt_models(api_url, api_key)
+    except _RateLimited:
+        return "Error: server rate-limited enumeration — bot likely needs enterprise API key."
+    except requests.HTTPError as e:
+        return f"Error listing STT models: {e}"
+    except requests.Timeout:
+        return "Error: Request timed out"
+
+    if text.lower() == "list":
+        if not stt_models:
+            return "No STT models detected."
+        return f"Available STT models: {', '.join(stt_models)}"
+
+    if not stt_models:
+        return "No STT models detected. Try '.stt list'."
+
+    parts = text.split(None, 1)
+    if len(parts) == 2 and parts[0] in stt_models:
+        model, audio_url = parts[0], parts[1]
+    else:
+        model, audio_url = stt_models[0], text
+
+    audio_url = audio_url.strip()
+    if not (audio_url.startswith("http://") or audio_url.startswith("https://")):
+        return "Usage: .stt [model] <audio_url>"
+
+    try:
+        audio_bytes = get_session().get(audio_url, timeout=30).content
+    except requests.RequestException as e:
+        return f"Error fetching audio: {e}"
+
+    headers = {}
+    if api_key:
+        headers["apikey"] = api_key
+
+    try:
+        response = get_session().post(
+            f"{api_url.rstrip('/')}/v1/audio/transcriptions",
+            headers=headers,
+            files={"file": ("audio", audio_bytes)},
+            data={"model": model},
+            timeout=180,
+        )
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        return f"Error: {e}"
+    except requests.Timeout:
+        return "Error: transcription timed out"
+
+    try:
+        transcript = response.json().get("text", "").strip()
+    except ValueError:
+        return "Error: unexpected response from server"
+
+    if not transcript:
+        return f"[{model}] (no speech detected)"
+    msg = f"[{model}] {transcript}"
+    if len(msg) > 400:
+        return f"[{model}] {web.paste(transcript, ext='txt')}"
+    return msg
