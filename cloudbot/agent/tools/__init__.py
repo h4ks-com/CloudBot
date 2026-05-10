@@ -8,5 +8,6 @@ from cloudbot.agent.tools import (  # noqa: F401  (side effect: tool registratio
     vibegame,
     vision,
     web,
+    webxdc,
     wiki,
 )

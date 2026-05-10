@@ -21,7 +21,7 @@ from agents.exceptions import MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_provider import OpenAIProvider
 from agents.run import RunConfig
-from openai import AsyncOpenAI
+from openai import APIError, AsyncOpenAI
 
 from cloudbot import hook
 from cloudbot.agent import (
@@ -403,6 +403,7 @@ class _RunTracker(RunHooks):
         self._calls: list[tuple[str, float]] = []
         self._errors: set[int] = set()
         self._pr_urls: list[str] = []
+        self._webxdc_urls: list[str] = []
 
     async def on_tool_start(self, context, agent, tool) -> None:
         logger.info("agent: tool invoked: %s", tool.name)
@@ -424,6 +425,12 @@ class _RunTracker(RunHooks):
             m = _PR_URL_RE.search(result_str)
             if m:
                 self._pr_urls.append(m.group(0))
+        elif tool.name == "webxdc_app":
+            # Tool returns a bare URL on success. Anything else (error string,
+            # paste failure) is skipped so we don't tag the message with junk.
+            stripped = result_str.strip()
+            if stripped.startswith(("http://", "https://")) and "\n" not in stripped:
+                self._webxdc_urls.append(stripped)
 
     def failure_summary(self, err: BaseException) -> str:
         err_type = type(err).__name__
@@ -853,6 +860,12 @@ async def _try_backends(
             )
             last_err = e
             break
+        except APIError as e:
+            logger.warning(
+                "agent: %s API error: %s: %s", backend, type(e).__name__, e
+            )
+            last_err = e
+            continue
         except (KeyError, AttributeError, ValueError, RuntimeError) as e:
             logger.warning(
                 "agent: %s failed: %s: %s", backend, type(e).__name__, e
@@ -867,9 +880,50 @@ async def _try_backends(
         answer = _guard_pr_hallucination(
             answer, tracker._pr_urls, pr_tool_called
         )
-        event.reply(*_format_answer(answer, cfg))
+        formatted = _format_answer(answer, cfg)
+        # If a webxdc app was deployed this run, attach +webxdc/app=<url> to
+        # the outgoing PRIVMSG so webxdc-capable clients (e.g. ObsidianIRC)
+        # render the .xdc inline. Filehosts often serve .xdc as application/zip,
+        # so URL extension + MIME alone aren't reliable signals.
+        if tracker._webxdc_urls and len(formatted) == 1:
+            _send_webxdc_tagged_reply(
+                event, formatted[0], tracker._webxdc_urls[-1]
+            )
+        else:
+            event.reply(*formatted)
         return None
     return last_err
+
+
+def _escape_tag_value(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace(";", "\\:")
+        .replace(" ", "\\s")
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
+    )
+
+
+def _send_webxdc_tagged_reply(event, body: str, app_url: str) -> None:
+    """Send PRIVMSG with +webxdc/app tag + nick-prefixed body, raw on the wire.
+
+    Mirrors event.reply's nick-prefix behavior (controlled by reply_ping cfg)
+    so the chat looks identical to a normal reply, with the tag piggybacked.
+    Falls back to plain event.reply on any send failure.
+    """
+    try:
+        target = event.chan or event.nick
+        reply_ping = event.conn.config.get("reply_ping", True)
+        prefixed = f"({event.nick}) {body}" if reply_ping else body
+        line = (
+            f"@+webxdc/app={_escape_tag_value(app_url)} "
+            f"PRIVMSG {target} :{prefixed}"
+        )
+        event.conn.send(line)
+    except (AttributeError, ValueError, OSError):
+        logger.exception("agent: webxdc tagged send failed; falling back")
+        event.reply(body)
 
 
 def _report_failure(event, tracker, err, prompt, backends_tried) -> None:
