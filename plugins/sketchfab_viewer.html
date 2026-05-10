@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__NAME__ - 3D Viewer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+#c { width: 100vw; height: 100vh; }
+#i {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  background: rgba(13, 17, 23, .85);
+  backdrop-filter: blur(8px);
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 14px 18px;
+  max-width: 340px;
+}
+#i h2 {
+  font-size: 16px;
+  color: #58a6ff;
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+#i p {
+  font-size: 12px;
+  color: #8b949e;
+  line-height: 1.7;
+}
+#i a { color: #58a6ff; }
+#l {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  background: rgba(13, 17, 23, .92);
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 20px 28px;
+  font-size: 15px;
+}
+#l span {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: sp .7s linear infinite;
+  margin-right: 10px;
+  vertical-align: middle;
+}
+@keyframes sp { to { transform: rotate(360deg); } }
+#h {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: rgba(13, 17, 23, .6);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 11px;
+  color: #8b949e;
+}
+</style>
+</head>
+<body>
+<div id="c"></div>
+<div id="i"><h2>__NAME__</h2><p>__META__</p></div>
+<div id="l"><span></span>Loading model&hellip;</div>
+<div id="h">Drag to rotate &middot; Scroll to zoom &middot; Right-click to pan</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as T from 'three';
+import { GLTFLoader as GL } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls as OC } from 'three/addons/controls/OrbitControls.js';
+import { DRACOLoader as DL } from 'three/addons/loaders/DRACOLoader.js';
+
+const scene = new T.Scene();
+scene.background = new T.Color(0x0d1117);
+
+const camera = new T.PerspectiveCamera(45, innerWidth / innerHeight, 0.01, 1e3);
+camera.position.set(3, 2, 3);
+
+const renderer = new T.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+renderer.toneMapping = T.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1;
+renderer.outputColorSpace = T.SRGBColorSpace;
+document.getElementById('c').appendChild(renderer.domElement);
+
+const controls = new OC(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 1.5;
+
+scene.add(new T.AmbientLight(0xffffff, 0.6));
+const d1 = new T.DirectionalLight(0xffffff, 1.2);
+d1.position.set(5, 10, 7);
+scene.add(d1);
+const d2 = new T.DirectionalLight(0x4488ff, 0.4);
+d2.position.set(-5, -2, -5);
+scene.add(d2);
+scene.add(new T.GridHelper(20, 40, 0x30363d, 0x21262d));
+
+const dracoLoader = new DL();
+dracoLoader.setDecoderPath(
+  'https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/libs/draco/'
+);
+const gltfLoader = new GL();
+gltfLoader.setDRACOLoader(dracoLoader);
+
+gltfLoader.load('__URL__?download=true', (gltf) => {
+  scene.add(gltf.scene);
+  const box = new T.Box3().setFromObject(gltf.scene);
+  const center = box.getCenter(new T.Vector3());
+  const size = box.getSize(new T.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z);
+
+  controls.target.copy(center);
+  camera.position.copy(center).add(new T.Vector3(maxDim * 1.5, maxDim, maxDim * 1.5));
+  camera.near = maxDim * 0.001;
+  camera.far = maxDim * 100;
+  camera.updateProjectionMatrix();
+  controls.update();
+
+  scene.children
+    .filter((x) => x.isGridHelper)
+    .forEach((x) => (x.position.y = box.min.y));
+
+  document.getElementById('l').style.display = 'none';
+}, undefined, (err) => {
+  document.getElementById('l').textContent = 'Error: ' + err.message;
+});
+
+(function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+})();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

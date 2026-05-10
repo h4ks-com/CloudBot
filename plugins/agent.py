@@ -353,6 +353,10 @@ DEFAULT_INCLUDE = frozenset(
         "yt",
         "ytime",
         "ytn",
+        "sketchfab",
+        "sk",
+        "skn",
+        "skt",
         "zombs",
     }
 )

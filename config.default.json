@@ -260,7 +260,8 @@
         "z_ai": "",
         "github_mcp_bot": "",
         "gemini": "",
-        "pollinations": ""
+        "pollinations": "",
+        "sketchfab": ""
     },
     "z_ai_endpoint": "https://api.z.ai/api/coding/paas/v4/chat/completions",
     "z_ai_model": "glm-5",
