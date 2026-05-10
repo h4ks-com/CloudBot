@@ -20,7 +20,7 @@ from cloudbot import hook
 from cloudbot.event import CommandEvent
 from cloudbot.util import formatting
 from cloudbot.util.typing import start_typing_for_command, stop_typing_for_command
-TEST_MARKER3 CUSTOM_TOOLS, upload_markdown_paste
+from plugins.agent_tools import CUSTOM_TOOLS, upload_markdown_paste
 
 logger = logging.getLogger("cloudbot")
 
@@ -89,7 +89,7 @@ AGENT_INSTRUCTIONS = (
     "Call multiple tools in parallel when independent. "
     "Use the chat_history tool when the request refers to something said earlier or needs channel context. "
     "When a message contains an image URL (jpg/png/gif/webp/imgur/i.redd.it etc.), use describe_image to see it. "
-    "Keep your final answer concise ÃÂ¢ÃÂÃÂ IRC lines are short. "
+    "Keep your final answer concise ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ IRC lines are short. "
     "When a tool returns raw text, extract and summarise the key information."
 )
 
@@ -184,7 +184,7 @@ def _build_tool(cmd_name: str, cmd_hook) -> FunctionTool:
             cmd_prefix=".",
         )
         # launch() runs sieves (rate_limit, check_disabled, check_acls).
-        # internal_launch() would skip them ÃÂ¢ÃÂÃÂ we want them enforced per tool call.
+        # internal_launch() would skip them ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ we want them enforced per tool call.
         ok = await irc_event.bot.plugin_manager.launch(cmd_hook, capture)
         if not ok:
             return f"(command .{cmd_name} errored)"
@@ -311,12 +311,12 @@ async def _run_agent(event, prompt: str) -> None:
     cfg = bot.config.get("plugins", {}).get("agent", {}) or {}
     logger.info("agent: _run_agent called, prompt=%r, cfg_keys=%s", prompt, list(cfg.keys()) if cfg else "EMPTY")
     if not cfg or not cfg.get("enabled", False) or not cfg.get("backends"):
-        logger.info("agent: aborting ÃÂ¢ÃÂÃÂ enabled=%s backends=%s", cfg.get("enabled") if cfg else "N/A", bool(cfg.get("backends")) if cfg else "N/A")
+        logger.info("agent: aborting ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ enabled=%s backends=%s", cfg.get("enabled") if cfg else "N/A", bool(cfg.get("backends")) if cfg else "N/A")
         return
 
     enabled_chans = cfg.get("enabled_channels") or []
     if enabled_chans and event.chan not in enabled_chans:
-        logger.info("agent: aborting ÃÂ¢ÃÂÃÂ chan %s not in enabled_channels %s", event.chan, enabled_chans)
+        logger.info("agent: aborting ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ chan %s not in enabled_channels %s", event.chan, enabled_chans)
         return
 
     prompt = (prompt or "").strip()
