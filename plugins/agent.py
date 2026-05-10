@@ -89,7 +89,7 @@ AGENT_INSTRUCTIONS = (
     "Call multiple tools in parallel when independent. "
     "Use the chat_history tool when the request refers to something said earlier or needs channel context. "
     "When a message contains an image URL (jpg/png/gif/webp/imgur/i.redd.it etc.), use describe_image to see it. "
-    "Keep your final answer concise â IRC lines are short. "
+    "Keep your final answer concise Ã¢ÂÂ IRC lines are short. "
     "When a tool returns raw text, extract and summarise the key information."
 )
 
@@ -184,7 +184,7 @@ def _build_tool(cmd_name: str, cmd_hook) -> FunctionTool:
             cmd_prefix=".",
         )
         # launch() runs sieves (rate_limit, check_disabled, check_acls).
-        # internal_launch() would skip them â we want them enforced per tool call.
+        # internal_launch() would skip them Ã¢ÂÂ we want them enforced per tool call.
         ok = await irc_event.bot.plugin_manager.launch(cmd_hook, capture)
         if not ok:
             return f"(command .{cmd_name} errored)"
@@ -306,17 +306,17 @@ def _format_answer(text: str, cfg: dict) -> list[str]:
     return [formatting.truncate(collapsed, max_chars)]
 
 
-TEST_MARKER_XYZ(event, prompt: str) -> None:
+async def _run_agent(event, prompt: str) -> None:
     bot = event.bot
     cfg = bot.config.get("plugins", {}).get("agent", {}) or {}
     logger.info("agent: _run_agent called, prompt=%r, cfg_keys=%s", prompt, list(cfg.keys()) if cfg else "EMPTY")
     if not cfg or not cfg.get("enabled", False) or not cfg.get("backends"):
-        logger.info("agent: aborting â enabled=%s backends=%s", cfg.get("enabled") if cfg else "N/A", bool(cfg.get("backends")) if cfg else "N/A")
+        logger.info("agent: aborting Ã¢ÂÂ enabled=%s backends=%s", cfg.get("enabled") if cfg else "N/A", bool(cfg.get("backends")) if cfg else "N/A")
         return
 
     enabled_chans = cfg.get("enabled_channels") or []
     if enabled_chans and event.chan not in enabled_chans:
-        logger.info("agent: aborting â chan %s not in enabled_channels %s", event.chan, enabled_chans)
+        logger.info("agent: aborting Ã¢ÂÂ chan %s not in enabled_channels %s", event.chan, enabled_chans)
         return
 
     prompt = (prompt or "").strip()
