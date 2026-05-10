@@ -69,7 +69,18 @@ async def sketchfab_search(ctx, data) -> str:
     name="sketchfab_download",
     description=(
         "Download a Sketchfab 3D model as GLB and upload it to the paste service. "
-        "Returns the download URL. Use sketchfab_search first to find model UIDs."
+        "Returns the download URL (already includes ?download=true). "
+        "Use sketchfab_search first to find model UIDs.\n"
+        "IMPORTANT when using the returned URL in a web_app with Three.js:\n"
+        "- Never assume the model's origin is at its feet or centered.\n"
+        "- Always compute a bounding box after loading:\n"
+        "  const box = new THREE.Box3().setFromObject(model);\n"
+        "  const size = box.getSize(new THREE.Vector3());\n"
+        "  const center = box.getCenter(new THREE.Vector3());\n"
+        "- Center the model: model.position.x -= center.x; model.position.z -= center.z;\n"
+        "- Lift so bottom sits on the floor: model.position.y -= box.min.y;\n"
+        "- Scale uniformly if the model is too large or too small.\n"
+        "- Position the camera relative to the model's actual bounding box size."
     ),
     schema={
         "type": "object",
@@ -107,6 +118,7 @@ async def sketchfab_download(ctx, data) -> str:
     ext = "glb" if fmt == "glb" else "zip"
     try:
         url = _clean_paste_url(await run_in_executor(web.paste, model_data, ext))
+        url = f"{url}?download=true"
     except (OSError, ValueError) as e:
         return f"(error uploading model: {e})"
 
