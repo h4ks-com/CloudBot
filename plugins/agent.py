@@ -500,6 +500,11 @@ _AGENT_HISTORY_MAX = 20
 
 _AGENT_HISTORY: dict[str, deque[dict]] = {}
 
+_IMAGE_URL_RE = re.compile(
+    r"https?://\S+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\?\S*)?",
+    re.IGNORECASE,
+)
+
 
 def _get_agent_history(chan: str) -> deque[dict]:
     if chan not in _AGENT_HISTORY:
@@ -507,9 +512,22 @@ def _get_agent_history(chan: str) -> deque[dict]:
     return _AGENT_HISTORY[chan]
 
 
+def _build_user_content(text: str) -> str | list[dict]:
+    urls = _IMAGE_URL_RE.findall(text)
+    if not urls:
+        return text
+    parts: list[dict] = []
+    for url in urls:
+        parts.append({"type": "image_url", "image_url": {"url": url}})
+    text_clean = _IMAGE_URL_RE.sub("", text).strip()
+    if text_clean:
+        parts.append({"type": "text", "text": text_clean})
+    return parts if parts else text
+
+
 def _history_to_input(history: deque[dict], current_prompt: str) -> list[dict]:
     items = list(history)
-    items.append({"role": "user", "content": current_prompt})
+    items.append({"role": "user", "content": _build_user_content(current_prompt)})
     return items
 
 
