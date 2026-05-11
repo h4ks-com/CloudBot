@@ -1,7 +1,7 @@
 """Agentic LLM dispatcher for CloudBot.
 
 Explicit-only entry: .ask / .agent / .agi <prompt>. Routes to an LLM agent
-that can call existing bot commands as tools. Uses openai-agents 0.0.6
+that can call existing bot commands as tools. Uses openai-agents 0.17.1
 with Z.AI glm-5 (primary) and OpenRouter (fallback).
 
 Tool definitions live in cloudbot.agent (outside plugins/) so the plugin
@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import time
+from collections import deque
 from datetime import datetime
 from typing import Optional
 
@@ -21,7 +22,7 @@ from agents.exceptions import MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_provider import OpenAIProvider
 from agents.run import RunConfig
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, BadRequestError
 
 from cloudbot import hook
 from cloudbot.agent import (
@@ -494,14 +495,22 @@ class _RunTracker(RunHooks):
 _TOOLS_CACHE: dict[int, list[FunctionTool]] = {}
 _AGENT_CACHE: dict[int, Agent] = {}
 
-# Recent-chat snippet size auto-prepended to each .agi prompt. Gives the model
-# light channel context for trivial follow-ups without burning a chat_history
-# tool call. We deliberately do NOT carry openai-agents SDK history across
-# runs: that history contains prior tool calls and tool outputs, which biased
-# the model to "continue" the previous task even when a different user asked
-# something unrelated. Each .agi invocation is now a fresh agent run; deeper
-# context recall is available via the chat_history / search_history tools.
 _RECENT_CHAT_LINES = 6
+_AGENT_HISTORY_MAX = 20
+
+_AGENT_HISTORY: dict[str, deque[dict]] = {}
+
+
+def _get_agent_history(chan: str) -> deque[dict]:
+    if chan not in _AGENT_HISTORY:
+        _AGENT_HISTORY[chan] = deque(maxlen=_AGENT_HISTORY_MAX)
+    return _AGENT_HISTORY[chan]
+
+
+def _history_to_input(history: deque[dict], current_prompt: str) -> list[dict]:
+    items = list(history)
+    items.append({"role": "user", "content": current_prompt})
+    return items
 
 
 def _build_recent_chat_snippet(event, n: int) -> str:
@@ -764,20 +773,21 @@ async def _run_agent(event, prompt: str) -> None:
     enriched = (
         f"{recent_snippet}"
         f"[channel: {event.chan} | user: {event.nick} | time: {ts}]\n"
-        f"This is a NEW task from {event.nick}. Act on the message below — "
-        f"do not continue any prior work shown in the recent context above.\n"
-        f"{prompt}"
+        f"Task from {event.nick}: {prompt}\n"
     )
-    agent_input = enriched
+
+    history = _get_agent_history(event.chan)
+    agent_input = _history_to_input(history, enriched)
 
     typing_id = id(event)
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
     logger.info(
-        "agent: starting LLM call, backends=%s timeout=%s recent_lines=%d",
+        "agent: starting LLM call, backends=%s timeout=%s recent_lines=%d history=%d",
         backends_to_try,
         timeout,
         _RECENT_CHAT_LINES,
+        len(history),
     )
     tracker = _RunTracker()
     backends_tried: list[str] = []
@@ -793,6 +803,8 @@ async def _run_agent(event, prompt: str) -> None:
             timeout,
             max_turns,
             bot,
+            history,
+            enriched,
         )
         if last_err:
             _report_failure(event, tracker, last_err, prompt, backends_tried)
@@ -813,6 +825,8 @@ async def _try_backends(
     timeout,
     max_turns,
     bot,
+    history,
+    enriched_prompt,
 ) -> Optional[BaseException]:
     """Run the agent against each backend in order. Return the last error (or
     None on success — in which case we've already replied to IRC and the caller
@@ -840,6 +854,37 @@ async def _try_backends(
                 ),
                 timeout=timeout,
             )
+        except BadRequestError as e:
+            if "context_length_exceeded" not in str(e) or len(history) == 0:
+                logger.warning("agent: %s bad request: %s", backend, e)
+                last_err = e
+                continue
+            dropped = min(4, len(history))
+            for _ in range(dropped):
+                history.popleft()
+            logger.warning(
+                "agent: context overflow, dropped %d history items, retrying",
+                dropped,
+            )
+            agent_input = _history_to_input(history, enriched_prompt)
+            try:
+                result = await asyncio.wait_for(
+                    Runner.run(
+                        agent,
+                        agent_input,
+                        context=event,
+                        run_config=run_cfg,
+                        hooks=tracker,
+                        max_turns=max_turns,
+                    ),
+                    timeout=timeout,
+                )
+            except (BadRequestError, asyncio.TimeoutError) as e2:
+                logger.warning(
+                    "agent: %s failed after history trim: %s", backend, e2
+                )
+                last_err = e2
+                continue
         except asyncio.TimeoutError as e:
             logger.warning("agent: %s timed out after %ss", backend, timeout)
             last_err = e
@@ -849,9 +894,6 @@ async def _try_backends(
             last_err = e
             break
         except TypeError as e:
-            # Provider returned a malformed response (e.g. choices=null) under
-            # heavy context. Fallback would replay the same conversation and
-            # likely fail the same way.
             logger.warning(
                 "agent: %s returned malformed response: %s", backend, e
             )
@@ -871,6 +913,8 @@ async def _try_backends(
         answer = _guard_pr_hallucination(
             answer, tracker._pr_urls, pr_tool_called
         )
+        history.append({"role": "user", "content": enriched_prompt})
+        history.append({"role": "assistant", "content": answer})
         event.reply(*_format_answer(answer, cfg))
         return None
     return last_err
