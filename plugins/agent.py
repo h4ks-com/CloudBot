@@ -723,6 +723,14 @@ def _make_run_config(cfg: dict, bot, backend: str) -> RunConfig:
     )
 
 
+def _byte_truncate(text: str, max_bytes: int, suffix: str = "...") -> str:
+    encoded = text.encode("utf-8", "replace")
+    if len(encoded) <= max_bytes:
+        return text
+    cut = text.encode("utf-8", "replace")[: max_bytes - len(suffix.encode())]
+    return cut.decode("utf-8", "ignore").rstrip() + suffix
+
+
 def _format_answer(text: str, cfg: dict) -> list[str]:
     """One IRC line, paste only if it doesn't fit reply_max_chars."""
     max_chars = int(cfg.get("reply_max_chars", 420))
@@ -730,7 +738,7 @@ def _format_answer(text: str, cfg: dict) -> list[str]:
     lines = [ln for ln in text.splitlines() if ln.strip()]
     collapsed = " - ".join(lines) if lines else text
 
-    if len(collapsed) <= max_chars:
+    if len(collapsed.encode("utf-8")) <= max_chars:
         return [collapsed]
 
     url = None
@@ -741,9 +749,8 @@ def _format_answer(text: str, cfg: dict) -> list[str]:
 
     if url:
         suffix = f" (full: {url})"
-        truncated = formatting.truncate(collapsed, max_chars - len(suffix))
-        return [truncated + suffix]
-    return [formatting.truncate(collapsed, max_chars)]
+        return [_byte_truncate(collapsed, max_chars, suffix)]
+    return [_byte_truncate(collapsed, max_chars)]
 
 
 async def _run_agent(event, prompt: str) -> None:
