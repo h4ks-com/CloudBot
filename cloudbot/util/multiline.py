@@ -43,7 +43,20 @@ def split_long_line(
     return chunks
 
 
-def send_batch_multiline(conn, target: str, lines: list[str]) -> None:
+def _format_tags_str(tags: dict | None, extra: str = "") -> str:
+    if not tags and not extra:
+        return ""
+    parts = []
+    if tags:
+        parts.extend(f"{k}={v}" if v else k for k, v in tags.items())
+    if extra:
+        parts.append(extra)
+    return "@" + ";".join(parts) + " "
+
+
+def send_batch_multiline(
+    conn, target: str, lines: list[str], tags: dict | None = None
+) -> None:
     """Send lines using BATCH draft/multiline protocol"""
     if not lines:
         return
@@ -53,14 +66,15 @@ def send_batch_multiline(conn, target: str, lines: list[str]) -> None:
 
     for line in lines:
         chunks = split_long_line(line)
+        batch_tag = f"batch={batch_id}"
 
-        if len(chunks) == 1:
-            conn.send(f"@batch={batch_id} PRIVMSG {target} :{chunks[0]}")
-        else:
-            conn.send(f"@batch={batch_id} PRIVMSG {target} :{chunks[0]}")
-            for chunk in chunks[1:]:
-                conn.send(
-                    f"@batch={batch_id};draft/multiline-concat PRIVMSG {target} :{chunk}"
-                )
+        for i, chunk in enumerate(chunks):
+            extra = batch_tag
+            if i > 0:
+                extra += ";draft/multiline-concat"
+            tag_str = _format_tags_str(tags, extra)
+            conn.send(f"{tag_str}PRIVMSG {target} :{chunk}")
+            if tags:
+                tags = None
 
     conn.send(f"BATCH -{batch_id}")

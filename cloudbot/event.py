@@ -221,6 +221,17 @@ class Event(Mapping[str, Any]):
     def logger(self):
         return logger
 
+    def _get_reply_tags(self) -> dict | None:
+        if not self.irc_tags:
+            return None
+        server_caps = self.conn.memory.get("server_caps", {})
+        if not server_caps.get("message-tags"):
+            return None
+        msgid_tag = self.irc_tags.get("msgid")
+        if not msgid_tag or not msgid_tag.value:
+            return None
+        return {"+draft/reply": msgid_tag.value}
+
     def message(self, message, target=None):
         """sends a message to a specific or current channel/user"""
         if target is None:
@@ -231,7 +242,7 @@ class Event(Mapping[str, Any]):
 
             target = self.chan
 
-        self.conn.message(target, message)
+        self.conn.message(target, message, tags=self._get_reply_tags())
 
     def admin_log(self, message, broadcast=False):
         """Log a message in the current connections admin log
@@ -248,6 +259,7 @@ class Event(Mapping[str, Any]):
     def reply(self, *messages, target=None):
         """sends a message to the current channel/user with a prefix"""
         reply_ping = self.conn.config.get("reply_ping", True)
+        tags = self._get_reply_tags()
         if target is None:
             if self.chan is None:
                 raise ValueError(
@@ -257,14 +269,13 @@ class Event(Mapping[str, Any]):
             target = self.chan
 
         if not messages:
-            # if there are no messages specified, don't do anything
             return
 
         if target == self.nick or not reply_ping:
-            self.conn.message(target, *messages)
+            self.conn.message(target, *messages, tags=tags)
         else:
             self.conn.message(
-                target, f"({self.nick}) {messages[0]}", *messages[1:]
+                target, f"({self.nick}) {messages[0]}", *messages[1:], tags=tags
             )
 
     def action(self, message, target=None):
@@ -279,7 +290,7 @@ class Event(Mapping[str, Any]):
 
             target = self.chan
 
-        self.conn.action(target, message)
+        self.conn.action(target, message, tags=self._get_reply_tags())
 
     def ctcp(self, message, ctcp_type, target=None):
         """sends an ctcp to the current channel/user or a specific channel/user"""
@@ -300,6 +311,7 @@ class Event(Mapping[str, Any]):
     def notice(self, message, target=None):
         """sends a notice to the current channel/user or a specific channel/user"""
         avoid_notices = self.conn.config.get("avoid_notices", False)
+        tags = self._get_reply_tags()
         if target is None:
             if self.nick is None:
                 raise ValueError(
@@ -308,11 +320,10 @@ class Event(Mapping[str, Any]):
 
             target = self.nick
 
-        # we have a config option to avoid noticing user and PM them instead, so we use it here
         if avoid_notices:
-            self.conn.message(target, message)
+            self.conn.message(target, message, tags=tags)
         else:
-            self.conn.notice(target, message)
+            self.conn.notice(target, message, tags=tags)
 
     def has_permission(self, permission, notice=True):
         """returns whether or not the current user has a given permission"""

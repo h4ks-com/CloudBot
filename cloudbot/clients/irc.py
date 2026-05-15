@@ -320,13 +320,13 @@ class IrcClient(Client):
         if self._protocol:
             self._protocol.close()
 
-    def message(self, target: str, *messages: str) -> None:
+    def message(self, target: str, *messages: str, tags: dict[str, str | None] | None = None) -> None:
         """Send one or more messages, using BATCH multiline if supported"""
         if len(messages) > 1 and supports_multiline(self):
-            send_batch_multiline(self, target, list(messages))
+            send_batch_multiline(self, target, list(messages), tags=tags)
         else:
             for text in messages:
-                self.cmd("PRIVMSG", target, text)
+                self.cmd("PRIVMSG", target, text, tags=tags)
 
     def admin_log(self, text: str, console: bool = True) -> None:
         log_chan = self.config.get("log_channel")
@@ -336,11 +336,11 @@ class IrcClient(Client):
         if console:
             logger.info("[%s|admin] %s", self.name, text)
 
-    def action(self, target, text):
-        self.ctcp(target, "ACTION", text)
+    def action(self, target, text, tags: dict[str, str | None] | None = None):
+        self.ctcp(target, "ACTION", text, tags=tags)
 
-    def notice(self, target, text):
-        self.cmd("NOTICE", target, text)
+    def notice(self, target, text, tags: dict[str, str | None] | None = None):
+        self.cmd("NOTICE", target, text, tags=tags)
 
     def set_nick(self, nick):
         self.cmd("NICK", nick)
@@ -365,22 +365,23 @@ class IrcClient(Client):
             return
         self.cmd("PASS", password)
 
-    def ctcp(self, target, ctcp_type, text):
+    def ctcp(self, target, ctcp_type, text, tags: dict[str, str | None] | None = None):
         """
         Makes the bot send a PRIVMSG CTCP of type <ctcp_type> to the target
         """
         out = f"\x01{ctcp_type} {text}\x01"
-        self.cmd("PRIVMSG", target, out)
+        self.cmd("PRIVMSG", target, out, tags=tags)
 
-    def cmd(self, command, *params):
+    def cmd(self, command, *params, tags: dict | None = None):
         """
         Sends a raw IRC command of type <command> with params <params>
         :param command: The IRC command to send
         :param params: The params to the IRC command
+        :param tags: Optional IRCv3 message tags dict
         """
         # turn the tuple of parameters into a list
         param_list = list(map(str, params))
-        self.send(str(Message(None, None, command, param_list)))
+        self.send(str(Message(tags, None, command, param_list)))
 
     def send(self, line, log=True):
         """

@@ -109,7 +109,7 @@ class Client:
         """
         raise NotImplementedError
 
-    def message(self, target, *text):
+    def message(self, target, *text, tags=None):
         """
         Sends a message to the given target
         """
@@ -121,13 +121,13 @@ class Client:
         """
         raise NotImplementedError
 
-    def action(self, target, text):
+    def action(self, target, text, tags=None):
         """
         Sends an action (or /me) to the given target channel
         """
         raise NotImplementedError
 
-    def notice(self, target, text):
+    def notice(self, target, text, tags=None):
         """
         Sends a notice to the given target
         """
