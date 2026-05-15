@@ -35,5 +35,5 @@ def set_avatar_on_connect(conn, bot) -> None:
     if not server_caps.get("draft/metadata-2"):
         return
     url = _build_avatar_url(bot)
-    conn.cmd("METADATA", "*", "SET", _AVATAR_KEY, f":{url}")
+    conn.cmd("METADATA", "*", "SET", _AVATAR_KEY, url)
     logger.info("[%s|metadata] SET avatar = %s", conn.name, url)
