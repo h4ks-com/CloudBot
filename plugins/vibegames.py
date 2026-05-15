@@ -158,13 +158,16 @@ def vibegame(text: str, chan: str, nick: str, reply) -> None | str:
     if not response:
         return f"Error: No game found for {name}"
 
+    lines = []
     for result in response[:3]:
         preferred_url = result.get("subdomain_url") or result.get("path_url")
         if not preferred_url:
             preferred_url = f"{client.api_url}{result['html_path']}"
-        reply(
+        lines.append(
             f"{result['project']} at {preferred_url} ({result['num_opens']} opens) - {result['github_url']}"
         )
+    if lines:
+        reply(*lines)
 
 
 @hook.command("vibeadd", "vibecreate", autohelp=False)

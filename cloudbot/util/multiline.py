@@ -62,7 +62,8 @@ def send_batch_multiline(
         return
 
     batch_id = generate_batch_id()
-    conn.send(f"BATCH +{batch_id} draft/multiline {target}")
+    batch_tags = _format_tags_str(tags)
+    conn.send(f"{batch_tags}BATCH +{batch_id} draft/multiline {target}")
 
     for line in lines:
         chunks = split_long_line(line)
@@ -72,9 +73,7 @@ def send_batch_multiline(
             extra = batch_tag
             if i > 0:
                 extra += ";draft/multiline-concat"
-            tag_str = _format_tags_str(tags, extra)
+            tag_str = _format_tags_str(None, extra)
             conn.send(f"{tag_str}PRIVMSG {target} :{chunk}")
-            if tags:
-                tags = None
 
     conn.send(f"BATCH -{batch_id}")

@@ -325,8 +325,8 @@ class IrcClient(Client):
         if len(messages) > 1 and supports_multiline(self):
             send_batch_multiline(self, target, list(messages), tags=tags)
         else:
-            for text in messages:
-                self.cmd("PRIVMSG", target, text, tags=tags)
+            for i, text in enumerate(messages):
+                self.cmd("PRIVMSG", target, text, tags=tags if i == 0 else None)
 
     def admin_log(self, text: str, console: bool = True) -> None:
         log_chan = self.config.get("log_channel")
