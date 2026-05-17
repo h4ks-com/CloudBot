@@ -1,18 +1,39 @@
-import requests
+import time
+from collections import deque
 
 from cloudbot import hook
 from cloudbot.bot import bot
 from cloudbot.util.web import get_session
 
 max_length = 100
+MAX_CHARS_PER_DAY = 16000
+
+_char_log: deque[tuple[float, int]] = deque()
+
+
+def _check_daily_chars(n: int) -> str | None:
+    now = time.monotonic()
+    while _char_log and now - _char_log[0][0] > 86400:
+        _char_log.popleft()
+
+    used = sum(c for _, c in _char_log)
+    if used + n > MAX_CHARS_PER_DAY:
+        return f"Daily Translate cap reached ({used}/{MAX_CHARS_PER_DAY} chars). Resets in 24h."
+
+    _char_log.append((now, n))
+    return None
 
 
 def goog_trans(text, source, target):
-    api_key = bot.config.get_api_key("google_dev_key")
+    api_key = bot.config.get_api_key("google")
     url = "https://www.googleapis.com/language/translate/v2"
 
     if len(text) > max_length:
         return "This command only supports input of less then 100 characters."
+
+    cap_msg = _check_daily_chars(len(text))
+    if cap_msg:
+        return cap_msg
 
     params = {"q": text, "key": api_key, "target": target, "format": "text"}
 
@@ -53,9 +74,9 @@ def match_language(fragment):
 def translate(text):
     """[source language [target language]] <sentence> - translates <sentence> from source language (default autodetect)
     to target language (default English) using Google Translate"""
-    api_key = bot.config.get_api_key("google_dev_key")
+    api_key = bot.config.get_api_key("google")
     if not api_key:
-        return "This command requires a Google Developers Console API key."
+        return "This command requires a Google API key."
 
     args = text.split(" ", 2)
 

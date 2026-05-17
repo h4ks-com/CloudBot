@@ -1,10 +1,7 @@
 """
 issafe.py
 
-Check the Google Safe Browsing list to see a website's safety rating.
-
-Created By:
-    - Foxlet <http://furcode.tk/>
+Check a URL against the Google Safe Browsing API (v4).
 
 License:
     GNU General Public License (Version 3)
@@ -12,39 +9,60 @@ License:
 
 from urllib.parse import urlparse
 
-import requests
+from requests import HTTPError, RequestException
 
 import cloudbot
 from cloudbot import hook
 from cloudbot.bot import bot
 from cloudbot.util.web import get_session
 
-API_SB = "https://sb-ssl.google.com/safebrowsing/api/lookup"
+API_URL = "https://safebrowsing.googleapis.com/v4/threatMatches:find"
+THREAT_TYPES = [
+    "MALWARE",
+    "SOCIAL_ENGINEERING",
+    "UNWANTED_SOFTWARE",
+    "POTENTIALLY_HARMFUL_APPLICATION",
+]
 
 
 @hook.command()
 def issafe(text):
-    """<website> - Checks the website against Google's Safe Browsing List."""
-    if urlparse(text).scheme not in ["https", "http"]:
+    """<website> - Checks the website against Google's Safe Browsing list."""
+    if urlparse(text).scheme not in ("https", "http"):
         return "Check your URL (it should be a complete URI)."
 
-    dev_key = bot.config.get_api_key("google_dev_key")
-    parsed = get_session().get(
-        API_SB,
-        params={
-            "url": text,
-            "client": "cloudbot",
-            "key": dev_key,
-            "pver": "3.1",
-            "appver": str(cloudbot.__version__),
-        },
-    )
-    parsed.raise_for_status()
+    api_key = bot.config.get_api_key("google")
+    if not api_key:
+        return "This command requires a Google API key."
 
-    if parsed.status_code == 204:
-        condition = f"\x02{text}\x02 is safe."
-    else:
-        condition = "\x02{}\x02 is known to contain: {}".format(
-            text, parsed.text
+    payload = {
+        "client": {
+            "clientId": "cloudbot",
+            "clientVersion": str(cloudbot.__version__),
+        },
+        "threatInfo": {
+            "threatTypes": THREAT_TYPES,
+            "platformTypes": ["ANY_PLATFORM"],
+            "threatEntryTypes": ["URL"],
+            "threatEntries": [{"url": text}],
+        },
+    }
+
+    try:
+        response = get_session().post(
+            API_URL, params={"key": api_key}, json=payload, timeout=10
         )
-    return condition
+        response.raise_for_status()
+    except HTTPError as e:
+        return f"Safe Browsing API error: {e.response.status_code} {e.response.reason}"
+    except RequestException as e:
+        return f"Safe Browsing request failed: {e}"
+
+    matches = response.json().get("matches") or []
+    if not matches:
+        return f"\x02{text}\x02 is safe."
+
+    threats = ", ".join(
+        sorted({m.get("threatType", "UNKNOWN") for m in matches})
+    )
+    return f"\x02{text}\x02 is flagged: {threats}"

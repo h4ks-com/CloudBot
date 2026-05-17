@@ -22,6 +22,7 @@ from plugins.huggingface import FileIrcResponseWrapper
 from plugins.locate import GeolocationException, GoogleLocation
 
 MAX_HOURLY_REQUESTS = 30
+MAX_DAILY_REQUESTS = 300
 MAX_OUTPUT_LINES = 10
 MIN_GUESS_GAME_DURATION = 60  # seconds
 
@@ -58,14 +59,17 @@ def ratelimit():
     global last_hour_usage
 
     now = datetime.now(pytz.timezone("UTC"))
+    day_ago = now - timedelta(days=1)
 
-    for i, usage in enumerate(last_hour_usages):
-        if usage < now - timedelta(hours=1):
-            last_hour_usages.pop(i)
-        else:
-            break
+    while last_hour_usages and last_hour_usages[0] < day_ago:
+        last_hour_usages.pop(0)
 
-    if len(last_hour_usages) >= MAX_HOURLY_REQUESTS:
+    if len(last_hour_usages) >= MAX_DAILY_REQUESTS:
+        return True
+
+    hour_ago = now - timedelta(hours=1)
+    recent = sum(1 for u in last_hour_usages if u >= hour_ago)
+    if recent >= MAX_HOURLY_REQUESTS:
         return True
 
     last_hour_usages.append(now)

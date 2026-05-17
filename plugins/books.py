@@ -1,4 +1,6 @@
-import requests
+import time
+from collections import deque
+
 from requests import HTTPError
 
 from cloudbot import hook
@@ -7,17 +9,34 @@ from cloudbot.util.web import get_session
 
 base_url = "https://www.googleapis.com/books/v1/"
 book_search_api = base_url + "volumes?"
+MAX_RPD = 800
+
+_request_times: deque[float] = deque()
+
+
+def _check_daily_cap() -> str | None:
+    now = time.monotonic()
+    while _request_times and now - _request_times[0] > 86400:
+        _request_times.popleft()
+    if len(_request_times) >= MAX_RPD:
+        return f"Daily Books cap reached ({MAX_RPD}). Resets in 24h."
+    _request_times.append(now)
+    return None
 
 
 @hook.command("books", "gbooks")
 def books(text, reply, bot):
     """<query> - Searches Google Books for <query>."""
-    dev_key = bot.config.get_api_key("google_dev_key")
-    if not dev_key:
-        return "This command requires a Google Developers Console API key."
+    api_key = bot.config.get_api_key("google")
+    if not api_key:
+        return "This command requires a Google API key."
+
+    cap_msg = _check_daily_cap()
+    if cap_msg:
+        return cap_msg
 
     with get_session().get(
-        book_search_api, params={"q": text, "key": dev_key, "country": "US"}
+        book_search_api, params={"q": text, "key": api_key, "country": "US"}
     ) as response:
         try:
             response.raise_for_status()

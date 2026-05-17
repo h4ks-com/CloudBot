@@ -320,7 +320,12 @@ class IrcClient(Client):
         if self._protocol:
             self._protocol.close()
 
-    def message(self, target: str, *messages: str, tags: dict[str, str | None] | None = None) -> None:
+    def message(
+        self,
+        target: str,
+        *messages: str,
+        tags: dict[str, str | None] | None = None,
+    ) -> None:
         """Send one or more messages, using BATCH multiline if supported"""
         if len(messages) > 1 and supports_multiline(self):
             send_batch_multiline(self, target, list(messages), tags=tags)
@@ -365,7 +370,9 @@ class IrcClient(Client):
             return
         self.cmd("PASS", password)
 
-    def ctcp(self, target, ctcp_type, text, tags: dict[str, str | None] | None = None):
+    def ctcp(
+        self, target, ctcp_type, text, tags: dict[str, str | None] | None = None
+    ):
         """
         Makes the bot send a PRIVMSG CTCP of type <ctcp_type> to the target
         """

@@ -252,7 +252,7 @@ def do_request(
     params: Optional[ParamMap] = None,
     **kwargs: ParamValues,
 ) -> requests.Response:
-    api_key = bot.config.get_api_key("google_dev_key")
+    api_key = bot.config.get_api_key("google")
     if not api_key:
         raise NoApiKeyError()
 

@@ -1,0 +1,2 @@
+bucket = "your-project-id-cloudbot-tfstate"
+prefix = "cloudbot/terraform/state"

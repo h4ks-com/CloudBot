@@ -1,0 +1,11 @@
+project_id         = "your-gcp-project-id"
+region             = "us-central1"
+billing_account_id = ""   # XXXXXX-XXXXXX-XXXXXX, leave empty to skip budget. Auto-set by bootstrap.sh.
+currency_code      = "USD" # Must match billing account currency. Auto-set by bootstrap.sh.
+
+# Extra recipients for budget threshold emails. Each address must verify via the
+# email Cloud Monitoring sends before alerts deliver.
+# alert_emails = ["alerts@example.com", "second@example.com"]
+
+# Set to false to suppress the default billing-admin emails and notify ONLY alert_emails.
+# notify_billing_admins = true

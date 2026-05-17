@@ -82,7 +82,9 @@ def _process_result(api_key: str, model: dict) -> str:
 
     try:
         viewer_html = _build_viewer_html(model_url, model)
-        viewer_url = _clean_paste_url(web.paste(viewer_html.encode("utf-8"), ext="html"))
+        viewer_url = _clean_paste_url(
+            web.paste(viewer_html.encode("utf-8"), ext="html")
+        )
     except OSError as e:
         return (
             f"\x02{name}\x02 - viewer upload failed: {e} | Model: {model_url}"

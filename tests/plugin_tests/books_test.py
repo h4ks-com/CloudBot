@@ -9,12 +9,12 @@ from plugins import books
 def test_no_key(mock_bot, mock_requests):
     event = MagicMock()
     res = books.books("foo", event.reply, mock_bot)
-    assert res == "This command requires a Google Developers Console API key."
+    assert res == "This command requires a Google API key."
     assert event.mock_calls == []
 
 
 def test_books_no_results(mock_bot, mock_requests):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -27,7 +27,7 @@ def test_books_no_results(mock_bot, mock_requests):
 
 
 def test_books_error_code(mock_bot, mock_requests):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -41,7 +41,7 @@ def test_books_error_code(mock_bot, mock_requests):
 
 
 def test_books_error(mock_bot, mock_requests):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -54,7 +54,7 @@ def test_books_error(mock_bot, mock_requests):
 
 
 def test_books_error_api_off(mock_bot, mock_requests):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -70,7 +70,7 @@ def test_books_error_api_off(mock_bot, mock_requests):
 
 
 def test_books(mock_bot, mock_requests, patch_try_shorten):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -100,7 +100,7 @@ def test_books(mock_bot, mock_requests, patch_try_shorten):
 
 
 def test_books_no_authors(mock_bot, mock_requests, patch_try_shorten):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -129,7 +129,7 @@ def test_books_no_authors(mock_bot, mock_requests, patch_try_shorten):
 
 
 def test_books_no_desc(mock_bot, mock_requests, patch_try_shorten):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -159,7 +159,7 @@ def test_books_no_desc(mock_bot, mock_requests, patch_try_shorten):
 
 
 def test_books_no_pagecount(mock_bot, mock_requests, patch_try_shorten):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -188,7 +188,7 @@ def test_books_no_pagecount(mock_bot, mock_requests, patch_try_shorten):
 def test_books_no_author_or_publisher(
     mock_bot, mock_requests, patch_try_shorten
 ):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",
@@ -216,7 +216,7 @@ def test_books_no_author_or_publisher(
 
 
 def test_books_no_date(mock_bot, mock_requests, patch_try_shorten):
-    mock_bot.config["api_keys"] = {"google_dev_key": "foo"}
+    mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(
         "GET",

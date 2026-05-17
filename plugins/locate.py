@@ -118,12 +118,12 @@ class GoogleLocation:
 @hook.command("locate", "maps")
 def locate(text):
     """<location> - Finds <location> on Google Maps."""
-    dev_key = bot.config.get_api_key("google_dev_key")
-    if not dev_key:
-        return "This command requires a Google Developers Console API key."
+    api_key = bot.config.get_api_key("google")
+    if not api_key:
+        return "This command requires a Google API key."
 
     try:
-        location = GoogleLocation.from_address(text, dev_key)
+        location = GoogleLocation.from_address(text, api_key)
     except GeolocationException as e:
         return str(e)
 

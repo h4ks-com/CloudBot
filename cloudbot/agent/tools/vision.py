@@ -12,10 +12,12 @@ _VISION_MAX_TOKENS = 1024
 
 
 def _resolve_vision_config(bot) -> tuple[str, str, str]:
-    vision_cfg = (
-        (bot.config.get("plugins") or {}).get("agent", {}).get("vision") or {}
+    vision_cfg = (bot.config.get("plugins") or {}).get("agent", {}).get(
+        "vision"
+    ) or {}
+    base_url = (
+        vision_cfg.get("base_url") or "https://api.z.ai/api/coding/paas/v4"
     )
-    base_url = vision_cfg.get("base_url") or "https://api.z.ai/api/coding/paas/v4"
     model = vision_cfg.get("model") or "glm-5v-turbo"
     api_key_path = vision_cfg.get("api_key_config_path") or "z_ai"
     api_key = bot.config.get_api_key(api_key_path)
@@ -85,6 +87,8 @@ async def describe_image(ctx, data):
     except openai.RateLimitError:
         return "(error: vision model rate-limited — try again in a moment)"
     except openai.APIError as e:
-        return f"(error calling vision model: {type(e).__name__}: {str(e)[:200]})"
+        return (
+            f"(error calling vision model: {type(e).__name__}: {str(e)[:200]})"
+        )
     except (OSError, ValueError, RuntimeError) as e:
         return f"(error calling vision model: {e})"

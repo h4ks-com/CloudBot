@@ -131,15 +131,21 @@ def _fetch_models_by_flag(
 
 
 def _fetch_image_models(api_url: str, api_key: str | None) -> list[str]:
-    return _fetch_models_by_flag(api_url, api_key, "FLAG_IMAGE", _image_models_cache)
+    return _fetch_models_by_flag(
+        api_url, api_key, "FLAG_IMAGE", _image_models_cache
+    )
 
 
 def _fetch_tts_models(api_url: str, api_key: str | None) -> list[str]:
-    return _fetch_models_by_flag(api_url, api_key, "FLAG_TTS", _tts_models_cache)
+    return _fetch_models_by_flag(
+        api_url, api_key, "FLAG_TTS", _tts_models_cache
+    )
 
 
 def _fetch_stt_models(api_url: str, api_key: str | None) -> list[str]:
-    return _fetch_models_by_flag(api_url, api_key, "FLAG_TRANSCRIPT", _stt_models_cache)
+    return _fetch_models_by_flag(
+        api_url, api_key, "FLAG_TRANSCRIPT", _stt_models_cache
+    )
 
 
 def _fetch_allowed_models(api_url: str, api_key: str | None) -> list[str]:
@@ -571,7 +577,9 @@ def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
         model, audio_url = stt_models[0], text
 
     audio_url = audio_url.strip()
-    if not (audio_url.startswith("http://") or audio_url.startswith("https://")):
+    if not (
+        audio_url.startswith("http://") or audio_url.startswith("https://")
+    ):
         return "Usage: .stt [model] <audio_url>"
 
     try:

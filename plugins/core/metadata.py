@@ -14,7 +14,9 @@ _AVATAR_PATH = "avatar/botPuppy.png"
 
 
 def _build_avatar_url(bot) -> str:
-    gh = (bot.config.get("plugins") or {}).get("agent", {}).get("github_mcp") or {}
+    gh = (bot.config.get("plugins") or {}).get("agent", {}).get(
+        "github_mcp"
+    ) or {}
     repo: str = gh.get("self_repo") or "h4ks-com/CloudBot"
     return f"https://raw.githubusercontent.com/{repo}/main/{_AVATAR_PATH}"
 

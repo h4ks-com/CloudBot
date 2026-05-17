@@ -85,7 +85,7 @@ def setup_api(
         loop=event_loop,
         config={
             "api_keys": {
-                "google_dev_key": "AIzatestapikey",
+                "google": "AIzatestapikey",
                 "openweathermap": "abc12345" * 4,
             }
         },
@@ -283,22 +283,22 @@ def test_find_location(
         ("return", "This command requires a OpenWeatherMap API key.")
     ]
 
-    bot.config["api_keys"]["google_dev_key"] = None
+    bot.config["api_keys"]["google"] = None
     bot.config.load_config()
     weather.create_maps_api(bot)
     weather.create_owm_api(bot)
     assert wrap_hook_response(weather.weather, cmd_event) == [
-        ("return", "This command requires a Google Developers Console API key.")
+        ("return", "This command requires a Google API key.")
     ]
     assert wrap_hook_response(weather.forecast, cmd_event) == [
-        ("return", "This command requires a Google Developers Console API key.")
+        ("return", "This command requires a Google API key.")
     ]
 
     # Test DB storage
     bot.config.update(
         {
             "api_keys": {
-                "google_dev_key": "AIzatestapikey",
+                "google": "AIzatestapikey",
                 "openweathermap": "abc12345" * 4,
             }
         }
@@ -381,7 +381,7 @@ def test_parse_no_results(
         loop=event_loop,
         config={
             "api_keys": {
-                "google_dev_key": "AIzatestapikey",
+                "google": "AIzatestapikey",
                 "openweathermap": "abc12345" * 4,
             }
         },

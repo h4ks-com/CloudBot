@@ -50,6 +50,6 @@ Enter the Public IPs of the Cloudbot instance you plan to assign to this key. If
 
 ![GDC Enter IPs](img/gdev_7.png?raw=true "Enter IPs")
 
-Your new key should now appear on the main panel, simply copy it to the *google_dev_key* object in your CloudBot's configuration.
+Your new key should now appear on the main panel, simply copy it to the *google* object in your CloudBot's configuration. (For reproducible setup, prefer the Terraform stack in `infra/terraform/` which enables every API CloudBot actually calls and outputs the key.)
 
 ![GDC Copy the key](img/gdev_8.png?raw=true "Copy the key")

@@ -14,6 +14,7 @@ from plugins.huggingface import FileIrcResponseWrapper
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
 MAX_RPM = 8
 MAX_RPH = 62
+MAX_RPD = 450
 MAX_IMAGE_SIZE = 20 * 1024 * 1024
 
 _request_times = deque()
@@ -21,17 +22,25 @@ _request_times = deque()
 
 def _check_ratelimit():
     now = time.monotonic()
-    while _request_times and now - _request_times[0] > 3600:
+    while _request_times and now - _request_times[0] > 86400:
         _request_times.popleft()
 
-    recent = sum(1 for t in _request_times if now - t <= 60)
-    if recent >= MAX_RPM:
+    recent_min = sum(1 for t in _request_times if now - t <= 60)
+    if recent_min >= MAX_RPM:
         return "Rate limited. Try again in a minute."
-    if len(_request_times) >= MAX_RPH:
+
+    recent_hour = sum(1 for t in _request_times if now - t <= 3600)
+    if recent_hour >= MAX_RPH:
         return "Hourly limit reached. Try again later."
 
-    _request_times.append(now)
+    if len(_request_times) >= MAX_RPD:
+        return "Daily free-tier limit reached. Resets in 24h."
+
     return None
+
+
+def _record_call():
+    _request_times.append(time.monotonic())
 
 
 def _get_api_key():
@@ -61,6 +70,7 @@ def _call_gemini(api_key, parts, chan, nick):
     except RequestException as e:
         return f"Request failed: {e}"
 
+    _record_call()
     data = response.json()
     logger = logging.getLogger("cloudbot")
     candidates = data.get("candidates", [])

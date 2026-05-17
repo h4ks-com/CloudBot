@@ -6,10 +6,7 @@ import requests
 
 from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
-from cloudbot.agent.sketchfab_client import (
-    download_model,
-    search,
-)
+from cloudbot.agent.sketchfab_client import download_model, search
 from cloudbot.util import web
 
 
@@ -117,7 +114,9 @@ async def sketchfab_download(ctx, data) -> str:
 
     ext = "glb" if fmt == "glb" else "zip"
     try:
-        url = _clean_paste_url(await run_in_executor(web.paste, model_data, ext))
+        url = _clean_paste_url(
+            await run_in_executor(web.paste, model_data, ext)
+        )
         url = f"{url}?download=true"
     except (OSError, ValueError) as e:
         return f"(error uploading model: {e})"
