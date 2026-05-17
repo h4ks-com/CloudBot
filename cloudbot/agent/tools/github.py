@@ -855,3 +855,59 @@ async def open_github_pr(ctx, data):
             "draft": draft,
         },
     )
+
+
+@tool(
+    name="create_github_issue",
+    description=(
+        "Open a new GitHub issue in any repo. Use for bug reports, feature requests, "
+        "or tracking work. Pass labels/assignees as arrays of strings when needed. "
+        "Returns the issue URL — report it to the user."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "repo": {
+                "type": "string",
+                "description": "Target repo in 'owner/repo' format (any repo, not just h4ks-com)",
+            },
+            "title": {"type": "string", "description": "Issue title"},
+            "body": {"type": "string", "description": "Issue body in markdown"},
+            "labels": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of label names to apply",
+            },
+            "assignees": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of GitHub usernames to assign",
+            },
+        },
+        "required": ["repo", "title"],
+    },
+    wrap_errors=True,
+    is_github=True,
+)
+async def create_github_issue(ctx, data):
+    repo = str(data.get("repo") or "").strip()
+    title = str(data.get("title") or "").strip()
+    body = str(data.get("body") or "").strip()
+    labels = data.get("labels") or []
+    assignees = data.get("assignees") or []
+    if not repo or not title:
+        return "(error: repo and title required)"
+    owner, name = split_repo(repo)
+    args: dict = {
+        "method": "create",
+        "owner": owner,
+        "repo": name,
+        "title": title,
+    }
+    if body:
+        args["body"] = body
+    if isinstance(labels, list) and labels:
+        args["labels"] = [str(x) for x in labels]
+    if isinstance(assignees, list) and assignees:
+        args["assignees"] = [str(x) for x in assignees]
+    return await mcp_call(ctx.context, "issue_write", args)
