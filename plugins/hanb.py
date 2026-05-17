@@ -560,4 +560,4 @@ HANBS = [
 def hanb(text: str):
     """- Prints a random hanb"""
     ranb = choice(HANBS)
-    return ranb.split("\n")
+    return ranb.split("\n") + ["get your hanb merch here https://shop.h4ks.com/"]
