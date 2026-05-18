@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -6,7 +6,6 @@ from cloudbot import hook
 from cloudbot.event import CommandEvent
 from cloudbot.plugin import Plugin
 from cloudbot.plugin_hooks import CommandHook
-# Mock helper to extract hook
 from cloudbot.util import HOOK_ATTR
 from plugins import chain
 

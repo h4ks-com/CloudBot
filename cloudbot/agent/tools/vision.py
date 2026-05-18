@@ -1,10 +1,8 @@
 """Vision model tool for describing images via a hosted multimodal API."""
 
 import openai
-import requests
 from openai import AsyncOpenAI
 
-from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
 
 _VISION_IMAGE_SIZE_LIMIT = 10 * 1024 * 1024

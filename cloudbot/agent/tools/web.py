@@ -34,7 +34,7 @@ def upload_markdown_paste(text: str, title: str = "Response") -> str:
         .replace("__TITLE_JSON__", json.dumps(title).replace("</", "<\\/"))
         .replace("__CONTENT_JSON__", json.dumps(text).replace("</", "<\\/"))
     )
-    return web.paste(html.encode("utf-8"), ext="html")
+    return str(web.paste(html.encode("utf-8"), ext="html"))
 
 
 @tool(

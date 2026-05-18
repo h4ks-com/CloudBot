@@ -1,7 +1,8 @@
 # A queue of objects that can be stacked and then popped and are dependent of user nick and channel
 
+from collections.abc import Iterable
 from threading import RLock
-from typing import Iterable
+from typing import SupportsIndex
 
 
 class Dummy:
@@ -18,10 +19,10 @@ class UserQueue(list):
         self._lock = RLock()
         self.metadata = Dummy()
 
-    def pop(self):
-        """Returns next item"""
+    def pop(self, index: SupportsIndex = 0):
+        """Returns next item (defaults to head of queue)"""
         with self._lock:
-            return super().pop(0)
+            return super().pop(index)
 
     def append(self, item):
         """Appends item to the end of the queue"""

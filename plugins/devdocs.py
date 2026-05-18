@@ -5,7 +5,6 @@
 from dataclasses import dataclass
 from uuid import uuid1
 
-import requests
 from bs4 import BeautifulSoup
 from fuzzywuzzy import process
 from natsort import natsorted
@@ -28,7 +27,6 @@ SLUGS = {}
 
 @hook.on_start()
 def on_start():
-    global SLUGS
     for slug in get_session().get(Api.slugs).json():
         SLUGS[slug["slug"]] = slug
 
@@ -72,7 +70,7 @@ def search(slug, query) -> Doc:
         index = {
             (d["path"], uuid1()): d["name"] for d in response.json()["entries"]
         }
-        _, score, (path, uid) = process.extractOne(query, index)
+        _, score, (path, _) = process.extractOne(query, index)
         if score > 80:
             return Doc(path, slug)
 
@@ -80,14 +78,14 @@ def search(slug, query) -> Doc:
     url = Api.docs.format(slug=slug)
     response = get_session().get(url)
     if response.status_code != 200:
-        return
+        return None
 
     data = response.json()
     bodies = {
         path: BeautifulSoup(body, "html.parser").get_text()
         for path, body in data.items()
     }
-    _, nscore, path = process.extractOne(query, bodies)
+    _, _nscore, path = process.extractOne(query, bodies)
 
     # Find the anchor: Loop over every element that has an id and count the time that the query is found
     soup = BeautifulSoup(data[path], "html.parser")
@@ -95,9 +93,10 @@ def search(slug, query) -> Doc:
     ids_count = {}
     currid = ""
     for node in soup.select("*"):
-        if node.get("id"):
+        node_id = node.get("id")
+        if node_id:
             ids_count[currid] = ids[currid].casefold().count(query.casefold())
-            currid = node.get("id")
+            currid = node_id if isinstance(node_id, str) else node_id[0]
         if currid not in ids:
             ids[currid] = ""
             ids_count[currid] = 0
@@ -109,7 +108,7 @@ def search(slug, query) -> Doc:
         path = f"{path}#{best}"
         return Doc(path, slug)
 
-    _, nscore, id = process.extractOne(query, ids)
+    _, _nscore, id = process.extractOne(query, ids)
     path = f"{path}#{id}"
     return Doc(path, slug)
 
@@ -130,7 +129,7 @@ def devdocs(text, chan, nick, reply, notice):
             if len(chunks) > 400:
                 notice(chunks)
                 chunks = ""
-        return
+        return None
 
     if slug not in SLUGS:
         can_be = []
@@ -153,3 +152,4 @@ def devdocs(text, chan, nick, reply, notice):
     doc = search(slug, query)
     reply(doc.url)
     reply(truncate_str(doc.summary(), 400))
+    return None

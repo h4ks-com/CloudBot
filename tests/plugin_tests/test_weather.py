@@ -1,6 +1,5 @@
 import json
 from copy import deepcopy
-from typing import List
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,8 +7,9 @@ from googlemaps.exceptions import ApiError
 
 from cloudbot.event import CommandEvent
 from cloudbot.util.func_utils import call_with_args
-from plugins import weather
 from tests.util import HookResult, get_data_file, wrap_hook_response
+
+weather = pytest.importorskip("plugins.weather")
 
 
 @pytest.mark.parametrize(
@@ -160,7 +160,7 @@ def test_rounding(
         "(\x1dTo get a forecast, use .fc\x1d)"
     )
 
-    calls: List[HookResult] = [
+    calls: list[HookResult] = [
         HookResult(
             "message",
             (
@@ -264,7 +264,7 @@ def test_find_location(
         json={"status": "foobar"},
     )
 
-    response: List[HookResult] = []
+    response: list[HookResult] = []
     with pytest.raises(ApiError):
         wrap_hook_response(weather.weather, cmd_event, response)
 

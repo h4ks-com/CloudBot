@@ -4,8 +4,6 @@
 
 from time import time
 
-import requests
-
 from cloudbot import hook
 from cloudbot.util.web import get_session
 
@@ -71,11 +69,11 @@ GETS = {
 
 def get_json(key, url):
     r = get_session().get(url)
-    r = r.json()
-    if isinstance(r, list):
-        r = r[0]
-    for key in key.split():
-        d = r[key]
+    data = r.json()
+    if isinstance(data, list):
+        data = data[0]
+    for subkey in key.split():
+        d = data[subkey]
         if isinstance(d, list) and len(d) > 0:
             yield d[0]
         else:
@@ -102,16 +100,16 @@ def pop(text, bot, chan, nick):
     r = get_session().get(
         f"https://www.census.gov/popclock/data/population.php/world?_={int(time())}"
     )
-    r = r.json()
-    return f"World population: {r['world']['population']}"
+    data = r.json()
+    return f"World population: {data['world']['population']}"
 
 
 @hook.command("fake", autohelp=False)
 def fake(text, bot, chan, nick):
     """- returns a fake user"""
     r = get_session().get("https://randomuser.me/api/")
-    r = r.json()["results"][0]
-    return f"name: {r['name']['first']} {r['name']['last']}, {r['email']}, phone: {r['phone']}, location: {r['location']['city']}, {r['location']['state']}, {r['location']['country']}"
+    data = r.json()["results"][0]
+    return f"name: {data['name']['first']} {data['name']['last']}, {data['email']}, phone: {data['phone']}, location: {data['location']['city']}, {data['location']['state']}, {data['location']['country']}"
 
 
 @hook.command("commit", autohelp=False)

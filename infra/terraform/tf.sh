@@ -13,7 +13,8 @@ if [[ ! -d ".gcloud" ]]; then
   exit 1
 fi
 
-export CLOUDSDK_CONFIG="$(pwd)/.gcloud"
+CLOUDSDK_CONFIG="$(pwd)/.gcloud"
+export CLOUDSDK_CONFIG
 export GOOGLE_APPLICATION_CREDENTIALS="$CLOUDSDK_CONFIG/application_default_credentials.json"
 
 if [[ ! -f "$GOOGLE_APPLICATION_CREDENTIALS" ]]; then

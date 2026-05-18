@@ -10,7 +10,7 @@ Contents API works because the platform serves anything in the repo.
 import base64
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -32,8 +32,8 @@ async def _vibegame_request(
     method: str,
     path: str,
     *,
-    json_body: Optional[dict] = None,
-    params: Optional[dict] = None,
+    json_body: dict | None = None,
+    params: dict | None = None,
 ) -> tuple[int, Any]:
     """Authenticated request to the vibegames API. Returns (status, body)."""
     api_url = bot.config.get_api_key("vibegames_api_url") or ""
@@ -204,7 +204,7 @@ async def vibegame_import_url(ctx, data):
     }
 
     # Existing files require a SHA on PUT — fetch first.
-    async def fetch_sha() -> Optional[str]:
+    async def fetch_sha() -> str | None:
         try:
             r = await run_in_executor(
                 requests.get,
@@ -213,7 +213,8 @@ async def vibegame_import_url(ctx, data):
                 timeout=10,
             )
             if r.status_code == 200:
-                return r.json().get("sha")
+                sha = r.json().get("sha")
+                return sha if isinstance(sha, str) else None
         except requests.RequestException:
             pass
         return None

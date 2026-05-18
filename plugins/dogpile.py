@@ -15,19 +15,20 @@ HEADERS = {
     "(KHTML, like Gecko) Chrome/18.0.1025.133 Mobile Safari/535.19"
 }
 
-verify_cert = None
+
+class _State:
+    verify_cert: str | None = None
 
 
 @hook.on_start()
 def check_certs(bot: CloudBot):
-    global verify_cert
     try:
         with get_session().get(search_url):
             pass
     except requests.exceptions.SSLError:
-        verify_cert = str(bot.data_path / CERT_PATH)
+        _State.verify_cert = str(bot.data_path / CERT_PATH)
     else:
-        verify_cert = None
+        _State.verify_cert = None
 
 
 def query(endpoint, text):
@@ -36,7 +37,7 @@ def query(endpoint, text):
         search_url + "/" + endpoint,
         params=params,
         headers=HEADERS,
-        verify=verify_cert,
+        verify=_State.verify_cert,
     ) as r:
         r.raise_for_status()
         return parse_soup(r.content)

@@ -109,7 +109,7 @@ def newegg(text, admin_log, reply):
     """<item name> - searches newegg.com for <item name>"""
 
     # form the search request
-    request = {"Keyword": text, "Sort": "FEATURED"}
+    payload = {"Keyword": text, "Sort": "FEATURED"}
 
     # newegg thinks it's so damn smart blocking my scraper
     headers = {
@@ -120,9 +120,9 @@ def newegg(text, admin_log, reply):
 
     # submit the search request
     try:
-        request = get_session().post(
+        response = get_session().post(
             "http://www.ows.newegg.com/Search.egg/Advanced",
-            data=json.dumps(request).encode("utf-8"),
+            data=json.dumps(payload).encode("utf-8"),
             headers=headers,
         )
     except (
@@ -131,9 +131,9 @@ def newegg(text, admin_log, reply):
     ) as e:
         return f"Unable to find product: {e}"
 
-    r = request.json()
+    r = response.json()
 
-    if not request.ok:
+    if not response.ok:
         if r.get("Message"):
             msg = "{ExceptionMessage}\n{ExceptionType}\n{StackTrace}".format(
                 **r
@@ -143,12 +143,12 @@ def newegg(text, admin_log, reply):
                 "Newegg API Error: {ExceptionType}: {url}".format(url=url, **r)
             )
             return "Newegg Error: {Message} (\x02{code}\x02)".format(
-                code=request.status_code, **r
+                code=response.status_code, **r
             )
         else:
             reply("Unknown error occurred.")
-            request.raise_for_status()
-            return
+            response.raise_for_status()
+            return None
 
     # get the first result
     if r["ProductListItems"]:

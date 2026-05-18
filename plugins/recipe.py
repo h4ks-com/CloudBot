@@ -59,7 +59,7 @@ def get_data(url):
         requests.exceptions.HTTPError,
         requests.exceptions.ConnectionError,
     ) as e:
-        raise ParseError(e)
+        raise ParseError(e) from e
 
     items = microdata.get_items(request.text)
 
@@ -91,19 +91,24 @@ def recipe(text):
         # find the list of results
         result_list = search.find("div", {"class": "found_results"})
 
-        if result_list:
+        if isinstance(result_list, bs4.Tag):
             results = result_list.find_all("div", {"class": "recipe_result"})
         else:
             return "No results"
 
         # pick a random front page result
         result = random.choice(results)
+        if not isinstance(result, bs4.Tag):
+            return "No results"
 
+        wrapper = result.find("div", {"class": "image-wrapper"})
+        if not isinstance(wrapper, bs4.Tag):
+            return "No results"
+        anchor = wrapper.find("a")
+        if not isinstance(anchor, bs4.Tag):
+            return "No results"
         # extract the URL from the result
-        url = (
-            BASE_URL
-            + result.find("div", {"class": "image-wrapper"}).find("a")["href"]
-        )
+        url = BASE_URL + str(anchor["href"])
 
     else:
         # get a random recipe URL

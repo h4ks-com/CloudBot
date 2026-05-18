@@ -9,7 +9,7 @@ import warnings
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Optional, Type
+from typing import Any
 
 from sqlalchemy import Table, create_engine
 from sqlalchemy import inspect as sa_inspect
@@ -36,12 +36,12 @@ class AbstractBot:
 
 class BotInstanceHolder:
     def __init__(self) -> None:
-        self._instance: Optional[AbstractBot] = None
+        self._instance: AbstractBot | None = None
 
-    def get(self) -> Optional[AbstractBot]:
+    def get(self) -> AbstractBot | None:
         return self._instance
 
-    def set(self, value: Optional[AbstractBot]) -> None:
+    def set(self, value: AbstractBot | None) -> None:
         self._instance = value
 
     @property
@@ -96,8 +96,8 @@ class CloudBot(AbstractBot):
         self,
         *,
         loop: asyncio.AbstractEventLoop = None,
-        base_dir: Optional[Path] = None,
-        config_dir: Optional[Path] = None,
+        base_dir: Path | None = None,
+        config_dir: Path | None = None,
     ) -> None:
         loop = loop or asyncio.get_event_loop()
         if bot.get():
@@ -110,7 +110,7 @@ class CloudBot(AbstractBot):
         self.loop = loop
         self.start_time = time.time()
         self.running = True
-        self.clients: Dict[str, Type[Client]] = {}
+        self.clients: dict[str, type[Client]] = {}
         # future which will be called when the bot stopsIf you
         self.stopped_future = async_util.create_future(self.loop)
 
@@ -121,7 +121,7 @@ class CloudBot(AbstractBot):
         self.logger = logger
 
         # for plugins to abuse
-        self.memory: Dict[str, Any] = collections.defaultdict()
+        self.memory: dict[str, Any] = collections.defaultdict()
 
         # declare and create data folder
         self.data_path = self.base_dir / "data"
@@ -130,8 +130,8 @@ class CloudBot(AbstractBot):
             logger.debug("Data folder not found, creating.")
             self.data_path.mkdir(parents=True)
 
-        logger.info(f"Data path: {self.data_path}")
-        logger.info(f"Config path: {config_dir}")
+        logger.info("Data path: %s", self.data_path)
+        logger.info("Config path: %s", config_dir)
         # set up config
         if config_dir:
             super().__init__(
@@ -218,7 +218,7 @@ class CloudBot(AbstractBot):
         logger.debug("Unload complete")
         return restart
 
-    def get_client(self, name: str) -> Type[Client]:
+    def get_client(self, name: str) -> type[Client]:
         return self.clients[name]
 
     def register_client(self, name, cls):

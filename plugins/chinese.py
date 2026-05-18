@@ -5,7 +5,6 @@
 import string
 from urllib.parse import quote
 
-import requests
 from google.transliteration import transliterate_text
 from google.transliteration.numerals import LANG2SCRIPT
 
@@ -83,7 +82,7 @@ def chinese(text):
             :8
         ]
     else:
-        return "Error: " + r.status_code
+        return f"Error: {r.status_code}"
 
 
 @hook.command("transliterate", autohelp=False)

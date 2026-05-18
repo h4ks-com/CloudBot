@@ -68,7 +68,7 @@ def is_token_valid(db, token: str) -> bool:
     """Check if token exists and is not expired."""
     now = datetime.now()
     result = db.execute(
-        select([webhook_tokens_table.c.token])
+        select(webhook_tokens_table.c.token)
         .where(webhook_tokens_table.c.token == token)
         .where(webhook_tokens_table.c.expires_at > now)
     ).fetchone()

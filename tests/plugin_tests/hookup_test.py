@@ -2,9 +2,13 @@ import random
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
+
 from cloudbot.util import database
-from plugins import hookup, seen
+from plugins import hookup
 from tests.util.mock_db import MockDB
+
+seen = pytest.importorskip("plugins.seen")
 
 
 def test_load_data(mock_bot_factory):

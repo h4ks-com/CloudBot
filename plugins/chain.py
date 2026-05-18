@@ -1,5 +1,4 @@
 import itertools
-from typing import Dict
 
 from sqlalchemy import Boolean, Column, PrimaryKeyConstraint, String, Table
 
@@ -16,7 +15,7 @@ commands = Table(
     PrimaryKeyConstraint("hook", "allowed"),
 )
 
-allow_cache: Dict[str, bool] = {}
+allow_cache: dict[str, bool] = {}
 
 BLACKLIST = ["a", "alias", "chain"]
 
@@ -194,7 +193,7 @@ async def chain(text, bot, event):
         nonlocal buffer
         if isinstance(text, str):
             buffer += (" " if buffer else "") + text
-        elif isinstance(text, list) or isinstance(text, tuple):
+        elif isinstance(text, (list, tuple)):
             buffer += (" " if buffer else "") + " ".join(text)
         else:
             raise TypeError(

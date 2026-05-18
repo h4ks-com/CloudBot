@@ -38,7 +38,8 @@ esac
 cd "$(dirname "$0")"
 
 # Isolated gcloud config dir — overrides ~/.config/gcloud for this shell only.
-export CLOUDSDK_CONFIG="$(pwd)/.gcloud"
+CLOUDSDK_CONFIG="$(pwd)/.gcloud"
+export CLOUDSDK_CONFIG
 mkdir -p "$CLOUDSDK_CONFIG"
 
 echo ">> Using isolated gcloud config at: $CLOUDSDK_CONFIG"

@@ -269,7 +269,9 @@ def test_books_no_date(mock_bot, mock_requests, patch_try_shorten, db):
 # ---------- rate-limit wiring ----------
 
 
-def test_books_success_records_event(mock_bot, mock_requests, patch_try_shorten, db):
+def test_books_success_records_event(
+    mock_bot, mock_requests, patch_try_shorten, db
+):
     mock_bot.config["api_keys"] = {"google": "foo"}
     event = MagicMock()
     mock_requests.add(

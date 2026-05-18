@@ -167,7 +167,7 @@ def cleanup_old_urls(db, network: str, chan: str, nick: str) -> None:
     """Remove oldest URLs to maintain MAX_URLS_PER_USER limit"""
     # Count URLs for this user
     user_url_count = db.execute(
-        select([user_urls_table.c.url])
+        select(user_urls_table.c.url)
         .where(user_urls_table.c.network == network)
         .where(user_urls_table.c.chan == chan)
         .where(user_urls_table.c.nick == nick)
@@ -177,7 +177,7 @@ def cleanup_old_urls(db, network: str, chan: str, nick: str) -> None:
         # Get timestamps to remove (oldest ones)
         urls_to_remove = len(user_url_count) - MAX_URLS_PER_USER
         old_url_timestamps = db.execute(
-            select([user_urls_table.c.timestamp])
+            select(user_urls_table.c.timestamp)
             .where(user_urls_table.c.network == network)
             .where(user_urls_table.c.chan == chan)
             .where(user_urls_table.c.nick == nick)
@@ -258,7 +258,7 @@ def seen(text, nick, chan, db, event, is_nick_valid):
         return "I can't look up that name, its impossible to use!"
 
     last_seen = db.execute(
-        select([seen_table.c.name, seen_table.c.time, seen_table.c.quote])
+        select(seen_table.c.name, seen_table.c.time, seen_table.c.quote)
         .where(seen_table.c.name == text.lower())
         .where(seen_table.c.chan == chan)
     ).fetchone()
@@ -281,12 +281,10 @@ def lastlink(text: str, chan: str, conn, db) -> str:
 
     # Query database for most recent URL
     last_url_query = select(
-        [
-            user_urls_table.c.url,
-            user_urls_table.c.title,
-            user_urls_table.c.timestamp,
-            user_urls_table.c.nick,
-        ]
+        user_urls_table.c.url,
+        user_urls_table.c.title,
+        user_urls_table.c.timestamp,
+        user_urls_table.c.nick,
     )
     last_url_query = last_url_query.where(
         user_urls_table.c.network == conn.name
@@ -337,11 +335,9 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
 
     # Query database for URLs
     url_query = select(
-        [
-            user_urls_table.c.url,
-            user_urls_table.c.title,
-            user_urls_table.c.timestamp,
-        ]
+        user_urls_table.c.url,
+        user_urls_table.c.title,
+        user_urls_table.c.timestamp,
     )
     url_query = url_query.where(user_urls_table.c.network == conn.name)
     url_query = url_query.where(user_urls_table.c.chan == chan.lower())
@@ -367,11 +363,9 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
     if search_text:
         # Get all results for user
         total_query = select(
-            [
-                user_urls_table.c.url,
-                user_urls_table.c.title,
-                user_urls_table.c.timestamp,
-            ]
+            user_urls_table.c.url,
+            user_urls_table.c.title,
+            user_urls_table.c.timestamp,
         ).where(
             and_(
                 user_urls_table.c.network == conn.name,
@@ -382,11 +376,9 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
     else:
         # Get all results for channel
         total_query = select(
-            [
-                user_urls_table.c.url,
-                user_urls_table.c.title,
-                user_urls_table.c.timestamp,
-            ]
+            user_urls_table.c.url,
+            user_urls_table.c.title,
+            user_urls_table.c.timestamp,
         ).where(
             and_(
                 user_urls_table.c.network == conn.name,
@@ -404,9 +396,7 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
 
     # Format output as 3 lines with titles and URLs
     formatted_lines = []
-    for i, (url, title, timestamp) in enumerate(
-        page_results[:URLS_PER_PAGE], 1
-    ):
+    for i, (url, title, _) in enumerate(page_results[:URLS_PER_PAGE], 1):
         url_title = title or "No title available"
         # Truncate long titles
         if len(url_title) > 50:
@@ -454,9 +444,7 @@ def urls_next(text: str, chan: str, conn, nick: str) -> str:
     # Format output
     output_lines = []
     start_number = (len(queued_results) - len(remaining_results)) + 1
-    for i, (url, title, timestamp) in enumerate(
-        next_page_results, start_number
-    ):
+    for i, (url, title, _) in enumerate(next_page_results, start_number):
         url_title = title or "No title available"
         if len(url_title) > 50:
             url_title = formatting.truncate(url_title, 47) + "..."
@@ -492,7 +480,7 @@ def searchword(text, chan, conn):
     i = 0
     max_i = 50000
 
-    history.__next__()
+    next(history)
     for nick, message_time, message in history:
         if i > max_i:
             break

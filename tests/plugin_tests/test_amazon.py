@@ -58,8 +58,9 @@ def _make_mock_response(page_html: str, status: int = 200) -> MagicMock:
 
 def _run(text: str, page_html: str, parsed: bool | str = False) -> str | None:
     reply = MagicMock()
-    with patch("plugins.amazon.get_session") as mock_session, patch(
-        "plugins.amazon.web.try_shorten", side_effect=lambda u, **_: u
+    with (
+        patch("plugins.amazon.get_session") as mock_session,
+        patch("plugins.amazon.web.try_shorten", side_effect=lambda u, **_: u),
     ):
         mock_session.return_value.get.return_value = _make_mock_response(
             page_html
@@ -120,7 +121,7 @@ def test_multiple_tags():
 
 def test_result_no_price():
     html = make_page(
-        f"""
+        """
         <div data-component-type="s-search-result" data-asin="B001234567">
             <h2><span>Some Product</span></h2>
             <span class="a-icon-alt">3.5 out of 5 stars</span>
@@ -135,7 +136,7 @@ def test_result_no_price():
 
 def test_result_no_ratings():
     html = make_page(
-        f"""
+        """
         <div data-component-type="s-search-result" data-asin="B001234567">
             <h2><span>Some Product</span></h2>
             <span class="a-price-whole">10.</span>
@@ -201,8 +202,9 @@ def test_non_parsed_result_missing_title_returns_message():
 
 def test_http_error_calls_reply():
     reply = MagicMock()
-    with patch("plugins.amazon.get_session") as mock_session, patch(
-        "plugins.amazon.web.try_shorten", side_effect=lambda u, **_: u
+    with (
+        patch("plugins.amazon.get_session") as mock_session,
+        patch("plugins.amazon.web.try_shorten", side_effect=lambda u, **_: u),
     ):
         mock_resp = _make_mock_response("", status=503)
         mock_resp.raise_for_status.side_effect = amazon.HTTPError(

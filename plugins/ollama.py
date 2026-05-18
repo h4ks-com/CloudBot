@@ -220,8 +220,6 @@ user_models: dict[tuple[str, str], str] = {}
 @hook.command("ai", "ollama")
 def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
     """<text> - Get a response from Ollama LLM."""
-    global ollama_messages_cache
-    global user_models
     model = user_models.get((chan, nick))
 
     try:
@@ -284,8 +282,6 @@ def create_web_app(
 @hook.command("aiapp", "aiweb")
 def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
     """<text> - Create a single page html web app on the fly with Ollama"""
-    global ollama_messages_cache
-    global user_models
     model = user_models.get((chan, nick))
 
     try:
@@ -309,7 +305,6 @@ def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
 @hook.command("aih", "aihistory", "aipaste", autohelp=False)
 def ai_paste_command(nick: str, chan: str, text: str) -> str:
     """[nick] - Pastes the Ollama conversation history with nick if specified."""
-    global ollama_messages_cache
 
     text = text.strip()
     if text:
@@ -328,7 +323,6 @@ def ai_paste_command(nick: str, chan: str, text: str) -> str:
 @hook.command("aicopy")
 def ai_copy_command(text: str, nick: str, chan: str) -> str:
     """<user> - Copy another user's conversation history into yours, replacing your own."""
-    global ollama_messages_cache
 
     target = text.strip()
     if not target:
@@ -353,7 +347,7 @@ def ai_models_command(bot, notice) -> list[str] | str:
         notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
-        return
+        return None
 
     tags_url = f"{api_url.rstrip('/')}/v1/models"
 
@@ -380,7 +374,6 @@ def ai_models_command(bot, notice) -> list[str] | str:
 @hook.command("aisetmodel", "aimodel", "setaimodel", autohelp=False)
 def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
     """<model> - Set the Ollama model to use for this user in this channel."""
-    global user_models
 
     model = text.strip()
     if not model:

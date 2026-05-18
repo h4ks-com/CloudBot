@@ -21,8 +21,8 @@ import hashlib
 import json
 import random
 import re
+import shlex
 import urllib.parse
-from typing import Dict, List
 
 from cloudbot import hook
 from cloudbot.util import colors, formatting, web
@@ -43,7 +43,7 @@ COLORS = collections.OrderedDict(
     ]
 )
 
-leet_text: Dict[str, List[str]] = {}
+leet_text: dict[str, list[str]] = {}
 
 # helper functions
 
@@ -381,8 +381,6 @@ def levenshtein_distance(s1, s2):
 @hook.command("distance", "levenshtein")
 def distance_command(text):
     """<string1> <string2> - Calculate the Levenshtein distance between two strings. Arguments can be quoted."""
-    import shlex
-
     try:
         args = shlex.split(text)
     except ValueError:

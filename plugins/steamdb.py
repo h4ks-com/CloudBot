@@ -1,11 +1,19 @@
 import re
 
 import requests
+from bs4 import Tag
 
 from cloudbot import hook
 from cloudbot.util import web
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
+
+
+def _require_tag(element: object) -> Tag:
+    if not isinstance(element, Tag):
+        raise AttributeError("Expected Tag element")
+    return element
+
 
 try:
     import cfscrape
@@ -67,24 +75,41 @@ def get_data(user, currency="us"):
 
     # get all the data we need
     try:
-        data["name"] = soup.find("h1", {"class": "header-title"}).find("a").text
+        data["name"] = (
+            _require_tag(soup.find("h1", {"class": "header-title"}))
+            .find("a")
+            .text
+        )
         data["url"] = request.url
 
-        data["status"] = soup.find("td", text="Status").find_next("td").text
+        data["status"] = (
+            _require_tag(soup.find("td", text="Status")).find_next("td").text
+        )
 
-        data["value"] = soup.find("h1", {"class": "calculator-price"}).text
-        data["value_sales"] = soup.find(
-            "h1", {"class": "calculator-price-lowest"}
+        data["value"] = _require_tag(
+            soup.find("h1", {"class": "calculator-price"})
+        ).text
+        data["value_sales"] = _require_tag(
+            soup.find("h1", {"class": "calculator-price-lowest"})
         ).text
 
         data["count"] = int(
-            soup.find("div", {"class": "pull-right price-container"})
-            .find("p")
-            .find("span", {"class": "number"})
-            .text.replace(",", "")
+            _require_tag(
+                _require_tag(
+                    _require_tag(
+                        soup.find(
+                            "div", {"class": "pull-right price-container"}
+                        )
+                    ).find("p")
+                ).find("span", {"class": "number"})
+            ).text.replace(",", "")
         )
 
-        played = soup.find("td", text="Games not played").find_next("td").text
+        played = (
+            _require_tag(soup.find("td", text="Games not played"))
+            .find_next("td")
+            .text
+        )
         played = PLAYED_RE.search(played).groups()
 
         data["count_unplayed"] = int(played[0])

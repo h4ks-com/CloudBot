@@ -28,7 +28,7 @@ def supports_typing(conn) -> bool:
     +typing is a client-only tag, so it only requires message-tags capability
     """
     server_caps = conn.memory.get("server_caps", {})
-    return server_caps.get("message-tags", False)
+    return bool(server_caps.get("message-tags", False))
 
 
 def _send_typing_active(conn, target: str) -> None:

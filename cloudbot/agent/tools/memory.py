@@ -168,7 +168,7 @@ async def memory_search(ctx, data):
 
     def _do_search() -> list[Any]:
         db = database.Session()
-        return db.execute(
+        rows = db.execute(
             _MEMORY_TABLE.select()
             .where(
                 (_MEMORY_TABLE.c.namespace == ns)
@@ -180,6 +180,7 @@ async def memory_search(ctx, data):
             .order_by(_MEMORY_TABLE.c.updated_at.desc())
             .limit(_MEMORY_SEARCH_LIMIT)
         ).fetchall()
+        return list(rows)
 
     try:
         matches = await run_in_executor(_do_search)

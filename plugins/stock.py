@@ -8,8 +8,6 @@ Authors:
 import math
 from decimal import Decimal
 
-import requests
-
 from cloudbot import hook
 from cloudbot.util import colors
 from cloudbot.util.web import get_session

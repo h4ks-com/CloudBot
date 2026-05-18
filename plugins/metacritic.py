@@ -2,7 +2,6 @@ import json
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import List, Optional
 from urllib.parse import quote, unquote
 
 import requests
@@ -31,11 +30,11 @@ NUMBER_OF_RESULTS = 3
 @dataclass
 class SearchResult:
     url: str
-    title: Optional[str]
-    platform: Optional[str]
-    release_date: Optional[str]
-    meta_score: Optional[str]
-    user_score: Optional[str]
+    title: str | None
+    platform: str | None
+    release_date: str | None
+    meta_score: str | None
+    user_score: str | None
 
     @classmethod
     def from_url(cls, url: str) -> "SearchResult":
@@ -73,7 +72,7 @@ class SearchResult:
         )
 
 
-def search_metacritic(query: str, category: Optional[int] = None) -> List[str]:
+def search_metacritic(query: str, category: int | None = None) -> list[str]:
     """Search Metacritic via DuckDuckGo HTML (Metacritic's own search is Cloudflare-protected)."""
     # Determine the URL slug to filter by category
     cat_slug = None

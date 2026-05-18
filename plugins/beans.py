@@ -37,9 +37,9 @@ import json
 import math
 import random
 import re
-import time
 from datetime import datetime
 from time import time
+from typing import cast
 
 import requests
 import sqlalchemy
@@ -192,7 +192,7 @@ class BeapinClient:
         if expires_in is None:
             expires_in = BeapinAPI.DEFAULT_GIFT_EXPIRY
 
-        payload = {"amount": int(amount)}
+        payload: dict[str, int | str] = {"amount": int(amount)}
         if message:
             payload["message"] = str(message)
         if expires_in:
@@ -370,14 +370,6 @@ def create_gift_link(bot, amount, message="", expires_in=None):
     return client.create_gift_link(amount, message, expires_in)
 
 
-def check_user_authenticated(conn, nick):
-    """
-    DEPRECATED: Authentication is now handled by the external Beapin API.
-    This function is kept for trivia/bet functionality compatibility.
-    """
-    return None
-
-
 # ============================================================================
 # COMMAND PATTERNS
 # ============================================================================
@@ -437,7 +429,7 @@ def get_beans(nick: str, db) -> int:
     """Get the current bean count for a user."""
     nick = nick.lower()
     beans = db.execute(
-        select([beans_table.c.beans]).where(beans_table.c.nick == nick)
+        select(beans_table.c.beans).where(beans_table.c.nick == nick)
     ).fetchone()
 
     if beans:
@@ -450,7 +442,7 @@ def set_beans(nick: str, amount: int, db) -> None:
     """Set the bean count for a user."""
     nick = nick.lower()
     clause = beans_table.c.nick == nick
-    beans = db.execute(select([beans_table.c.beans]).where(clause)).fetchone()
+    beans = db.execute(select(beans_table.c.beans).where(clause)).fetchone()
     query: Executable
 
     if beans:
@@ -492,7 +484,7 @@ def add_beans(nick: str, amount: int, db) -> None:
 def get_total_beans_db(db) -> int:
     """Get the total number of beans in circulation from local DB (for trivia/bets)."""
     query = select(
-        [sqlalchemy.func.sum(beans_table.c.beans).label("total_beans")]
+        sqlalchemy.func.sum(beans_table.c.beans).label("total_beans")
     )
     result = db.execute(query).fetchone()
     return result["total_beans"] if result["total_beans"] is not None else 0
@@ -633,6 +625,7 @@ def top_beans(
     for i in range(0, len(response.splitlines()), 10):
         chunk = " ".join(response.splitlines()[i : i + 10])
         message(chunk, nick)
+    return None
 
 
 @hook.command("totalbeans", autohelp=False)
@@ -673,9 +666,10 @@ def export_beans(bot) -> str:
 # SLOT MACHINE
 # ============================================================================
 
-slot_cooldown_cache = TTLCache(
-    maxsize=1000, ttl=3600 * 24 * 2
-)  # Cache for slot cooldowns
+slot_cooldown_cache: TTLCache[str, dict[str, int]] = cast(
+    "TTLCache[str, dict[str, int]]",
+    TTLCache(maxsize=1000, ttl=3600 * 24 * 2),
+)
 
 
 @hook.command("slots", autohelp=False)
@@ -850,9 +844,10 @@ def add_trivia_bet(
         trivia_bets_table.c.trivia_id == trivia_id
     )
     existing_bet = db.execute(
-        select([trivia_bets_table]).where(clause)
+        select(trivia_bets_table).where(clause)
     ).fetchone()
 
+    query: Executable
     if existing_bet:
         query = (
             trivia_bets_table.update()
@@ -877,7 +872,7 @@ def add_trivia_bet(
 
 def get_trivia_bets(trivia_id: int, db):
     """Get all bets for a specific trivia."""
-    query = select([trivia_bets_table]).where(
+    query = select(trivia_bets_table).where(
         trivia_bets_table.c.trivia_id == trivia_id
     )
     return db.execute(query).fetchall()
@@ -887,7 +882,7 @@ def get_user_bets(nick: str, db):
     """Get all bets placed by a user."""
     nick = nick.lower()
     query = (
-        select([trivia_bets_table])
+        select(trivia_bets_table)
         .where(trivia_bets_table.c.creator == nick)
         .order_by(sqlalchemy.desc(trivia_bets_table.c.timestamp))
     )
@@ -898,13 +893,11 @@ def get_recent_trivia_bets(db):
     """Get the most recent trivia bets, grouped by trivia ID."""
     query = (
         select(
-            [
-                trivia_bets_table.c.trivia_id,
-                sqlalchemy.func.sum(trivia_bets_table.c.bet_amount).label(
-                    "total_bet_amount"
-                ),
-                sqlalchemy.func.count().label("bet_count"),
-            ]
+            trivia_bets_table.c.trivia_id,
+            sqlalchemy.func.sum(trivia_bets_table.c.bet_amount).label(
+                "total_bet_amount"
+            ),
+            sqlalchemy.func.count().label("bet_count"),
         )
         .group_by(trivia_bets_table.c.trivia_id)
         .order_by(
@@ -1010,14 +1003,14 @@ def add_trivia(creator: str, question: str, answer: str, prize: int, db) -> int:
 
 def get_trivia(trivia_id: int, db):
     """Get a trivia question by ID."""
-    query = select([trivia_table]).where(trivia_table.c.id == trivia_id)
+    query = select(trivia_table).where(trivia_table.c.id == trivia_id)
     return db.execute(query).fetchone()
 
 
 def get_trivia_by_answer(answer: str, db):
     """Get a trivia question by its answer."""
     answer = answer.lower()
-    query = select([trivia_table]).where(trivia_table.c.answer == answer)
+    query = select(trivia_table).where(trivia_table.c.answer == answer)
     return db.execute(query).fetchone()
 
 
@@ -1025,7 +1018,7 @@ def get_latest_user_trivia(creator: str, db):
     """Get the latest trivia question created by a user."""
     creator = creator.lower()
     query = (
-        select([trivia_table])
+        select(trivia_table)
         .where(trivia_table.c.creator == creator)
         .order_by(sqlalchemy.desc(trivia_table.c.timestamp))
         .limit(1)
@@ -1036,7 +1029,7 @@ def get_latest_user_trivia(creator: str, db):
 def get_latest_trivias(limit: int, db):
     """Get the latest trivia questions."""
     query = (
-        select([trivia_table])
+        select(trivia_table)
         .order_by(sqlalchemy.desc(trivia_table.c.timestamp))
         .limit(limit)
     )
@@ -1047,7 +1040,7 @@ def get_user_trivias(creator: str, db):
     """Get all trivia questions created by a user."""
     creator = creator.lower()
     query = (
-        select([trivia_table])
+        select(trivia_table)
         .where(trivia_table.c.creator == creator)
         .order_by(sqlalchemy.desc(trivia_table.c.timestamp))
     )
@@ -1106,11 +1099,6 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
         return "❌ Missing arguments. Use '.trivia help' for usage information."
 
     if subcmd == "add":
-        # Check authentication for bean transfers
-        auth_error = check_user_authenticated(conn, nick)
-        if auth_error:
-            return auth_error
-
         match = re.match(r"(\d+)\s+(.+?)\s+->\s+(\w+)$", parts[1])
         if not match:
             return "❌ Invalid format. Use: .trivia add <prize_amount> <question> -> <answer>"
@@ -1190,11 +1178,6 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
         return result
 
     elif subcmd == "delete":
-        # Check authentication for bean transfers
-        auth_error = check_user_authenticated(conn, nick)
-        if auth_error:
-            return auth_error
-
         try:
             trivia_id = int(parts[1])
             trivia = get_trivia(trivia_id, db)
@@ -1234,15 +1217,15 @@ def track_trivia_answers(
     match, event, db, conn, chan, bot, message
 ) -> list[str] | None | str:
     if event.type is EventType.action:
-        return
+        return None
     if not chan.startswith("#"):
-        return
+        return None
     answer = match.group(1).strip()
     if not answer:
-        return
+        return None
     trivia = get_trivia_by_answer(answer, db)
     if not trivia:
-        return
+        return None
 
     # Use helper function to send prize
     success, error_msg, dm_msg = send_prize_gift_link(
@@ -1419,11 +1402,6 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
     if len(parts) < 7:
         return "❌ Missing arguments. Use '.bet help' for usage information."
 
-    # Check authentication for placing bets (involves bean transfers)
-    auth_error = check_user_authenticated(conn, nick)
-    if auth_error:
-        return auth_error
-
     if (
         parts[2].lower() not in ["place", "add"]
         or parts[4].lower() not in ["bean", "beans"]
@@ -1455,7 +1433,7 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
 
     # Check if user already placed a bet on this trivia
     existing_bet = db.execute(
-        select([trivia_bets_table]).where(
+        select(trivia_bets_table).where(
             (trivia_bets_table.c.creator == nick.lower())
             & (trivia_bets_table.c.trivia_id == trivia_id)
         )

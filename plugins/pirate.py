@@ -1,7 +1,5 @@
 from urllib.parse import quote_plus
 
-import requests
-
 from cloudbot import hook
 from cloudbot.util.web import get_session
 

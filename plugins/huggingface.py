@@ -4,12 +4,12 @@ import mimetypes
 import os
 import random
 import string
+from collections.abc import Callable
 from dataclasses import dataclass, fields
 from datetime import datetime
 from functools import lru_cache
 from tempfile import TemporaryDirectory
 from time import sleep, time
-from typing import Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote
 
 import magic
@@ -18,6 +18,7 @@ import requests
 from cloudbot import hook
 from cloudbot.util import formatting
 from cloudbot.util.queue import Queue
+from cloudbot.util.web import get_session
 
 INFERENCE_API = "https://api-inference.huggingface.co/models/{model}"
 BASE_API = "https://huggingface.co/api/"
@@ -26,7 +27,7 @@ BASE_API = "https://huggingface.co/api/"
 @dataclass
 class ModelAliasPreset:
     id: str
-    parameters: Optional[Dict[str, Union[Callable[[], str], str]]] = None
+    parameters: dict[str, Callable[[], str] | str] | None = None
 
     def __post_init__(self):
         self.modify_prompt = lambda x: x
@@ -51,7 +52,7 @@ class ModelAliasPreset:
         self.modify_prompt = callback
         return self
 
-    def get_request(self, text: str) -> Dict[str, Union[str, Dict[str, str]]]:
+    def get_request(self, text: str) -> dict[str, str | dict[str, str]]:
         return {
             "inputs": self.modify_prompt(text),
             "parameters": self.get_params(),
@@ -120,9 +121,9 @@ class ModelInfo:
     likes: int
     modelId: str
     private: bool
-    tags: List[str]
-    library_name: Optional[str] = None
-    pipeline_tag: Optional[str] = None
+    tags: list[str]
+    library_name: str | None = None
+    pipeline_tag: str | None = None
 
     @property
     def api_url(self):
@@ -153,14 +154,14 @@ class IrcResponseWrapper:
         response.raise_for_status()
         self.response = response
 
-    def as_text(self) -> List[str]:
+    def as_text(self, bin: str | None = None) -> list[str]:
         return [self.response.text]
 
 
 class JsonIrcResponseWrapper(IrcResponseWrapper):
     content_type = ["application/json"]
 
-    def as_text(self) -> List[str]:
+    def as_text(self, bin: str | None = None) -> list[str]:
         try:
             obj = json.loads(self.response.content.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -199,7 +200,7 @@ class FileIrcResponseWrapper(IrcResponseWrapper):
             return f"error: {obj['error']}"
         return f"error: {obj}"
 
-    def as_text(self, bin: str) -> List[str]:
+    def as_text(self, bin: str | None = None) -> list[str]:
         with TemporaryDirectory() as temp_dir:
             content_disposition = self.response.headers.get(
                 "Content-Disposition"
@@ -258,7 +259,7 @@ def irc_response_builder(response: requests.Response) -> IrcResponseWrapper:
 class HuggingFaceClient:
     def __init__(self, api_tokens: "list[str]"):
         self.api_tokens = iter(api_tokens)
-        self.headers = {}
+        self.headers: dict[str, str] = {}
         self.refresh_headers()
 
     def refresh_headers(self) -> None:
@@ -273,8 +274,6 @@ class HuggingFaceClient:
         return next(self.api_tokens)
 
     def _send(self, payload: dict, model: str) -> requests.Response:
-        from cloudbot.util.web import get_session
-
         data = json.dumps(payload)
         response = get_session().request(
             "POST",
@@ -285,15 +284,13 @@ class HuggingFaceClient:
         return response
 
     def send(self, text: str, model: str) -> requests.Response:
-        inputs = {"inputs": text}
+        inputs: dict[str, str | dict[str, str]] = {"inputs": text}
         preset_model = ALIASED_MODELS_ID_MAP.get(model)
         if preset_model:
             inputs = preset_model.get_request(text)
         return self._send(inputs, preset_model.model if preset_model else model)
 
-    def search_model(self, query: str) -> List[ModelInfo]:
-        from cloudbot.util.web import get_session
-
+    def search_model(self, query: str) -> list[ModelInfo]:
         query = quote(query)
         response = get_session().get(
             BASE_API + f"models?search={query}", headers=self.headers
@@ -304,14 +301,14 @@ class HuggingFaceClient:
     @staticmethod
     def check_loading_model(
         response: dict,
-    ) -> Optional[Tuple[str, Optional[int]]]:
+    ) -> tuple[str, int | None] | None:
         if (
             "estimated_time" in response
             and "error" in response
             and "currently loading" in response["error"]
         ):
             estimated_time = int(response["estimated_time"])
-            if estimated_time < 120 and estimated_time > 0:
+            if 0 < estimated_time < 120:
                 return (
                     f"⏳ Model is currently loading. I will retry in a few minutes and give your response. Please don't spam. Estimated time: {estimated_time} seconds.",
                     estimated_time,
@@ -335,7 +332,6 @@ current_queue = Queue()
 @hook.command("huggingface_next", "hfn", autohelp=False)
 def hfn(text: str, chan: str, nick: str):
     """[nick] - gets the next result from the last hugingface search"""
-    global current_queue
     args = text.strip().split()
     if len(args) > 0:
         nick = args[0]
@@ -370,7 +366,7 @@ def hf(bot, text: str, chan: str, nick: str):
 
 def process_response(
     response: requests.Response, chan: str, nick: str
-) -> str | List[str]:
+) -> str | list[str]:
     try:
         irc_reponse = irc_response_builder(response)
         if isinstance(irc_reponse, FileIrcResponseWrapper):
@@ -413,7 +409,6 @@ def attempt_inference(
 
 
 def _hfi(bot, reply, text: str, chan: str, nick: str):
-    global current_queue
     api_key = bot.config.get_api_key("huggingface")
     if not api_key:
         return "error: missing api key for huggingface"

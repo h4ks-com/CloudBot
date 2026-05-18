@@ -11,6 +11,7 @@ import re
 
 import ety
 import requests
+from bs4 import Tag
 from requests import HTTPError
 
 from cloudbot import hook
@@ -50,7 +51,7 @@ def etymology(text, reply):
 
     prose_section = soup.find("section", class_=re.compile("prose"))
 
-    if not prose_section:
+    if not isinstance(prose_section, Tag):
         return f"No etymology found for {text} :("
 
     paragraphs = prose_section.find_all("p")

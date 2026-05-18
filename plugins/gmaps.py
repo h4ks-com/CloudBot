@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 
 import googlemaps
 import pytz
-import requests
 from fuzzywuzzy import fuzz
 from PIL.Image import Image
 from pyproj import Geod
@@ -20,15 +19,22 @@ from cloudbot.util.formatting import html_to_irc
 from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 from plugins.locate import GeolocationException, GoogleLocation
-
 from plugins.ratelimit import Limit, check, record
 
 GMAPS_BUCKET = "gmaps"
 MAX_HOURLY_REQUESTS = 30
 MAX_DAILY_REQUESTS = 300
 GMAPS_LIMITS = [
-    Limit(3600, MAX_HOURLY_REQUESTS, "Too many gmaps requests this hour. Try later."),
-    Limit(86400, MAX_DAILY_REQUESTS, f"Daily gmaps cap reached ({MAX_DAILY_REQUESTS}). Resets in 24h."),
+    Limit(
+        3600,
+        MAX_HOURLY_REQUESTS,
+        "Too many gmaps requests this hour. Try later.",
+    ),
+    Limit(
+        86400,
+        MAX_DAILY_REQUESTS,
+        f"Daily gmaps cap reached ({MAX_DAILY_REQUESTS}). Resets in 24h.",
+    ),
 ]
 MAX_OUTPUT_LINES = 10
 MIN_GUESS_GAME_DURATION = 60  # seconds
@@ -58,6 +64,7 @@ emoji_map = {
 }
 
 lat_lng_re = re.compile(r"^\s*(-?\d+\.\d+),\s*(-?\d+\.\d+)\s*$")
+
 
 def ratelimit(db) -> str | None:
     """Return error message if any window is exceeded, else None."""
@@ -97,11 +104,12 @@ def directions(text, event, reply, bot, nick, chan, db):
         else:
             return usage_msg
     else:
-        args = text.split(" ")[0]
-        mode = args.lower().strip()
-        if mode in modes_map:
-            mode = modes_map[mode]
-            points = " ".join(args).strip().split(" to ", 1)
+        parts = text.split(" ", 1)
+        first = parts[0].lower().strip()
+        if first in modes_map:
+            mode = modes_map[first]
+            rest = parts[1] if len(parts) > 1 else ""
+            points = rest.split(" to ", 1)
         else:
             mode = None
             points = text.split(" to ", 1)
@@ -165,6 +173,8 @@ def directions(text, event, reply, bot, nick, chan, db):
         if i >= MAX_OUTPUT_LINES:
             break
 
+    return None
+
 
 def upload_image(image: Image) -> str:
     with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
@@ -216,7 +226,7 @@ def streetview(text, reply, bot, db):
         try:
             location = GoogleLocation.from_lat_lng(lat, lng, api_key)
             location_name = location.location_name
-        except GeolocationException as e:
+        except GeolocationException:
             location_name = f"{lat}, {lng}"
     else:
         try:
@@ -228,10 +238,10 @@ def streetview(text, reply, bot, db):
 
     if "move" in params:
         distance = float(params.pop("move"))
-        move_heading = params.get("move_heading", params.get("heading", 0))
-        move_heading = float(move_heading)
+        move_heading = float(
+            params.get("move_heading", params.get("heading", 0))
+        )
 
-        # Get new lat, lng in that direction
         geod = Geod(ellps="WGS84")
         lng, lat, _ = geod.fwd(lng, lat, move_heading, distance)
 
@@ -271,9 +281,8 @@ def new_guess_game(bot, chan, db) -> str:
         return msg
 
     def get_random_land_location() -> GoogleLocation:
-        countries: "dict[str, str]" = json.loads(
-            open("plugins/ISO3166-1.alpha2.json").read()
-        )
+        with open("plugins/ISO3166-1.alpha2.json", encoding="utf-8") as fh:
+            countries: "dict[str, str]" = json.loads(fh.read())
         country_code = random.choice(list(countries.keys()))
         country_name = countries[country_code]
 
@@ -282,15 +291,15 @@ def new_guess_game(bot, chan, db) -> str:
         r.raise_for_status()
         try:
             response_json = r.json()
-        except json.JSONDecodeError:
-            raise ValueError("API Overloaded. Please try again later.")
+        except json.JSONDecodeError as exc:
+            raise ValueError("API Overloaded. Please try again later.") from exc
         lat = float(response_json["nearest"]["latt"])
         lng = float(response_json["nearest"]["longt"])
 
         try:
             location = GoogleLocation.from_lat_lng(lat, lng, api_key)
         except GeolocationException as e:
-            raise ValueError(str(e))
+            raise ValueError(str(e)) from e
 
         location.country = location.country or country_name
         return location
@@ -320,7 +329,6 @@ def new_guess_game(bot, chan, db) -> str:
 @hook.command("geoguess", autohelp=False)
 def geo_guess(text, chan, nick, reply, bot, db):
     """[country] - Play a game of GeoGuessr with a random location. Use 'reveal' to show the answer."""
-    global guess_games
     text = text.strip()
     if text == "reveal":
         if chan not in guess_games:
@@ -340,7 +348,7 @@ def geo_guess(text, chan, nick, reply, bot, db):
             del guess_games[chan]
             return f"🎉 {nick} guessed the country correctly! It was {location.location_name}. Game duration: {timeformat.time_since(start_time, now)}"
         else:
-            return f"🔍 Incorrect guess. Try again!"
+            return "🔍 Incorrect guess. Try again!"
 
     if chan in guess_games and guess_games[chan].start_time + timedelta(
         seconds=MIN_GUESS_GAME_DURATION

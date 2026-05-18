@@ -13,7 +13,6 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Optional
 
 import httpx
 from agents import Agent, FunctionTool, RunContextWrapper, Runner
@@ -105,8 +104,10 @@ CODE_INSTRUCTIONS = (
     "If the task needs unavailable libraries or is too large for a snippet, say so clearly."
 )
 
-_PROVE_AGENT: Optional[Agent] = None
-_CODE_AGENT: Optional[Agent] = None
+
+class _AgentState:
+    prove_agent: Agent | None = None
+    code_agent: Agent | None = None
 
 
 async def _mcp_init(client: httpx.AsyncClient, url: str, api_key: str) -> str:
@@ -250,18 +251,17 @@ def _make_sandbox_tools(sandbox_url: str, api_key: str) -> list[FunctionTool]:
 
 
 def _get_agents(cfg: dict) -> tuple[Agent, Agent]:
-    global _PROVE_AGENT, _CODE_AGENT
-    if _PROVE_AGENT is None or _CODE_AGENT is None:
+    if _AgentState.prove_agent is None or _AgentState.code_agent is None:
         sandbox_url = cfg.get("sandbox_url", "https://sandbox.t3ks.com/mcp")
         api_key = cfg.get("sandbox_api_key", "")
         tools = _make_sandbox_tools(sandbox_url, api_key)
-        _PROVE_AGENT = Agent(
+        _AgentState.prove_agent = Agent(
             name="RocqProver", instructions=PROVE_INSTRUCTIONS, tools=tools
         )
-        _CODE_AGENT = Agent(
+        _AgentState.code_agent = Agent(
             name="CodeAgent", instructions=CODE_INSTRUCTIONS, tools=tools
         )
-    return _PROVE_AGENT, _CODE_AGENT
+    return _AgentState.prove_agent, _AgentState.code_agent
 
 
 async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
@@ -300,7 +300,7 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
     await start_typing_for_command(event.conn, target, typing_id)
 
     try:
-        last_err: Optional[BaseException] = None
+        last_err: BaseException | None = None
         for b in backends_to_try:
             try:
                 run_cfg = _make_run_config(agent_cfg, bot, b)

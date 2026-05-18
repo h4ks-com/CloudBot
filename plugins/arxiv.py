@@ -2,7 +2,6 @@ import io
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 import feedparser
 import requests
@@ -13,6 +12,7 @@ from cloudbot import hook
 from cloudbot.util import formatting
 from cloudbot.util.http import ua_firefox
 from cloudbot.util.web import get_session
+from plugins.gpt import summarize
 from plugins.huggingface import FileIrcResponseWrapper
 
 API_URL = "https://export.arxiv.org/api/query"
@@ -38,10 +38,10 @@ class ApiError(Exception):
 @dataclass
 class SearchResult:
     title: str
-    authors: List[str]
+    authors: list[str]
     summary: str
     link: str
-    published: Optional[str] = None
+    published: str | None = None
 
 
 @dataclass
@@ -51,7 +51,7 @@ class UserPage:
     sort_by_date: bool = False
 
 
-def parse_arxiv_xml(xml_text: str) -> List[SearchResult]:
+def parse_arxiv_xml(xml_text: str) -> list[SearchResult]:
     feed = feedparser.parse(xml_text)
     results = []
     for entry in feed.entries:
@@ -73,7 +73,7 @@ def parse_arxiv_xml(xml_text: str) -> List[SearchResult]:
 
 def search_arxiv(
     page: UserPage, max_results=10, sort_by_date: bool = False
-) -> List[SearchResult]:
+) -> list[SearchResult]:
     query = page.query
     start = page.start
     params = {
@@ -90,7 +90,7 @@ def search_arxiv(
     raise ApiError(response.text)
 
 
-def format_response(start: int, results: List[SearchResult]) -> List[str]:
+def format_response(start: int, results: list[SearchResult]) -> list[str]:
     response = []
     for i, result in enumerate(results):
         parts = ""
@@ -110,14 +110,13 @@ def format_response(start: int, results: List[SearchResult]) -> List[str]:
     return response
 
 
-user_pages: Dict[str, UserPage] = {}
-displayed_results: Dict[str, List[SearchResult]] = {}
+user_pages: dict[str, UserPage] = {}
+displayed_results: dict[str, list[SearchResult]] = {}
 
 
 @hook.command("arxiv", "ax")
 def arxiv(text: str, nick: str):
     """<query> - Search arxiv.org for articles matching <query>. Can sort by date if query starts with '-t'."""
-    global user_pages
     query = text.strip()
     if not query:
         return "Please provide a query"
@@ -138,7 +137,6 @@ def arxiv(text: str, nick: str):
 @hook.command("arxiv_next", "axn", autohelp=False)
 def arxiv_next(text: str, nick: str):
     """Show next page of results"""
-    global user_pages
     if text.strip():
         nick = text.strip()
 
@@ -157,14 +155,11 @@ def arxiv_next(text: str, nick: str):
 @hook.command("axsummarize", "axsummary", "axs", autohelp=False)
 def summarize_command(
     bot, reply, text: str, chan: str, nick: str, conn
-) -> str | List[str] | None:
+) -> str | list[str] | None:
     """Summarizes the contents of the article"""
-    global displayed_results
     api_key = bot.config.get_api_key("huggingface")
     if not api_key:
         return "error: missing api key for huggingface"
-
-    from plugins.gpt import summarize
 
     article = text.strip()
 

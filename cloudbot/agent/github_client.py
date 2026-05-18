@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -62,7 +62,7 @@ def extract_mcp_content(result: dict) -> str:
     return f"(error: {body})" if is_err else body
 
 
-def extract_file_sha(result: dict) -> Optional[str]:
+def extract_file_sha(result: dict) -> str | None:
     """Pull blob SHA out of GitHub MCP get_file_contents text content."""
     content = result.get("content", [])
     if not isinstance(content, list):
@@ -76,7 +76,7 @@ def extract_file_sha(result: dict) -> Optional[str]:
     return None
 
 
-def parse_sse(text: str) -> Optional[dict]:
+def parse_sse(text: str) -> dict | None:
     """Parse an SSE response body and return the first JSON-RPC result dict.
 
     GitHub MCP embeds literal newlines inside JSON string values, so one
@@ -242,7 +242,7 @@ async def wait_for_fork(
     return False
 
 
-def bump_budget(event, kind: str) -> Optional[str]:
+def bump_budget(event, kind: str) -> str | None:
     """Increment a per-event counter; return an error string if over budget.
 
     Counters live on the event object so they're scoped to one .ask call.

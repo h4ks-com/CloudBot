@@ -26,15 +26,16 @@ def grammar(text, bot, reply, lang="en", retry=True):
     response = client.send(text, model)
     if response.status_code != 200:
         return f"error: {response.text}"
-    response = response.json()
+    data = response.json()
     if (
-        "estimated_time" in response
-        and "error" in response
-        and "currently loading" in response["error"]
+        isinstance(data, dict)
+        and "estimated_time" in data
+        and "error" in data
+        and "currently loading" in data["error"]
         and retry
     ):
-        estimated_time = int(response["estimated_time"])
-        if estimated_time < 120 and estimated_time > 0:
+        estimated_time = int(data["estimated_time"])
+        if 0 < estimated_time < 120:
             reply(
                 f"⏳ Model is currently loading. I will retry in a few minutes and give your response. Please don't spam. Estimated time: {estimated_time} seconds."
             )
@@ -44,10 +45,10 @@ def grammar(text, bot, reply, lang="en", retry=True):
             reply(
                 f"⏳ Model is currently loading and will take some minutes. Try again later. Estimated time: {estimated_time} seconds."
             )
-            return
+            return None
 
-    if "error" in response:
-        return response["error"]
+    if isinstance(data, dict) and "error" in data:
+        return data["error"]
 
     def proccess_response(resp: str) -> str:
         resp = resp.strip()
@@ -55,7 +56,7 @@ def grammar(text, bot, reply, lang="en", retry=True):
         resp = re.sub(r"\s+\.$", ".", resp)
         return resp.strip()
 
-    generated_text = {proccess_response(r["generated_text"]) for r in response}
+    generated_text = {proccess_response(r["generated_text"]) for r in data}
     if text.strip() in generated_text:
         return "✅ Perfect grammar! No changes needed."
 

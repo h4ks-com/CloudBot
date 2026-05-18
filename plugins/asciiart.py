@@ -7,10 +7,8 @@ import string
 from dataclasses import dataclass, field
 from random import choice
 from time import time
-from typing import List, Optional, Union
 
-import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from cloudbot.util.web import get_session
 
@@ -27,18 +25,16 @@ MAX_PER_HOUR = 5
 @dataclass
 class Page:
     name: str
-    aliases: List[str]
+    aliases: list[str]
     url: str
-    arts: List[str]
+    arts: list[str]
 
 
 @dataclass
 class Directory:
     name: str
     url: str
-    children: Optional[Union[List[Page], List["Directory"]]] = field(
-        default_factory=list
-    )
+    children: list[Page] | list["Directory"] = field(default_factory=list)
 
 
 def str_similarity(a, b):
@@ -50,68 +46,77 @@ def str_similarity(a, b):
     return (total - error) / total
 
 
-def find_directories(url: str) -> List[Directory]:
+def find_directories(url: str) -> list[Directory]:
     r = get_session().get(url)
     if not r.ok:
         return []
 
     soup = BeautifulSoup(r.text, "html.parser")
     root = soup.find("div", {"class": "directory-columns"})
-    if not root:
+    if not isinstance(root, Tag):
         return []
 
     directories = []
     for link in root.find_all("li"):
+        if not isinstance(link, Tag):
+            continue
         a = link.find("a")
-        directories.append(Directory(a.text, URL + a["href"]))
+        if not isinstance(a, Tag):
+            continue
+        href = a.get("href", "")
+        if not isinstance(href, str):
+            continue
+        directories.append(Directory(a.text, URL + href))
 
     return directories
 
 
-def scrape_page(url: str) -> Page:
+def scrape_page(url: str) -> Page | None:
     r = get_session().get(url)
     if not r.ok:
         return None
 
     soup = BeautifulSoup(r.text, "html.parser")
     artlist = soup.find("div", {"class": "asciiarts"})
-    if not artlist:
+    if not isinstance(artlist, Tag):
         return None
 
     header = soup.find("div", {"class": "bg-header"})
-    aliases = []
-    if header:
+    aliases: list[str] = []
+    if isinstance(header, Tag):
         aliases = header.find_all("pre")[-1].text.split(" - ")
 
     arts = []
     for art in artlist.find_all("pre"):
         arts.append(art.text)
 
-    return Page(soup.title.text, aliases, url, arts)
+    title = soup.title.text if soup.title else ""
+    return Page(title, aliases, url, arts)
 
 
-def generate_map(url=URL) -> Union[Directory, List[Page], List[Directory]]:
+def generate_map(url: str = URL) -> Directory:
     directories = find_directories(url)
     if not directories:
-        return scrape_page(url)
+        page = scrape_page(url)
+        pages: list[Page] = [page] if page else []
+        return Directory("root", url, pages)
 
     for directory in directories:
         print(f"Scraping {directory.name}")
         page = scrape_page(directory.url)
         if page:
-            directory.children.append(page)
+            new_children: list[Page] = [page]
+            directory.children = new_children
         else:
-            directory.children = generate_map(directory.url)
+            sub = generate_map(directory.url)
+            directory.children = sub.children
 
-    if url == URL:
-        return Directory("root", URL, directories)
-
-    return directories
+    return Directory("root", URL, directories)
 
 
 def dir2dict(directory: Directory) -> dict:
     """Converts a Directory object to a json serializable dict."""
-    d = {}
+    d: dict = {}
     for dir in directory.children or []:
         if isinstance(dir, Directory):
             d[dir.name.lower().replace("@", "")] = dir2dict(dir)
@@ -122,27 +127,28 @@ def dir2dict(directory: Directory) -> dict:
 
 
 def save_map(filename):
-    json.dump(dir2dict(generate_map()), open(filename, "w"), indent=4)
+    with open(filename, "w", encoding="utf-8") as fh:
+        json.dump(dir2dict(generate_map()), fh, indent=4)
 
 
 def load_map(filename):
-    return json.load(open(FILE))
+    with open(FILE, encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 if __name__ != "__main__":
     asciimap = load_map(FILE)
 
-    uses = {}
+    uses: dict[str, list[float]] = {}
 
     @hook.command("asciiart", "aa", autohelp=False)
     def asciiart(text, reply, chan):
         """<search> - Search for ascii art."""
-        global uses
         if chan not in uses:
             uses[chan] = []
 
-        last_hour_uses = sum([1 for i in uses[chan] if i > time() - 3600])
-        last_minute_uses = sum([1 for i in uses[chan] if i > time() - 60])
+        last_hour_uses = sum(1 for i in uses[chan] if i > time() - 3600)
+        last_minute_uses = sum(1 for i in uses[chan] if i > time() - 60)
 
         if last_hour_uses >= MAX_PER_HOUR:
             return "The command has reached the maximum uses per hour."
@@ -165,7 +171,7 @@ if __name__ != "__main__":
                 return []
 
             acc = []
-            for k, v in d.items():
+            for v in d.values():
                 if isinstance(v, dict):
                     acc.extend(sublists(v))
                 elif isinstance(v, list):

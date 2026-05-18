@@ -6,7 +6,6 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("cloudbot")
 
@@ -15,8 +14,8 @@ logger = logging.getLogger("cloudbot")
 class ProxyOptions:
     host: str
     port: int
-    username: Optional[str]
-    password: Optional[str]
+    username: str | None
+    password: str | None
 
     def __str__(self):
         if self.username is not None and self.password is not None:
@@ -28,7 +27,7 @@ class ProxyOptions:
 class Config(OrderedDict):
     def __init__(self, bot, *, filename=None):
         super().__init__()
-        logger.info(f"Initializing config with filename={filename}")
+        logger.info("Initializing config with filename=%s", filename)
         if filename is None:
             filename = "config.json"
         self.filename = filename
@@ -49,9 +48,7 @@ class Config(OrderedDict):
             )
             return value
 
-    def get_proxy(
-        self, plugin_name: Optional[str] = None
-    ) -> Optional[ProxyOptions]:
+    def get_proxy(self, plugin_name: str | None = None) -> ProxyOptions | None:
         if plugin_name is None:
             proxy = "default"
         else:
@@ -75,7 +72,10 @@ class Config(OrderedDict):
         if not self.path.exists():
             # if there is no config, show an error and die
             logger.critical(
-                f"No config file found, bot shutting down! Looked for '{self.path}', {os.environ['CLOUDBOT_RUN_PATH']=}"
+                "No config file found, bot shutting down! Looked for '%s',"
+                " CLOUDBOT_RUN_PATH=%s",
+                self.path,
+                os.environ["CLOUDBOT_RUN_PATH"],
             )
             print("No config file found! Bot shutting down in five seconds.")
             print("Copy 'config.default.json' to 'config.json' for defaults.")

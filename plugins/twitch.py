@@ -34,7 +34,7 @@ def twitch_lookup(location, reply):
             title = soup.find("span", {"class": "real_title js-title"}).text
             playing = soup.find("a", {"class": "game js-game"}).text
             views = soup.find("span", {"id": "views-count"}).text + " view"
-            views = views + "s" if not views[0:2] == "1 " else views
+            views = views + "s" if views[0:2] != "1 " else views
             return html.unescape(fmt.format(title, channel, playing, views))
         elif _type == "c":
             data = http.get_json(
@@ -43,7 +43,7 @@ def twitch_lookup(location, reply):
             title = data["title"]
             playing = data["game"]
             views = str(data["views"]) + " view"
-            views = views + "s" if not views[0:2] == "1 " else views
+            views = views + "s" if views[0:2] != "1 " else views
             return html.unescape(fmt.format(title, channel, playing, views))
     else:
         data = http.get_json(
@@ -74,6 +74,7 @@ def twitch_lookup(location, reply):
             playing = data["game"]
             viewers = "\x034\x02Offline\x02\x0f"
             return html.unescape(fmt.format(title, channel, playing, viewers))
+    return None
 
 
 @hook.regex(multitwitch_re)

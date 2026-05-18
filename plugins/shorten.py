@@ -1,4 +1,4 @@
-from yarl import URL
+from urllib.parse import urlparse
 
 from cloudbot import hook
 from cloudbot.util import web
@@ -40,7 +40,7 @@ def isgd(text, reply):
     custom = args[1] if len(args) > 1 else None
 
     try:
-        if URL(url).host == "is.gd":
+        if urlparse(url).hostname == "is.gd":
             return web.expand(url, "is.gd")
 
         return web.shorten(url, custom=custom, service="is.gd")
@@ -58,7 +58,7 @@ def googl(text, reply):
     custom = args[1] if len(args) > 1 else None
 
     try:
-        if URL(url).host == "goo.gl":
+        if urlparse(url).hostname == "goo.gl":
             return web.expand(url, "goo.gl")
 
         return web.shorten(url, custom=custom, service="goo.gl")
@@ -76,7 +76,7 @@ def gitio(text, reply):
     custom = args[1] if len(args) > 1 else None
 
     try:
-        if URL(url).host == "git.io":
+        if urlparse(url).hostname == "git.io":
             return web.expand(url, "git.io")
 
         return web.shorten(url, custom=custom, service="git.io")

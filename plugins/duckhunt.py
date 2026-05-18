@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from threading import Lock
 from time import sleep, time
-from typing import Dict, List, NamedTuple, TypeVar
+from typing import NamedTuple, TypeVar
 
 from humanfriendly import format_timespan
 from sqlalchemy import (
@@ -112,13 +112,13 @@ class ChannelState:
 
 
 T = TypeVar("T")
-ConnMap = Dict[str, Dict[str, T]]
-scripters: Dict[str, float] = defaultdict(float)
+ConnMap = dict[str, dict[str, T]]
+scripters: dict[str, float] = defaultdict(float)
 chan_locks: ConnMap[Lock] = defaultdict(lambda: defaultdict(Lock))
 game_status: ConnMap[ChannelState] = defaultdict(
     lambda: defaultdict(ChannelState)
 )
-opt_out: Dict[str, List[str]] = defaultdict(list)
+opt_out: dict[str, list[str]] = defaultdict(list)
 
 
 def _get_conf_value(conf, field):
@@ -409,7 +409,7 @@ def dbupdate(nick, chan, db, conn, shoot, friend):
 
 def update_score(nick, chan, db, conn, shoot=0, friend=0):
     score = db.execute(
-        select([table.c.shot, table.c.befriend])
+        select(table.c.shot, table.c.befriend)
         .where(table.c.network == conn.name)
         .where(table.c.chan == chan.lower())
         .where(table.c.name == nick.lower())
@@ -518,7 +518,7 @@ def attack(event, nick, chan, db, conn, attack_type):
 def bang(match, nick, chan, db, conn, event):
     """- when there is a duck on the loose use this command to shoot it."""
     if conn.config["command_prefix"] != match[1]:
-        return
+        return None
 
     with chan_locks[conn.name][chan.casefold()]:
         return attack(event, nick, chan, db, conn, "shoot")
@@ -554,8 +554,10 @@ def get_scores(db, score_type, network, chan=None):
     if chan is not None:
         clause = and_(clause, table.c.chan == chan.lower())
 
-    query = select([table.c.name, table.c[score_type]], clause).order_by(
-        desc(table.c[score_type])
+    query = (
+        select(table.c.name, table.c[score_type])
+        .where(clause)
+        .order_by(desc(table.c[score_type]))
     )
 
     scores = db.execute(query).fetchall()
@@ -571,7 +573,7 @@ class ScoreType:
 
 
 def get_channel_scores(db, score_type: ScoreType, conn, chan):
-    scores_dict: Dict[str, int] = defaultdict(int)
+    scores_dict: dict[str, int] = defaultdict(int)
     scores = get_scores(db, score_type.column_name, conn.name, chan)
     if not scores:
         return None
@@ -586,8 +588,8 @@ def get_channel_scores(db, score_type: ScoreType, conn, chan):
 
 
 def _get_global_scores(db, score_type: ScoreType, conn):
-    scores_dict: Dict[str, int] = defaultdict(int)
-    chancount: Dict[str, int] = defaultdict(int)
+    scores_dict: dict[str, int] = defaultdict(int)
+    chancount: dict[str, int] = defaultdict(int)
     scores = get_scores(db, score_type.column_name, conn.name)
     if not scores:
         return None, None
@@ -738,7 +740,7 @@ def hunt_opt_out(text, chan, db, conn):
         if not is_opt_out(conn.name, channel):
             return f"Duck hunt is already enabled in {channel}."
 
-        delete = optout.delete(optout.c.chan == channel.lower())
+        delete = optout.delete().where(optout.c.chan == channel.lower())
         db.execute(delete)
         db.commit()
         load_optout(db)
@@ -756,21 +758,21 @@ def duck_merge(text, conn, db, message):
         return "Please specify two nicks for this command."
 
     oldnickscore = db.execute(
-        select([table.c.name, table.c.chan, table.c.shot, table.c.befriend])
+        select(table.c.name, table.c.chan, table.c.shot, table.c.befriend)
         .where(table.c.network == conn.name)
         .where(table.c.name == oldnick)
     ).fetchall()
 
     newnickscore = db.execute(
-        select([table.c.name, table.c.chan, table.c.shot, table.c.befriend])
+        select(table.c.name, table.c.chan, table.c.shot, table.c.befriend)
         .where(table.c.network == conn.name)
         .where(table.c.name == newnick)
     ).fetchall()
 
-    duckmerge: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    duckmerge: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     total_kills = 0
     total_friends = 0
-    channelkey: Dict[str, List[str]] = {"update": [], "insert": []}
+    channelkey: dict[str, list[str]] = {"update": [], "insert": []}
     if not oldnickscore:
         return f"There are no duck scores to migrate from {oldnick}"
 
@@ -840,14 +842,15 @@ def ducks_user(text, nick, chan, conn, db, message):
     if text:
         name = text.split()[0].lower()
 
-    ducks: Dict[str, int] = defaultdict(int)
+    ducks: dict[str, int] = defaultdict(int)
     scores = db.execute(
         select(
-            [table.c.name, table.c.chan, table.c.shot, table.c.befriend],
+            table.c.name, table.c.chan, table.c.shot, table.c.befriend
+        ).where(
             and_(
                 table.c.network == conn.name,
                 table.c.name == name,
-            ),
+            )
         )
     ).fetchall()
 
@@ -907,12 +910,11 @@ def duck_stats(chan, conn, db, message):
     """- Prints duck statistics for the entire channel and totals for the network."""
     scores = db.execute(
         select(
-            [table.c.name, table.c.chan, table.c.shot, table.c.befriend],
-            table.c.network == conn.name,
-        )
+            table.c.name, table.c.chan, table.c.shot, table.c.befriend
+        ).where(table.c.network == conn.name)
     ).fetchall()
-    friend_chan: Dict[str, int] = defaultdict(int)
-    kill_chan: Dict[str, int] = defaultdict(int)
+    friend_chan: dict[str, int] = defaultdict(int)
+    kill_chan: dict[str, int] = defaultdict(int)
     chan_killed = 0
     chan_friends = 0
     killed = 0

@@ -1,7 +1,7 @@
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime
 from fnmatch import fnmatch
-from typing import Dict, Iterable, List, Set, Tuple
 
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -41,12 +41,12 @@ class TellMessage(database.Base):
         reltime = timeformat.time_since(self.time_sent)
         return f"{self.sender} sent you a message {reltime} ago: {self.message}"
 
-    def mark_read(self, now=None):
+    def mark_read(self, now: datetime | None = None) -> None:
         if now is None:
             now = datetime.now()
 
-        self.is_read = True
-        self.time_read = now
+        setattr(self, "is_read", True)
+        setattr(self, "time_read", now)
 
 
 disable_table = Table(
@@ -69,11 +69,11 @@ ignore_table = Table(
     PrimaryKeyConstraint("conn", "nick", "mask"),
 )
 
-disable_cache: Dict[str, Set[str]] = defaultdict(set)
-ignore_cache: Dict[str, Dict[str, List[str]]] = defaultdict(
+disable_cache: dict[str, set[str]] = defaultdict(set)
+ignore_cache: dict[str, dict[str, list[str]]] = defaultdict(
     lambda: defaultdict(list)
 )
-tell_cache: List[Tuple[str, str]] = []
+tell_cache: list[tuple[str, str]] = []
 
 
 @hook.on_start(priority=Priority.HIGHEST)
@@ -110,8 +110,8 @@ def migrate_tables(db):
 def load_cache(db):
     new_cache = []
     for conn, target in db.execute(
-        select(
-            [TellMessage.conn, TellMessage.target], not_(TellMessage.is_read)
+        select(TellMessage.conn, TellMessage.target).where(
+            not_(TellMessage.is_read)
         )
     ):
         new_cache.append((conn, target))
@@ -230,7 +230,7 @@ def list_ignores(conn, nick: str) -> Iterable[str]:
     yield from ignore_cache[conn.name.lower()][nick.lower()]
 
 
-def get_unread(db, server, target) -> List[TellMessage]:
+def get_unread(db, server, target) -> list[TellMessage]:
     query = (
         select(TellMessage)
         .where(not_(TellMessage.is_read))

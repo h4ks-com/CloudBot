@@ -48,7 +48,6 @@ import copy
 import re
 import warnings
 from html.parser import HTMLParser
-from typing import Dict, List, Union
 
 from bs4 import BeautifulSoup
 
@@ -202,7 +201,9 @@ def truncate_words(content, length=10, suffix="..."):
     return " ".join(split[:length]) + suffix
 
 
-def truncate(content, length=100, suffix="...", sep=" "):
+def truncate(
+    content: str, length: int = 100, suffix: str = "...", sep: str = " "
+) -> str:
     """Truncates a string after a certain number of characters.
 
     Function always tries to truncate on a word boundary.
@@ -301,7 +302,7 @@ pluralise_auto = pluralize_auto
 
 
 def dict_format(args, formats):
-    matches: Dict[str, int] = {}
+    matches: dict[str, int] = {}
     for f in formats:
         try:
             # Check if values can be mapped
@@ -393,8 +394,8 @@ def gen_markdown_table(headers, rows):
 
 
 def json_format(
-    dict_obj: Union[Dict, List], indent: int = 2, max_elements: int = 20
-) -> List[str]:
+    dict_obj: dict | list, indent: int = 2, max_elements: int = 20
+) -> list[str]:
     """Generates a multi-line JSON formatted string from the data to be
     displayed in IRC showing keys and values and identing."""
     base_types = (int, float, str, bool, type(None))
@@ -421,8 +422,8 @@ def json_format(
         return f"{' ' * identation_level * indent}\x02{key}\x02 -> {value}"
 
     def highlight_flat_obj(
-        obj: Union[Dict, List], identation_level: int = 0
-    ) -> List[str]:
+        obj: dict | list, identation_level: int = 0
+    ) -> list[str]:
         """Make keys bold, numbers italic and string values normal with green
         foreground Null and false values are red and true values are blue."""
         obj_lines = []
@@ -506,4 +507,4 @@ def html_to_irc(html: str) -> str:
     irc_text = process_element(soup)
 
     # Return the IRC-formatted text
-    return irc_text
+    return str(irc_text)

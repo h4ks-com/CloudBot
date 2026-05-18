@@ -1,4 +1,3 @@
-import requests
 from requests import HTTPError
 
 from cloudbot import hook

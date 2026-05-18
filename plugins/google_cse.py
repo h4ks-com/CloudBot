@@ -13,11 +13,10 @@ License:
 """
 
 import isodate
-import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
-from cloudbot.util import filesize, formatting, timeformat
+from cloudbot.util import formatting, timeformat
 from cloudbot.util.web import get_session
 from plugins.youtube import get_client, get_video_id, get_video_info
 
@@ -103,7 +102,6 @@ def gse_gis(text):
         return error
 
     image_url = result.get("url")
-    thumbnail = result.get("thumbnail")
     content = result.get("content", "")
     title = result.get("title", "")
 

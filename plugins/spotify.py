@@ -2,7 +2,6 @@ import re
 from datetime import datetime, timedelta
 from threading import RLock
 
-import requests
 from requests import HTTPError
 from requests.auth import HTTPBasicAuth
 from yarl import URL

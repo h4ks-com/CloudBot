@@ -68,12 +68,12 @@ def pop_many(results, reply):
                 reply(r.body)
         except IndexError:
             return "No [more] results found."
+    return None
 
 
 @hook.command("newsn", autohelp=False)
 def newsn(text, chan, nick, reply):
     """<nick> - Returns next search result for news command for nick or yours by default"""
-    global results_queue
     results = results_queue[chan][nick]
     user = text.strip().split()[0] if text.strip() else ""
     if user:
@@ -97,9 +97,10 @@ def news(text, chan, nick, reply):
     newsapi = NewsApiClient(api_key=api)
 
     # If (country) in text
-    co = re.match(r"\(([a-z]{2})\)", text)
-    if co:
-        co = co.group(1)
+    co_match = re.match(r"\(([a-z]{2})\)", text)
+    co: str | None = None
+    if co_match:
+        co = co_match.group(1)
         if co not in const.countries:
             return f"Invalid country. Valid countries: {', '.join(const.countries)}"
         text = text.replace(f"({co})", "").strip()

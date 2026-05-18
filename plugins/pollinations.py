@@ -197,9 +197,8 @@ def parse_args(
 
 @hook.on_start()
 def on_start():
-    global pollinations_messages_cache, user_models
-    pollinations_messages_cache = {}
-    user_models = {}
+    pollinations_messages_cache.clear()
+    user_models.clear()
 
 
 @hook.command("plbalance", autohelp=False)
@@ -208,7 +207,7 @@ def plbalance_command(bot, notice) -> str:
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     client = get_client(api_key)
 
@@ -228,7 +227,7 @@ def plmodels_command(bot, notice) -> str:
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     client = get_client(api_key)
 
@@ -243,12 +242,11 @@ def plmodels_command(bot, notice) -> str:
 @hook.command("plmodel", autohelp=False)
 def plmodel_command(text: str, nick: str, chan: str, bot, notice) -> str:
     """[model] - Show or set text generation model for this channel."""
-    global user_models
 
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     current_model = user_models.get((chan, nick), "openai")
 
@@ -278,7 +276,7 @@ def plimage_command(text: str, nick: str, chan: str, bot, notice) -> str:
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     client = get_client(api_key)
 
@@ -328,7 +326,7 @@ def plvideo_command(text: str, nick: str, chan: str, bot, notice) -> str | None:
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     prompt = text.strip()
     if not prompt:
@@ -376,7 +374,7 @@ def plaudio_command(text: str, nick: str, chan: str, bot, notice) -> str:
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     if text.strip().lower() == "list":
         return "Available voices: " + ", ".join(VOICES)
@@ -403,7 +401,7 @@ def plmusic_command(text: str, nick: str, chan: str, bot, notice) -> str:
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     parts = text.strip().split()
     if not parts:
@@ -441,7 +439,7 @@ def pltranscribe_command(text: str, bot, notice) -> str:
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     url = text.strip()
     if not url:
@@ -468,12 +466,11 @@ def pltranscribe_command(text: str, bot, notice) -> str:
 @hook.command("pltext")
 def pltext_command(text: str, nick: str, chan: str, bot, notice) -> str:
     """<text> - Generate text using Pollinations AI. Use '.plmodel' to change model."""
-    global pollinations_messages_cache, user_models
 
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     model = user_models.get((chan, nick), "openai")
     client = get_client(api_key)
@@ -506,12 +503,11 @@ def pltext_command(text: str, nick: str, chan: str, bot, notice) -> str:
 @hook.command("plapp")
 def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
     """<prompt> - Create a single page HTML web app on the fly with Pollinations AI."""
-    global pollinations_messages_cache, user_models
 
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
-        return
+        return None
 
     model = user_models.get((chan, nick), "openai")
     client = get_client(api_key)
@@ -544,7 +540,6 @@ def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
 @hook.command("plpaste", "pollipaste", autohelp=False)
 def plpaste_command(nick: str, chan: str, text: str) -> str:
     """[nick] - Pastes the Pollinations conversation history with nick if specified fy."""
-    global pollinations_messages_cache
 
     text = text.strip()
     if text:
@@ -563,7 +558,6 @@ def plpaste_command(nick: str, chan: str, text: str) -> str:
 @hook.command("plcopy")
 def plcopy_command(text: str, nick: str, chan: str) -> str:
     """<user> - Copy another user's conversation history into yours, replacing your own."""
-    global pollinations_messages_cache
 
     target = text.strip()
     if not target:

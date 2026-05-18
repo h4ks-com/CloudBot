@@ -7,7 +7,6 @@
 import random
 from tempfile import NamedTemporaryFile
 
-import requests
 from pydub import AudioSegment
 
 from cloudbot import hook
@@ -21,6 +20,7 @@ def get_latest_line(conn, chan, nick):
             if msg.startswith(conn.config["command_prefix"]):
                 continue
             return msg
+    return None
 
 
 def count_syllables(word: str) -> int:
@@ -44,7 +44,7 @@ def count_syllables(word: str) -> int:
 
 def randomize_audio(audio: AudioSegment) -> AudioSegment:
     """Slightly changes the pitch and speed of the audio."""
-    frame_rate: int = audio.frame_rate  # type: ignore
+    frame_rate: int = audio.frame_rate
     delta = 20000
     changed = audio._spawn(
         audio.raw_data,

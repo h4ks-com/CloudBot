@@ -1,4 +1,3 @@
-import requests
 from requests import HTTPError
 
 from cloudbot import hook
@@ -8,17 +7,24 @@ from cloudbot.util.web import get_session
 api_url = "https://translate.yandex.net/api/v1.5/tr.json/"
 
 
+class _State:
+    api_key: str | None = None
+    lang_dict: dict[str, str] = {}
+    lang_dir: list[str] = []
+
+
 @hook.on_start()
 def load_key(bot):
-    global api_key, lang_dict, lang_dir
-    api_key = bot.config.get("api_keys", {}).get("yandex_translate", None)
+    _State.api_key = bot.config.get("api_keys", {}).get(
+        "yandex_translate", None
+    )
     url = api_url + "getLangs"
-    params = {"key": api_key, "ui": "en"}
+    params = {"key": _State.api_key, "ui": "en"}
     r = get_session().get(url, params=params)
     r.raise_for_status()
     data = r.json()
-    lang_dict = {v: k for k, v in data["langs"].items()}
-    lang_dir = data["dirs"]
+    _State.lang_dict = {v: k for k, v in data["langs"].items()}
+    _State.lang_dir = data["dirs"]
 
 
 def check_code(code):
@@ -43,7 +49,7 @@ def check_code(code):
 def list_langs():
     """- List the languages/codes that can be used to translate. Translation is powered by Yandex https://translate.yandex.com"""
     url = api_url + "getLangs"
-    params = {"key": api_key, "ui": "en"}
+    params = {"key": _State.api_key, "ui": "en"}
     r = get_session().get(url, params=params)
     r.raise_for_status()
     data = r.json()
@@ -67,12 +73,17 @@ def trans(text, reply):
     inp = text.split(" ", 1)
     lang = inp[0].replace(":", "")
     text = inp[1]
-    if lang.title() in lang_dict.keys():
-        lang = lang_dict[lang.title()]
-    elif lang not in lang_dict.values() and lang not in lang_dir:
+    if lang.title() in _State.lang_dict.keys():
+        lang = _State.lang_dict[lang.title()]
+    elif lang not in _State.lang_dict.values() and lang not in _State.lang_dir:
         return "Please specify a valid language, language code, to translate to. Use .langlist for more information on language codes and valid translation directions."
     url = api_url + "translate"
-    params = {"key": api_key, "lang": lang, "text": text, "options": 1}
+    params = {
+        "key": _State.api_key,
+        "lang": lang,
+        "text": text,
+        "options": 1,
+    }
 
     try:
         r = get_session().get(url, params=params)

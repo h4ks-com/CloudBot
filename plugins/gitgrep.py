@@ -76,7 +76,6 @@ def grep(query: str, token: str, **params) -> tuple[list, list]:
 @hook.command("gitgrepn", "grepn", autohelp=False)
 def gitnext(text, reply, chan, nick) -> str | None:
     """Gets next result in gitgrep."""
-    global results_queue
     results = results_queue[chan][nick]
     user = text.strip().split()[0] if text.strip() else ""
     if user:
@@ -102,7 +101,6 @@ def gitgrep(text, bot, reply, chan, nick):
     -e (regex) and -i (case) are no-ops: GitHub code search is case-insensitive and
     does not support regex.
     """
-    global results_queue
     params: dict = {}
 
     def findargs(text):

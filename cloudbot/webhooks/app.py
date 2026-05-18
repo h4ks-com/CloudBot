@@ -21,7 +21,7 @@ def is_enabled() -> bool:
     bot_instance = bot.get()
     if bot_instance:
         webhooks_config = bot_instance.config.get("webhooks", {})
-        return webhooks_config.get("enabled", False)
+        return bool(webhooks_config.get("enabled", False))
     return False
 
 
@@ -30,10 +30,9 @@ def get_port() -> int:
     bot_instance = bot.get()
     if bot_instance:
         webhooks_config = bot_instance.config.get("webhooks", {})
-        return webhooks_config.get("port", 8080)
+        return int(webhooks_config.get("port", 8080))
     return 8080
 
 
-def setup_app():
+def setup_app() -> None:
     """Setup the app - routes are already defined above."""
-    pass

@@ -25,9 +25,9 @@ Usage:
         record(db, "my-bucket")
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Iterable
 
 from sqlalchemy import (
     Column,
@@ -88,9 +88,7 @@ def check(db, bucket: str, limits: Iterable[Limit]) -> str | None:
         cutoff = now - timedelta(seconds=lim.seconds)
         total = (
             db.execute(
-                select(
-                    func.coalesce(func.sum(ratelimit_table.c.weight), 0)
-                )
+                select(func.coalesce(func.sum(ratelimit_table.c.weight), 0))
                 .where(ratelimit_table.c.bucket == bucket)
                 .where(ratelimit_table.c.ts >= cutoff)
             ).scalar()

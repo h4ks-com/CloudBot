@@ -1,6 +1,5 @@
 import random
 
-import requests
 from lxml import html
 from requests import HTTPError
 

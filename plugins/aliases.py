@@ -17,7 +17,7 @@ aliases_table = Table(
 )
 
 # Store aliases in memory for faster access
-aliases_cache = {}
+aliases_cache: dict[str, dict[str, str]] = {}
 
 
 @hook.on_start()
@@ -25,8 +25,7 @@ def load_cache(db) -> None:
     """
     Load aliases from the database into the cache
     """
-    global aliases_cache
-    aliases_cache = {}
+    aliases_cache.clear()
 
     for row in db.execute(aliases_table.select()):
         nick = row["nick"].lower()
@@ -41,7 +40,6 @@ def add_alias(text: str, nick: str, db, reply, notice) -> None:
     """
     .addalias <name> = <cmdline> - Adds a new alias with the given name and commands
     """
-    global aliases_cache
     if not text:
         reply("Usage: .addalias <name> = <cmdline>")
         return
@@ -91,7 +89,6 @@ def delete_alias(text: str, nick: str, db, reply, notice) -> None:
     """
     .delalias <name> - Deletes the alias with the given name
     """
-    global aliases_cache
     if not text:
         reply("Usage: .delalias <name>")
         return
@@ -124,7 +121,6 @@ def list_aliases(text: str, nick: str, reply, notice) -> None:
     """
     .aliases [nick] - Lists all aliases for the user or yourself
     """
-    global aliases_cache
     nick_lower = text.split()[0].lower() if text else nick.lower()
     if nick_lower not in aliases_cache or not aliases_cache[nick_lower]:
         reply(f"No aliases found for '{nick_lower}'.")

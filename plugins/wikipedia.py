@@ -1,7 +1,6 @@
 """Searches wikipedia and returns first sentence of article
 Scaevolus 2009"""
 
-import requests
 from requests import RequestException
 from yarl import URL
 

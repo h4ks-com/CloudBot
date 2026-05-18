@@ -197,55 +197,58 @@ def clear_chat_history(db, network: str, chan: str, nick: str) -> None:
 def format_history_for_paste(
     nick: str, messages: list[dict], header: str
 ) -> str:
-    bar = "-" * 80
-    lines = [header, "", bar, ""]
+    divider = "-" * 80
+    lines = [header, "", divider, ""]
     for msg in messages:
         role = nick if msg["role"] == "user" else "bot"
         lines.append(f"{role}: {msg['content']}")
         lines.append("")
-        lines.append(bar)
+        lines.append(divider)
         lines.append("")
     return "\n".join(lines)
 
 
+def _extract_error_msg_from_body(body) -> str | None:
+    if isinstance(body, str):
+        body_data = json.loads(body)
+    else:
+        body_data = body
+    if not (isinstance(body_data, dict) and "error" in body_data):
+        return None
+    error_info = body_data["error"]
+    if not isinstance(error_info, dict):
+        return str(error_info)
+    if "metadata" in error_info and isinstance(error_info["metadata"], dict):
+        raw = error_info["metadata"].get("raw")
+        if raw:
+            return raw
+    return error_info.get("message", str(error_info))
+
+
+def _parse_error_body(e: Exception, label: str) -> str | None:
+    if not hasattr(e, "body"):
+        return None
+    try:
+        logger.debug("%s body: %s", label, e.body)
+        return _extract_error_msg_from_body(e.body)
+    except (
+        json.JSONDecodeError,
+        TypeError,
+        AttributeError,
+        KeyError,
+    ) as parse_err:
+        logger.debug("Error parsing %s body: %s", label, parse_err)
+        return None
+
+
 def handle_openrouter_error(e: Exception) -> str:
-    logger.debug(f"Full error object: {repr(e)}")
-    logger.debug(f"Error attributes: {dir(e)}")
+    logger.debug("Full error object: %r", e)
+    logger.debug("Error attributes: %s", dir(e))
 
     if isinstance(e, ChatError):
-        error_msg = None
-        if hasattr(e, "body"):
-            try:
-                body = e.body
-                logger.debug(f"ChatError body: {body}")
-                if isinstance(body, str):
-                    body_data = json.loads(body)
-                else:
-                    body_data = body
-                if isinstance(body_data, dict) and "error" in body_data:
-                    error_info = body_data["error"]
-                    if isinstance(error_info, dict):
-                        if "metadata" in error_info and isinstance(
-                            error_info["metadata"], dict
-                        ):
-                            error_msg = error_info["metadata"].get("raw")
-                        if not error_msg:
-                            error_msg = error_info.get(
-                                "message", str(error_info)
-                            )
-                    else:
-                        error_msg = str(error_info)
-            except (
-                json.JSONDecodeError,
-                TypeError,
-                AttributeError,
-                KeyError,
-            ) as parse_err:
-                logger.debug(f"Error parsing ChatError body: {parse_err}")
-
+        error_msg = _parse_error_body(e, "ChatError")
         if not error_msg and hasattr(e, "message"):
             error_msg = e.message
-
         if error_msg:
             return f"API error: {error_msg}"
         return f"API error: {str(e)}"
@@ -259,64 +262,20 @@ def handle_openrouter_error(e: Exception) -> str:
     if isinstance(e, ForbiddenResponseError):
         return "Access forbidden to this model."
     if isinstance(e, BadRequestResponseError):
-        error_msg = None
-        if hasattr(e, "body"):
-            try:
-                body = e.body
-                logger.debug(f"BadRequestResponseError body: {body}")
-                if isinstance(body, str):
-                    body_data = json.loads(body)
-                else:
-                    body_data = body
-                if isinstance(body_data, dict) and "error" in body_data:
-                    error_info = body_data["error"]
-                    if isinstance(error_info, dict):
-                        if "metadata" in error_info and isinstance(
-                            error_info["metadata"], dict
-                        ):
-                            error_msg = error_info["metadata"].get("raw")
-                        if not error_msg:
-                            error_msg = error_info.get(
-                                "message", str(error_info)
-                            )
-                    else:
-                        error_msg = str(error_info)
-            except (
-                json.JSONDecodeError,
-                TypeError,
-                AttributeError,
-                KeyError,
-            ) as parse_err:
-                logger.debug(
-                    f"Error parsing BadRequestResponseError body: {parse_err}"
-                )
-
+        error_msg = _parse_error_body(e, "BadRequestResponseError")
         if not error_msg and hasattr(e, "message"):
             error_msg = e.message
-
         if error_msg:
             return f"Bad request: {error_msg}"
         return f"Bad request: {str(e)}"
 
     if isinstance(e, ResponseValidationError):
         body = e.body if hasattr(e, "body") else str(e)
-        logger.debug(f"ResponseValidationError body: {body}")
+        logger.debug("ResponseValidationError body: %s", body)
         if "error" in str(body).lower():
             try:
-                error_data = json.loads(body) if isinstance(body, str) else body
-                if isinstance(error_data, dict) and "error" in error_data:
-                    error_info = error_data["error"]
-                    if isinstance(error_info, dict):
-                        if "metadata" in error_info and isinstance(
-                            error_info["metadata"], dict
-                        ):
-                            error_msg = error_info["metadata"].get("raw")
-                        else:
-                            error_msg = error_info.get(
-                                "message", str(error_info)
-                            )
-                    else:
-                        error_msg = str(error_info)
+                error_msg = _extract_error_msg_from_body(body)
+                if error_msg is not None:
                     return f"API error: {error_msg}"
             except (
                 json.JSONDecodeError,
@@ -325,11 +284,11 @@ def handle_openrouter_error(e: Exception) -> str:
                 KeyError,
             ) as parse_err:
                 logger.debug(
-                    f"Error parsing ResponseValidationError: {parse_err}"
+                    "Error parsing ResponseValidationError: %s", parse_err
                 )
         return f"Response error: {body}"
 
-    logger.debug(f"Unhandled error type: {type(e)}")
+    logger.debug("Unhandled error type: %s", type(e))
     return f"Error: {e}"
 
 
@@ -404,7 +363,10 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
         error_body = getattr(e, "body", None)
         error_msg = getattr(e, "message", str(e))
         logger.error(
-            f"OpenRouter API error: type={error_type}, message={error_msg}, body={error_body}"
+            "OpenRouter API error: type=%s, message=%s, body=%s",
+            error_type,
+            error_msg,
+            error_body,
         )
         return handle_openrouter_error(e)
 
@@ -441,7 +403,10 @@ def llm_set_model(text: str, chan: str, conn, db, nick: str) -> str:
         error_body = getattr(e, "body", None)
         error_msg = getattr(e, "message", str(e))
         logger.error(
-            f"Error fetching models: type={error_type}, message={error_msg}, body={error_body}"
+            "Error fetching models: type=%s, message=%s, body=%s",
+            error_type,
+            error_msg,
+            error_body,
         )
         return handle_openrouter_error(e)
 
@@ -477,7 +442,10 @@ def llm_list_models(conn) -> str:
         error_body = getattr(e, "body", None)
         error_msg = getattr(e, "message", str(e))
         logger.error(
-            f"Error listing models: type={error_type}, message={error_msg}, body={error_body}"
+            "Error listing models: type=%s, message=%s, body=%s",
+            error_type,
+            error_msg,
+            error_body,
         )
         return handle_openrouter_error(e)
 
@@ -578,7 +546,10 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
         error_body = getattr(e, "body", None)
         error_msg = getattr(e, "message", str(e))
         logger.error(
-            f"OpenRouter API error: type={error_type}, message={error_msg}, body={error_body}"
+            "OpenRouter API error: type=%s, message=%s, body=%s",
+            error_type,
+            error_msg,
+            error_body,
         )
         return handle_openrouter_error(e)
 

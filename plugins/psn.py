@@ -3,11 +3,9 @@
 # Date: 24/09/2022
 
 from dataclasses import dataclass
-from typing import List
 from urllib.parse import quote
 
-import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from cloudbot import hook
 from cloudbot.util import queue
@@ -51,23 +49,28 @@ class Game:
         return f"{self.name} - {self.price} - {self.description} - {self.url}"
 
 
-def search_game(query: str, lang: str) -> List[Game]:
+def search_game(query: str, lang: str) -> list[Game]:
     url = SEARCH_URL.format(lang, quote(query))
     r = get_session().get(url, headers=HEADERS)
     soup = BeautifulSoup(r.text, "html.parser")
     grid = soup.find("ul", class_="psw-grid-list psw-l-grid")
-    if not grid:
+    if not isinstance(grid, Tag):
         return []
     games = []
     i = 0
     for game in grid.find_all("li") or []:
+        if not isinstance(game, Tag):
+            i += 1
+            continue
         name_elem = game.find(
-            "span", {"data-qa": f"search#productTile{i}#product-name"}
+            "span",
+            attrs={"data-qa": f"search#productTile{i}#product-name"},
         )
         price_elem = game.find(
-            "span", {"data-qa": f"search#productTile{i}#price#display-price"}
+            "span",
+            attrs={"data-qa": f"search#productTile{i}#price#display-price"},
         )
-        if not name_elem or not price_elem:
+        if not isinstance(name_elem, Tag) or not isinstance(price_elem, Tag):
             i += 1
             continue
 
@@ -76,18 +79,23 @@ def search_game(query: str, lang: str) -> List[Game]:
 
         desc_elem = game.find(
             "span",
-            {"data-qa": f"search#productTile{i}#service-upsell#descriptorText"},
+            attrs={
+                "data-qa": f"search#productTile{i}#service-upsell#descriptorText"
+            },
         )
-        description = desc_elem.text.strip() if desc_elem else ""
+        description = (
+            desc_elem.text.strip() if isinstance(desc_elem, Tag) else ""
+        )
 
         ptype_elem = game.find(
-            "span", {"data-qa": f"search#productTile{i}#product-type"}
+            "span",
+            attrs={"data-qa": f"search#productTile{i}#product-type"},
         )
-        if ptype_elem:
+        if isinstance(ptype_elem, Tag):
             description = ptype_elem.text.strip() + " " + description
 
         link = game.find("a")
-        href = link.get("href", "") if link else ""
+        href = link.get("href", "") if isinstance(link, Tag) else ""
         url = BASE_URL + (href if isinstance(href, str) else "")
         games.append(Game(name, price, url, description.strip()))
         i += 1
@@ -97,7 +105,6 @@ def search_game(query: str, lang: str) -> List[Game]:
 @hook.command("psnn", autohelp=False)
 def psnn(text: str, message: str, chan, nick):
     """Next result in the queue for playstation games"""
-    global results_queue
     results = results_queue[chan][nick]
     if len(results) == 0:
         return "No [more] results found."
@@ -108,7 +115,6 @@ def psnn(text: str, message: str, chan, nick):
 @hook.command("psn", "playstation", autohelp=False)
 def psn(text, message, chan, nick, reply):
     """[lang] <game> - Search for a game on psn"""
-    global results_queue
     if not text:
         return "Please provide a game to search for."
 

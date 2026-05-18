@@ -3,11 +3,9 @@
 # Date: 19/09/2022
 
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from enum import Enum, auto
-from typing import List
 
-import requests
 from bs4 import BeautifulSoup, Tag
 
 from cloudbot import hook
@@ -19,7 +17,10 @@ TABLE_URL = f"{BASE_URL}/tiobe-index/"
 
 def get_float(s: str) -> float:
     """Returns first float number contained in a string."""
-    return float(re.search(r"\d+\.\d+", s)[0])
+    match = re.search(r"\d+\.\d+", s)
+    if match is None:
+        return 0.0
+    return float(match[0])
 
 
 class ChangeDirection(Enum):
@@ -56,29 +57,37 @@ class TiobeRowBuilder:
     change: Tag
 
     def build(self) -> TiobeRow:
-        self.rank = int(int(self.rank.text.strip()))
-        self.last_month_rank = int(self.last_month_rank.text.strip())
+        rank = int(self.rank.text.strip())
+        last_month_rank = int(self.last_month_rank.text.strip())
 
-        img = self.change_direction.find("img")
-        self.change_direction = ChangeDirection.NONE
-        if img:
-            if "up.png" in img["src"]:
-                self.change_direction = ChangeDirection.UP
-            elif "down.png" in img["src"]:
-                self.change_direction = ChangeDirection.DOWN
+        direction_img = self.change_direction.find("img")
+        change_direction = ChangeDirection.NONE
+        if isinstance(direction_img, Tag):
+            src = direction_img.get("src", "")
+            src_str = src if isinstance(src, str) else ""
+            if "up.png" in src_str:
+                change_direction = ChangeDirection.UP
+            elif "down.png" in src_str:
+                change_direction = ChangeDirection.DOWN
 
-        img = self.logo_url.find("img")
-        self.logo_url = BASE_URL + img["src"] if img else ""
+        logo_img = self.logo_url.find("img")
+        logo_url = ""
+        if isinstance(logo_img, Tag):
+            src = logo_img.get("src", "")
+            logo_url = BASE_URL + src if isinstance(src, str) else ""
 
-        self.language = self.language.text.strip()
+        return TiobeRow(
+            rank=rank,
+            last_month_rank=last_month_rank,
+            change_direction=change_direction,
+            logo_url=logo_url,
+            language=self.language.text.strip(),
+            rating=get_float(self.rating.text),
+            change=get_float(self.change.text),
+        )
 
-        self.rating = get_float(self.rating.text)
-        self.change = get_float(self.change.text)
 
-        return TiobeRow(**asdict(self))
-
-
-def get_table() -> List[TiobeRow]:
+def get_table() -> list[TiobeRow]:
     """Returns the tiobe index table."""
     r = get_session().get(TABLE_URL)
     soup = BeautifulSoup(r.content, "html.parser")
@@ -86,11 +95,24 @@ def get_table() -> List[TiobeRow]:
         "table", attrs={"class": "table table-striped table-top20"}
     )
     table2 = soup.find("table", attrs={"id": "otherPL"})
+    if not isinstance(table, Tag) or not isinstance(table2, Tag):
+        return []
+    tbody1 = table.find("tbody")
+    tbody2 = table2.find("tbody")
+    if not isinstance(tbody1, Tag) or not isinstance(tbody2, Tag):
+        return []
     top20 = [
-        TiobeRowBuilder(*(ele for ele in row.find_all("td"))).build()
-        for row in table.find("tbody").find_all("tr")
+        TiobeRowBuilder(
+            *(ele for ele in row.find_all("td") if isinstance(ele, Tag))
+        ).build()
+        for row in tbody1.find_all("tr")
+        if isinstance(row, Tag)
     ]
-    elms = [row.find_all("td") for row in table2.find("tbody").find_all("tr")]
+    elms = [
+        row.find_all("td")
+        for row in tbody2.find_all("tr")
+        if isinstance(row, Tag)
+    ]
     others = []
     for rank, language, rating in elms:
         others.append(
@@ -124,13 +146,12 @@ def tiobe(reply, text):
 
     # If is a language return the ranking for the language
     elif arg:
-        for i, row in enumerate(rows):
+        for row in rows:
             if arg.casefold() in row.language.casefold():
                 reply(str(row))
                 return
-        else:
-            reply("Language not found in the top 50")
-            return
+        reply("Language not found in the top 50")
+        return
 
     else:
         for row in rows[:5]:

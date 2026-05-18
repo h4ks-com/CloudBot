@@ -1,9 +1,5 @@
-import asyncio
-import logging
 import re
 import socket
-
-import requests
 
 from cloudbot import hook
 from cloudbot.util.web import get_session

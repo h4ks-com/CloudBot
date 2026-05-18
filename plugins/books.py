@@ -11,7 +11,11 @@ book_search_api = base_url + "volumes?"
 BOOKS_BUCKET = "books"
 BOOKS_MAX_RPD = 800
 BOOKS_LIMITS = [
-    Limit(86400, BOOKS_MAX_RPD, f"Daily Books cap reached ({BOOKS_MAX_RPD}). Resets in 24h."),
+    Limit(
+        86400,
+        BOOKS_MAX_RPD,
+        f"Daily Books cap reached ({BOOKS_MAX_RPD}). Resets in 24h.",
+    ),
 ]
 
 

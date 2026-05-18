@@ -1,6 +1,7 @@
 import re
 
 import requests
+from bs4 import Tag
 
 from cloudbot import hook
 from cloudbot.util import formatting, web
@@ -97,7 +98,7 @@ def steam(text, reply):
     soup = parse_soup(request.text, from_encoding="utf-8")
     result = soup.find("a", {"class": "search_result_row"})
 
-    if not result:
+    if not isinstance(result, Tag):
         return "No game found."
 
     app_id = result["data-ds-appid"]

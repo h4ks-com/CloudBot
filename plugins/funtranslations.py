@@ -1,6 +1,7 @@
 import io
 import socket
 from base64 import b64decode
+from collections.abc import Callable
 
 import requests
 
@@ -8,20 +9,21 @@ from cloudbot import hook
 from cloudbot.bot import bot
 from cloudbot.util.web import get_session
 
+try:
+    from uwuipy import uwuipy as _uwuipy
+except ImportError:
+    _uwuipy = None
+
 
 def uwuify(text: str) -> str:
-    try:
-        from uwuipy import uwuipy
-
-        uwu = uwuipy()
-    except ImportError:
+    if _uwuipy is None:
         return "uwuipy is not installed. Please install it using `pip install uwuipy`"
-    return uwu.uwuify(text)
+    return _uwuipy().uwuify(text)
 
 
 API = "https://api.funtranslations.com/translate"
 
-LANGS = {
+LANGS: dict[str, str | Callable[[str], str]] = {
     "morse": f"{API}/morse",
     "morse2english": f"{API}/morse2english ",
     "morse2audio": f"{API}/morse/audio",
@@ -66,10 +68,11 @@ TOR_PORT = 9051
 TOR_PASSWORD = ""
 
 
-last_proxy = None
+class _State:
+    last_proxy: dict[str, str] | None = None
 
 
-def tor_check_code(s: socket, failmsg: str):
+def tor_check_code(s: socket.socket, failmsg: str):
     c = s.recv(1024).decode().strip().split()[0]
     if str(c) != "250":
         raise Exception(failmsg)
@@ -100,10 +103,10 @@ def tor_refresh():
 def tor_request_get(*args, **kwargs):
     return get_session().get(
         *args,
-        proxies=dict(
-            http=f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
-            https=f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
-        ),
+        proxies={
+            "http": f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
+            "https": f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
+        },
         **kwargs,
     )
 
@@ -111,10 +114,10 @@ def tor_request_get(*args, **kwargs):
 def tor_request_post(*args, **kwargs):
     return get_session().post(
         *args,
-        proxies=dict(
-            http=f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
-            https=f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
-        ),
+        proxies={
+            "http": f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
+            "https": f"socks5://{TOR_SOCKS5_HOST}:{TOR_SOCKS5_PORT}",
+        },
         **kwargs,
     )
 
@@ -130,7 +133,6 @@ def torip():
 @hook.command("funtranslate", "tr", autohelp=False)
 def funtranslate(text, reply):
     """<target> <text> - Translates <text> using funtranslations.com"""
-    global last_proxy
     if not text:
         return "No text to translate"
 
@@ -144,8 +146,9 @@ def funtranslate(text, reply):
     # Get text
     text = " ".join(text.split()[1:])
 
-    if callable(LANGS[lang]):
-        return LANGS[lang](text)
+    lang_target = LANGS[lang]
+    if callable(lang_target):
+        return lang_target(text)
 
     # Translate
     headers = {
@@ -154,7 +157,7 @@ def funtranslate(text, reply):
 
     data = f"text={text}"
 
-    response = get_session().post(LANGS[lang], headers=headers, data=data)
+    response = get_session().post(lang_target, headers=headers, data=data)
 
     def process_response(response):
         resp = response.json()
@@ -172,15 +175,16 @@ def funtranslate(text, reply):
             if isinstance(translated, list):
                 return " ".join(translated)
             return "Not implemented"
+        return None
 
     output = process_response(response)
     if output:
         return output
 
-    if last_proxy is not None:
+    if _State.last_proxy is not None:
         try:
             response = proxy_request_post(
-                last_proxy, LANGS[lang], headers=headers, data=data
+                _State.last_proxy, LANGS[lang], headers=headers, data=data
             )
             output = process_response(response)
             if output:
@@ -211,16 +215,19 @@ def funtranslate(text, reply):
             i = 0
             while i < len(proxies):
                 i += 1
-                if last_proxy in proxies:
-                    last_proxy = proxies[
-                        (proxies.index(last_proxy) + 1) % len(proxies)
+                if _State.last_proxy in proxies:
+                    _State.last_proxy = proxies[
+                        (proxies.index(_State.last_proxy) + 1) % len(proxies)
                     ]
                 else:
-                    last_proxy = proxies[0]
+                    _State.last_proxy = proxies[0]
 
                 try:
                     response = proxy_request_post(
-                        last_proxy, LANGS[lang], headers=headers, data=data
+                        _State.last_proxy,
+                        LANGS[lang],
+                        headers=headers,
+                        data=data,
                     )
                 except requests.exceptions.ProxyError:
                     continue

@@ -52,23 +52,7 @@ def request(url, headers=None):
         #   Date: Thu, 01 Apr 2021 04:31:31 GMT
         #   Connection: close
         # e.fp, pointer to the http.client.HTTPResponse object.
-        code = e.code  # HTTPError code
-        error = e.msg  # HTTPError message
-        headers = e.hdr  # HTTPError headers
-        response = e.fp  # HTTPResponse object
         return e
-
-    # Set HTTPResponse status code.
-    code = response.status
-
-    # Set error to None, to know we succeeded in making request
-    error = None
-
-    # Set HTTPResponse headers.
-    headers = dict(response.getheaders())
-
-    if url != response.url:
-        redirect = True
 
     return response
 

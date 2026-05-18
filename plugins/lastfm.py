@@ -2,9 +2,7 @@ import math
 import string
 from datetime import datetime
 from json import JSONDecodeError
-from typing import Dict
 
-import requests
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
 
 from cloudbot import hook
@@ -70,7 +68,7 @@ def filter_tags(tags, artist, limit=4):
     return filtered_tags
 
 
-last_cache: Dict[str, str] = {}
+last_cache: dict[str, str] = {}
 
 
 @hook.on_start()

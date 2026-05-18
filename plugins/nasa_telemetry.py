@@ -3,6 +3,8 @@ Provides real-time ISS telemetry data including urine tank levels.
 """
 
 import asyncio
+from collections.abc import Callable
+from typing import TypedDict
 
 import aiohttp
 from lightstreamer.client import LightstreamerClient, Subscription
@@ -15,33 +17,40 @@ def bold(text):
     """Make text bold for IRC."""
     return f"{IRC_TAGS['b']}{text}{IRC_TAGS['b']}"
 
+
+class TelemetryEntry(TypedDict):
+    node: str
+    format: Callable[[float], str]
+    error: str
+
+
 # Telemetry configuration mapping
-TELEMETRY_CONFIG = {
+TELEMETRY_CONFIG: dict[str, TelemetryEntry] = {
     "temp": {
         "node": "USLAB000059",
         "format": lambda x: f"🌡️ ISS Cabin Temperature: {bold(f'{x:.1f}°C')} ({bold(f'{(x * 9/5) + 32:.1f}°F')})",
-        "error": "❌ Unable to retrieve temperature data"
+        "error": "❌ Unable to retrieve temperature data",
     },
     "pressure": {
         "node": "USLAB000058",
         "format": lambda x: f"🔘 ISS Cabin Pressure: {bold(f'{x:.1f} mmHg')}",
-        "error": "❌ Unable to retrieve pressure data"
+        "error": "❌ Unable to retrieve pressure data",
     },
     "co2": {
         "node": "NODE3000003",
         "format": lambda x: f"💨 ISS CO2 Level: {bold(f'{x:.1f} mmHg')}",
-        "error": "❌ Unable to retrieve CO2 data"
+        "error": "❌ Unable to retrieve CO2 data",
     },
     "oxygen": {
         "node": "NODE3000001",
         "format": lambda x: f"💨 ISS Oxygen Level: {bold(f'{x:.1f} mmHg')}",
-        "error": "❌ Unable to retrieve oxygen data"
+        "error": "❌ Unable to retrieve oxygen data",
     },
     "urine": {
         "node": "NODE3000005",
         "format": lambda x: f"🚽 ISS Urine Tank Level: {bold(f'{x}%')}",
-        "error": "❌ Unable to retrieve urine tank data"
-    }
+        "error": "❌ Unable to retrieve urine tank data",
+    },
 }
 
 
@@ -69,9 +78,11 @@ class ISSDataManager:
     async def _connect(self):
         """Connect to NASA's ISS telemetry stream."""
         try:
-            self.client = LightstreamerClient("https://push.lightstreamer.com", "ISSLIVE")
+            self.client = LightstreamerClient(
+                "https://push.lightstreamer.com", "ISSLIVE"
+            )
 
-            connection_future = asyncio.Future()
+            connection_future: asyncio.Future[bool] = asyncio.Future()
 
             class ConnectionListener:
                 def onStatusChange(self, new_status):
@@ -188,9 +199,15 @@ async def get_iss_location():
     """Get current ISS position, altitude, velocity and location."""
     async with aiohttp.ClientSession() as session:
         # Get ISS position data
-        async with session.get("https://api.wheretheiss.at/v1/satellites/25544") as response:
+        async with session.get(
+            "https://api.wheretheiss.at/v1/satellites/25544"
+        ) as response:
             if response.status != 200:
-                raise aiohttp.ClientResponseError(response.request_info, response.history, status=response.status)
+                raise aiohttp.ClientResponseError(
+                    response.request_info,
+                    response.history,
+                    status=response.status,
+                )
             iss_data = await response.json()
 
         latitude = iss_data["latitude"]
@@ -221,7 +238,7 @@ async def get_iss_location():
             "longitude": longitude,
             "altitude": altitude,
             "velocity": velocity,
-            "location": location
+            "location": location,
         }
 
 
@@ -273,11 +290,15 @@ async def iss_telemetry(text):
             vel = location_data["velocity"]
             loc = location_data["location"]
 
-            return (f"🛰️ ISS Location: {bold(f'{lat:.2f}°, {lon:.2f}°')} | "
-                   f"Altitude: {bold(f'{alt:.0f}km')} | Speed: {bold(f'{vel:.0f}km/h')} | "
-                   f"Over: {bold(loc)}")
+            return (
+                f"🛰️ ISS Location: {bold(f'{lat:.2f}°, {lon:.2f}°')} | "
+                f"Altitude: {bold(f'{alt:.0f}km')} | Speed: {bold(f'{vel:.0f}km/h')} | "
+                f"Over: {bold(loc)}"
+            )
         except (aiohttp.ClientError, asyncio.TimeoutError, KeyError) as e:
-            return f"❌ Unable to retrieve ISS location data: {type(e).__name__}"
+            return (
+                f"❌ Unable to retrieve ISS location data: {type(e).__name__}"
+            )
 
     subcommand = text.strip().lower()
 
@@ -304,4 +325,6 @@ async def iss_telemetry(text):
                 return f"🚫 Connection error: {type(e).__name__}"
 
         case _:
-            return "❓ Unknown subcommand. Use '.iss list' for available commands"
+            return (
+                "❓ Unknown subcommand. Use '.iss list' for available commands"
+            )

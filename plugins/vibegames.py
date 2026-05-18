@@ -5,12 +5,14 @@ import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.util.web import get_session
 
 
-class VibeResponse(TypedDict):
+class VibeResponse(TypedDict, total=False):
     status: str
     message: str
     url: str
+    response: str
 
 
 class VibeSearchResult(TypedDict):
@@ -29,7 +31,7 @@ class VibeClient:
 
     def __init__(self):
         if self._instance is not None:
-            return self._instance
+            return
         self._instance = self
         api_key = bot.config.get_api_key("vibegames_api_key")
         self.api_url = bot.config.get_api_key("vibegames_api_url")
@@ -79,8 +81,6 @@ class VibeClient:
 
     def create(self, name: str, prompt: str) -> VibeResponse | dict:
         """Create a new game"""
-        from cloudbot.util.web import get_session
-
         response = get_session().post(
             f"{self.api_url}/api/ai/{name}",
             json={"content": prompt},
@@ -90,8 +90,6 @@ class VibeClient:
 
     def update(self, name: str, prompt: str) -> VibeResponse | dict:
         """Update an existing game"""
-        from cloudbot.util.web import get_session
-
         response = get_session().put(
             f"{self.api_url}/api/ai/{name}",
             json={"content": prompt},
@@ -103,8 +101,6 @@ class VibeClient:
         self, name: str, content: bytes, path: str = "index.html"
     ) -> VibeResponse | dict:
         """Import a game"""
-        from cloudbot.util.web import get_session
-
         text = base64.b64encode(content).decode("utf-8")
         response = get_session().put(
             f"{self.api_url}/api/project/{name}/{path}",
@@ -115,8 +111,6 @@ class VibeClient:
 
     def delete(self, name: str) -> bool:
         """Delete a game"""
-        from cloudbot.util.web import get_session
-
         response = get_session().delete(
             f"{self.api_url}/api/project/{name}", headers=self.headers
         )
@@ -124,8 +118,6 @@ class VibeClient:
 
     def search(self, name: str) -> list[VibeSearchResult]:
         """Search for a game"""
-        from cloudbot.util.web import get_session
-
         response = get_session().get(
             f"{self.api_url}/api/games",
             params={"search_query": name, "sort_by": "hottest"},
@@ -138,8 +130,6 @@ class VibeClient:
 
     def revert(self, name: str) -> VibeResponse | dict:
         """Revert a game"""
-        from cloudbot.util.web import get_session
-
         response = get_session().get(
             f"{self.api_url}/api/revert_project/{name}", headers=self.headers
         )
@@ -168,6 +158,7 @@ def vibegame(text: str, chan: str, nick: str, reply) -> None | str:
         )
     if lines:
         reply(*lines)
+    return None
 
 
 @hook.command("vibeadd", "vibecreate", autohelp=False)
@@ -213,9 +204,9 @@ def vibe_import(text: str, chan: str, nick: str) -> str:
 
     name, url, *_ = text.split()
     client = VibeClient()
-    response = requests.get(url)
-    if response.status_code != 200:
-        return f"Error: {response.status_code} - {response.text}"
+    http_response = requests.get(url)
+    if http_response.status_code != 200:
+        return f"Error: {http_response.status_code} - {http_response.text}"
 
     # if has "/" we use it as a file path
     if "/" in name:
@@ -223,7 +214,7 @@ def vibe_import(text: str, chan: str, nick: str) -> str:
     else:
         path = "index.html"
 
-    content = response.content
+    content = http_response.content
     if len(content) > 10 * 1024**2:
         return "Error: File too large"
 

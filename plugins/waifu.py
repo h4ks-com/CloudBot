@@ -1,17 +1,15 @@
 # Should make comamnd for every free API out there they say...
 
-import requests
 
 from cloudbot import hook
 from cloudbot.util.web import get_session
 
 API_URL = "https://api.waifu.im/"
-tags = []
+tags: list[str] = []
 
 
 def refresh_tags():
-    global tags
-    tags = []
+    tags.clear()
     response = get_session().get(API_URL + "tags")
     if response.status_code == 200:
         obj = response.json()
@@ -27,7 +25,6 @@ def setup(bot):
 @hook.command("waifu", autohelp=False)
 def waifu(text):
     """<waifu> - returns a random waifu image with <tag> using waifu.im. Use 'tags' to get available tags. Use 'refresh' to refresh tags."""
-    global tags
     if text == "tags":
         return "Available tags: " + ", ".join(tags)
     if text == "refresh":

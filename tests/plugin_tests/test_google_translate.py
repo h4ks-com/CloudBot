@@ -111,9 +111,7 @@ def test_api_error_does_not_record(mock_bot, mock_requests, db):
 
 def test_generic_api_error_does_not_record(mock_bot, mock_requests, db):
     _set_key(mock_bot)
-    mock_requests.add(
-        "GET", TRANSLATE_URL, json={"error": {"code": 500}}
-    )
+    mock_requests.add("GET", TRANSLATE_URL, json={"error": {"code": 500}})
     res = google_translate.translate("hi", db)
     assert res == "Google API error."
     assert _bucket_total(db) == 0

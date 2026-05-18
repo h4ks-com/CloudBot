@@ -12,12 +12,13 @@ __all__ = ("metadata", "base", "Base", "Session", "configure")
 
 Base = declarative_base()
 base = Base
-metadata: MetaData = Base.metadata  # type: ignore
+metadata: MetaData = Base.metadata
 Session = scoped_session(sessionmaker())
 
 
-def configure(bind: Engine = None) -> None:
-    metadata.bind = bind
+def configure(bind: Engine | None = None) -> None:
+    # SQLAlchemy 2.x removed MetaData.bind — engine is bound to the Session
+    # (and therefore to operations performed through it) instead.
     close_all_sessions()
     Session.remove()
     Session.configure(bind=bind)

@@ -1,6 +1,6 @@
 import re
 from collections import defaultdict
-from typing import Dict, List, Optional, Pattern
+from re import Pattern
 
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table, select
 
@@ -17,11 +17,11 @@ table = Table(
     PrimaryKeyConstraint("word", "chan"),
 )
 
-badcache: Dict[str, List[str]] = defaultdict(list)
+badcache: dict[str, list[str]] = defaultdict(list)
 
 
 class BadwordMatcher:
-    regex: Optional[Pattern[str]] = None
+    regex: Pattern[str] | None = None
 
 
 matcher = BadwordMatcher()
@@ -33,7 +33,7 @@ def load_bad(db):
     """- Should run on start of bot to load the existing words into the regex"""
     words = []
     new_cache = defaultdict(list)
-    for chan, word in db.execute(select([table.c.chan, table.c.word])):
+    for chan, word in db.execute(select(table.c.chan, table.c.word)):
         new_cache[chan.casefold()].append(word)
         words.append(word)
 

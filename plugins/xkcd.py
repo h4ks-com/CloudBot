@@ -1,7 +1,7 @@
 import datetime
 import re
 
-import requests
+from bs4 import Tag
 from yarl import URL
 
 from cloudbot import hook
@@ -51,10 +51,13 @@ def xkcd_search(term):
     request.raise_for_status()
     soup = parse_soup(request.text)
     result = soup.find("li")
-    if not result:
+    if not isinstance(result, Tag):
         return "No results found!"
 
-    url = result.find("div", {"class": "tinylink"}).text
+    tinylink = result.find("div", {"class": "tinylink"})
+    if not isinstance(tinylink, Tag):
+        return "No results found!"
+    url = tinylink.text
     xkcd_id = url[:-1].split("/")[-1]
     return xkcd_info(xkcd_id, url=True)
 

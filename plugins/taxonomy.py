@@ -1,6 +1,5 @@
 """Biological taxonomy plugin for CloudBot"""
 
-import requests
 from requests import RequestException
 
 from cloudbot import hook
@@ -26,6 +25,52 @@ def is_valid_scientific_name(name: str) -> bool:
     )
 
 
+def _matches_vernacular(vern_name: str, search_lower: str) -> bool:
+    return (
+        vern_name == search_lower
+        or vern_name == f"domestic {search_lower}"
+        or vern_name == f"{search_lower} domestic"
+        or search_lower == vern_name.replace("domestic ", "").strip()
+    )
+
+
+def _extract_genus_species(result: dict) -> str | None:
+    scientific_name = result.get("scientificName") or result.get(
+        "canonicalName"
+    )
+    if not scientific_name:
+        return None
+    parts = scientific_name.split()
+    if len(parts) < 2:
+        return None
+    genus_species = f"{parts[0]} {parts[1]}"
+    if is_valid_scientific_name(genus_species):
+        return genus_species
+    return None
+
+
+def _scan_result_for_match(
+    result: dict, common_name: str, search_lower: str
+) -> str | None:
+    if not all(result.get(k) for k in ["kingdom", "phylum", "class"]):
+        return None
+
+    kingdom = result.get("kingdom")
+    if (
+        kingdom in ["Viruses", "Bacteria", "Archaea"]
+        and len(common_name.strip().split()) == 1
+    ):
+        return None
+
+    for vern in result.get("vernacularNames", []):
+        vern_name = vern.get("vernacularName", "").lower().strip()
+        if _matches_vernacular(vern_name, search_lower):
+            match = _extract_genus_species(result)
+            if match is not None:
+                return match
+    return None
+
+
 def search_gbif_vernacular(common_name: str) -> str | None:
     headers = {
         "User-Agent": "CloudBot/1.0 (https://github.com/CloudBotIRC/CloudBot)"
@@ -36,6 +81,7 @@ def search_gbif_vernacular(common_name: str) -> str | None:
         f"domestic {common_name.strip()}",
         f"{common_name.strip()} domestic",
     ]
+    search_lower = common_name.lower().strip()
 
     for search_term in search_terms:
         try:
@@ -47,7 +93,7 @@ def search_gbif_vernacular(common_name: str) -> str | None:
                     "rank": "species",
                     "status": "ACCEPTED",
                     "datasetKey": "d7dddbf4-2cf0-4f39-9b2a-bb099caae36c",
-                    "limit": 10,
+                    "limit": "10",
                 },
                 headers=headers,
                 timeout=5,
@@ -55,41 +101,11 @@ def search_gbif_vernacular(common_name: str) -> str | None:
             response.raise_for_status()
 
             for result in response.json().get("results", []):
-                if not all(
-                    result.get(k) for k in ["kingdom", "phylum", "class"]
-                ):
-                    continue
-
-                kingdom = result.get("kingdom")
-                if (
-                    kingdom in ["Viruses", "Bacteria", "Archaea"]
-                    and len(common_name.strip().split()) == 1
-                ):
-                    continue
-
-                vernacular_names = result.get("vernacularNames", [])
-                search_lower = common_name.lower().strip()
-
-                for vern in vernacular_names:
-                    vern_name = vern.get("vernacularName", "").lower().strip()
-                    # Look for exact matches
-                    if (
-                        vern_name == search_lower
-                        or vern_name == f"domestic {search_lower}"
-                        or vern_name == f"{search_lower} domestic"
-                        or search_lower
-                        == vern_name.replace("domestic ", "").strip()
-                    ):
-                        scientific_name = result.get(
-                            "scientificName"
-                        ) or result.get("canonicalName")
-                        if scientific_name:
-                            # Extract just genus species (first two words) to remove author info
-                            parts = scientific_name.split()
-                            if len(parts) >= 2:
-                                genus_species = f"{parts[0]} {parts[1]}"
-                                if is_valid_scientific_name(genus_species):
-                                    return genus_species
+                match = _scan_result_for_match(
+                    result, common_name, search_lower
+                )
+                if match is not None:
+                    return match
 
         except (RequestException, KeyError, AttributeError):
             continue
@@ -113,7 +129,7 @@ def get_related_species(genus: str, family: str) -> dict[str, list[str]]:
                 params={
                     "q": genus,
                     "rank": "SPECIES",
-                    "limit": 4,
+                    "limit": "4",
                     "kingdom": "Animalia",
                 },
                 headers=headers,
@@ -136,7 +152,7 @@ def get_related_species(genus: str, family: str) -> dict[str, list[str]]:
                 params={
                     "q": family,
                     "rank": "GENUS",
-                    "limit": 4,
+                    "limit": "4",
                     "kingdom": "Animalia",
                 },
                 headers=headers,
@@ -240,7 +256,11 @@ def get_taxonomy_from_gbif(species_name: str) -> dict[str, str | None] | None:
 
         response = get_session().get(
             "https://api.gbif.org/v1/species/search",
-            params={"q": species_name.strip(), "limit": 10, "rank": "SPECIES"},
+            params={
+                "q": species_name.strip(),
+                "limit": "10",
+                "rank": "SPECIES",
+            },
             headers=headers,
             timeout=5,
         )

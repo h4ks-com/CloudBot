@@ -1,9 +1,17 @@
 import re
 from itertools import cycle
+from typing import TypedDict
 
 from cloudbot import hook
 from cloudbot.util import formatting
 from plugins.mock import get_latest_line
+
+
+class ReplacementConfig(TypedDict):
+    pattern: str
+    replacements: list[str]
+    flags: int
+
 
 correction_re = re.compile(
     r"^(?:[sS]/(?:((?:\\/|[^/])*?)(?<!\\)/((?:\\/|[^/])*?)(?:(?<!\\)/([igx]{,4}))?)\s*?;*?)(?:;\s*?[sS]/(?:((?:\\/|[^/])*?)(?<!\\)/((?:\\/|[^/])*?)(?:(?<!\\)/([igx]{,4}))?)\s*?;*?)*?$"
@@ -22,7 +30,7 @@ REFLAGS = {
 }
 
 # Config-based replacement commands
-REPLACEMENT_COMMANDS = {
+REPLACEMENT_COMMANDS: dict[str, ReplacementConfig] = {
     "valware": {
         "pattern": r"\s+",
         "replacements": [
@@ -152,8 +160,6 @@ def correction(match, conn, nick, chan, message):
             flags=sum(re_flags),
         )
         if new != mod_msg:
-            find_esc = re.escape(find)
-            replace_esc = re.escape(new)
             mod_msg = unescape_re.sub(r"\1", new)
             for exp in re.findall(exp_re, match[0])[1:]:
                 if not exp:
@@ -167,8 +173,6 @@ def correction(match, conn, nick, chan, message):
                     count=re.MULTILINE not in re_flags,
                     flags=sum(re_flags),
                 )
-                find_esc = re.escape(find)
-                replace_esc = re.escape(new)
                 mod_msg = unescape_re.sub(r"\1", new)
 
             # mod_msg = ireplace(re.escape(mod_msg), find_esc, "\x02" + replace_esc + "\x02")

@@ -10,7 +10,7 @@ MAX_BATCH_LINE_BYTES = 400
 def supports_multiline(conn) -> bool:
     """Check if connection supports draft/multiline capability"""
     server_caps = conn.memory.get("server_caps", {})
-    return server_caps.get("draft/multiline", False)
+    return bool(server_caps.get("draft/multiline", False))
 
 
 def generate_batch_id() -> str:
@@ -46,7 +46,7 @@ def split_long_line(
 def _format_tags_str(tags: dict | None, extra: str = "") -> str:
     if not tags and not extra:
         return ""
-    parts = []
+    parts: list[str] = []
     if tags:
         parts.extend(f"{k}={v}" if v else k for k, v in tags.items())
     if extra:

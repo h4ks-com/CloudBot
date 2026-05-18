@@ -15,5 +15,6 @@ if [[ ! -d ".gcloud" ]]; then
   exit 1
 fi
 
-export CLOUDSDK_CONFIG="$(pwd)/.gcloud"
+CLOUDSDK_CONFIG="$(pwd)/.gcloud"
+export CLOUDSDK_CONFIG
 exec gcloud "$@"

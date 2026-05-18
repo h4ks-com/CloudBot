@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from cloudbot import hook
 from cloudbot.util import web
@@ -104,8 +104,10 @@ def _extract_movie_data(
     # Extract title and year from JSON-LD script tags
     script_tags = movie_soup.find_all("script", type="application/ld+json")
     for script in script_tags:
+        if not isinstance(script, Tag):
+            continue
         try:
-            json_data = json.loads(script.string)
+            json_data = json.loads(script.string or "")
             if "aggregateRating" in json_data:
                 movie_data["title"] = json_data.get("name", fallback_title)
                 date_published = json_data.get("datePublished", "")

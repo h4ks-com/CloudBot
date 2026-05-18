@@ -14,9 +14,8 @@ from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from numbers import Number
 from operator import attrgetter
-from typing import Dict
 
-from irclib.parser import MessageTag, Prefix, TagList
+from irclib.parser import Prefix, TagList
 
 import cloudbot.bot
 from cloudbot import hook
@@ -26,6 +25,7 @@ from cloudbot.hook import Priority
 from cloudbot.util import web
 from cloudbot.util.irc import ChannelMode, StatusMode, parse_mode_string
 from cloudbot.util.mapping import KeyFoldDict, KeyFoldWeakValueDict
+from cloudbot.util.parsers.irc import MessageTag
 
 logger = logging.getLogger("cloudbot")
 
@@ -589,7 +589,7 @@ def handle_tags(conn: IrcClient, nick: str, irc_tags: TagList) -> None:
     users = get_users(conn)
 
     if irc_tags:
-        account_tag = irc_tags.get("account")  # type: MessageTag
+        account_tag: MessageTag | None = irc_tags.get("account")
         if account_tag:
             user_data = users.getuser(nick)
             user_data.account = account_tag.value
@@ -663,8 +663,8 @@ def on_mode(chan, irc_paramlist, conn):
         return
 
     serv_info = conn.memory["server_info"]
-    statuses = serv_info["statuses"]  # type: Dict[str, StatusMode]
-    mode_types = serv_info["channel_modes"]  # type: Dict[str, ChannelMode]
+    statuses: dict[str, StatusMode] = serv_info["statuses"]
+    mode_types: dict[str, ChannelMode] = serv_info["channel_modes"]
 
     chan_data = get_chans(conn).getchan(chan)
 

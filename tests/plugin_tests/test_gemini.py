@@ -8,10 +8,8 @@ import datetime
 from datetime import timedelta
 
 import pytest
-import requests
 
 from plugins import gemini, ratelimit
-
 
 # ---------- fixtures ----------
 
@@ -38,15 +36,11 @@ def _set_key(mock_bot, key: str = "fakekey") -> None:
 
 
 def _text_url() -> str:
-    return (
-        gemini.GEMINI_BASE + gemini.GEMINI_TEXT_MODEL + ":generateContent"
-    )
+    return gemini.GEMINI_BASE + gemini.GEMINI_TEXT_MODEL + ":generateContent"
 
 
 def _img_url() -> str:
-    return (
-        gemini.GEMINI_BASE + gemini.GEMINI_IMAGE_MODEL + ":generateContent"
-    )
+    return gemini.GEMINI_BASE + gemini.GEMINI_IMAGE_MODEL + ":generateContent"
 
 
 def _mock_text_ok(mock_requests, text: str = "hello world"):
@@ -272,9 +266,7 @@ def test_gemt_history_appended_on_success(mock_bot, mock_requests, db):
     assert hist[1].content == "world"
 
 
-def test_gemt_history_pops_user_msg_on_http_error(
-    mock_bot, mock_requests, db
-):
+def test_gemt_history_pops_user_msg_on_http_error(mock_bot, mock_requests, db):
     _set_key(mock_bot)
     mock_requests.add("POST", _text_url(), status=500)
     gemini.gemt_command("doomed", "nick", "#chan", db)

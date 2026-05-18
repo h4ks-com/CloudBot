@@ -1,10 +1,11 @@
 """Maybe more godot relatd stuff in the future."""
 
 import datetime
+import io
 import urllib.parse
+from typing import Any, cast
 
 import pyocr.builders
-import requests
 from gazpacho import Soup, get
 from PIL import Image
 
@@ -15,23 +16,25 @@ from cloudbot.util.web import get_session
 @hook.command(autohelp=False)
 def jamdate(reply):
     """- Next godot jam date"""
+    from_date: datetime.datetime
+    to_date: datetime.datetime
     try:
-        url_soup = Soup(get("https://godotwildjam.com"))
-        url = url_soup.find("a", {"class": "elementor-button-link"})[0].attrs[
-            "href"
-        ]
-        soup = Soup(get(url))
-        elm = soup.find("div", {"class": "date_data"})
+        url_soup = Soup(cast(str, get("https://godotwildjam.com")))
+        url = cast(
+            list[Soup],
+            url_soup.find("a", {"class": "elementor-button-link"}),
+        )[0].attrs["href"]
+        soup = Soup(cast(str, get(url)))
+        elm = cast(Soup, soup.find("div", {"class": "date_data"}))
         text = elm.text
-        from_date = elm.find("span")[0].text
-        to_date = elm.find("span")[1].text
-        reply(f"itch.io Godot Wild Jam: {text} {from_date} to {to_date}")
-        from_date = datetime.datetime.strptime(from_date, "%Y-%m-%d %H:%M:%S")
-        to_date = datetime.datetime.strptime(to_date, "%Y-%m-%d %H:%M:%S")
+        from_text = cast(list[Soup], elm.find("span"))[0].text
+        to_text = cast(list[Soup], elm.find("span"))[1].text
+        reply(f"itch.io Godot Wild Jam: {text} {from_text} to {to_text}")
+        from_date = datetime.datetime.strptime(from_text, "%Y-%m-%d %H:%M:%S")
+        to_date = datetime.datetime.strptime(to_text, "%Y-%m-%d %H:%M:%S")
     except Exception:
         now = datetime.datetime.utcnow()
         firstday = now.replace(day=1)
-        # This is the friday after the 1st weekend
         friday = 12 - firstday.weekday()
         from_date = firstday.replace(day=friday, hour=20, minute=0)
         to_date = from_date + datetime.timedelta(days=7)
@@ -65,10 +68,9 @@ def jamdate(reply):
 @hook.command()
 def godocs(text, reply):
     """<text> - Searches on godot documentation"""
-    # url encode
     query = urllib.parse.quote(text)
     url = f"https://docs.godotengine.org/_/api/v2/search/?q={query}&project=godot&version=stable&language=en"
-    data = get(url)
+    data = cast(dict[str, Any], get(url))
 
     i = 0
     used = set()
@@ -114,7 +116,7 @@ class WildJamCardPaser:
         return txt.strip().lower().replace("\n", " ")
 
     def get_cards(self):
-        img = Image.open(get_session().get(self.cards_url, stream=True).raw)
+        img = Image.open(io.BytesIO(get_session().get(self.cards_url).content))
 
         # Split img horizontally into 3 parts
         width, height = img.size
@@ -128,7 +130,7 @@ class WildJamCardPaser:
         ]
 
     def get_theme(self):
-        img = Image.open(get_session().get(self.theme_url, stream=True).raw)
+        img = Image.open(io.BytesIO(get_session().get(self.theme_url).content))
         text = self.orc_image(img).split()
         if text:
             return capitalize(text[-1])
@@ -138,10 +140,14 @@ class WildJamCardPaser:
 @hook.command("theme", autohelp=False)
 def theme(reply):
     """- Current godot wild jam theme"""
-    soup = Soup(get("https://godotwildjam.com"))
-    elm = soup.find("div", {"class": "page-content"})
-    title = elm.find(
-        "h1", {"class": "elementor-heading-title elementor-size-default"}
+    soup = Soup(cast(str, get("https://godotwildjam.com")))
+    elm = cast(Soup, soup.find("div", {"class": "page-content"}))
+    title = cast(
+        list[Soup],
+        elm.find(
+            "h1",
+            {"class": "elementor-heading-title elementor-size-default"},
+        ),
     )[0].text
 
     not_started = "theme to be announced" in title.lower()
@@ -149,9 +155,12 @@ def theme(reply):
         reply(title)
         return
 
-    elms = soup.find("div", {"class": "elementor-widget-image"}, mode="all")
-    theme_url = elms[1].find("img").attrs["src"]
-    cards_url = elms[2].find("img").attrs["src"]
+    elms = cast(
+        list[Soup],
+        soup.find("div", {"class": "elementor-widget-image"}, mode="all"),
+    )
+    theme_url = cast(Soup, elms[1].find("img")).attrs["src"]
+    cards_url = cast(Soup, elms[2].find("img")).attrs["src"]
     parser = WildJamCardPaser(theme_url, cards_url)
     theme = parser.get_theme()
     cards = parser.get_cards()

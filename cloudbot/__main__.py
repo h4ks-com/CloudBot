@@ -4,7 +4,9 @@ import os
 import signal
 import sys
 import time
+from collections.abc import Awaitable
 from pathlib import Path
+from typing import Any
 
 from uvicorn import Config, Server
 
@@ -63,15 +65,14 @@ async def async_main():
 
     signal.signal(signal.SIGINT, exit_gracefully)
 
-    # start the web server if enabled
-    server_task = None
+    server_task: Awaitable[Any]
     if is_enabled():
         port = get_port()
         config = Config(app=app, host="0.0.0.0", port=port)
         server = Server(config)
         server_task = server.serve()
     else:
-        # Create a dummy task that never completes
+        # Dummy awaitable that never completes
         server_task = asyncio.create_task(asyncio.sleep(float("inf")))
 
     # start the bot and web server concurrently

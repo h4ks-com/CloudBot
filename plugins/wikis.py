@@ -3,16 +3,17 @@
 # Date: 31/07/2022
 
 
+from collections.abc import Callable
 from functools import lru_cache
-from typing import Callable
 
 import mwparserfromhell
-from curl_cffi import requests
 from mediawiki import MediaWiki, exceptions
+from requests import Session
 
 from cloudbot import hook
 from cloudbot.util import formatting
 from cloudbot.util.queue import Queue
+from cloudbot.util.web import TimeoutSession
 
 # List of wikis and their API's
 # The key is a tuple starting with the wiki name all those values will be used as the bot commands.
@@ -56,18 +57,19 @@ WIKI_APIS = {
     ("wminecraft", "wmc"): "https://minecraft.wiki/api.php",
 }
 
-state = {}
+state: dict[tuple[str, ...], Queue] = {}
 
 MAX_SUMMARY = 250
 
 
 class MyMediaWiki(MediaWiki):
-    def _reset_session(self):
+    _session: Session | None
+    _is_logged_in: bool = False
+
+    def _reset_session(self) -> None:
         """Set session information"""
         if self._session:
             self._session.close()
-
-        from cloudbot.util.web import TimeoutSession
 
         headers = {"User-Agent": self._user_agent}
         self._session = TimeoutSession()
@@ -87,11 +89,10 @@ def wiki_builder(url: str) -> Callable[[], MediaWiki]:
 
 @hook.on_start()
 def on_start():
-    global state, API
-    state = {}
+    state.clear()
     for wiki in WIKI_APIS:
         state[wiki] = Queue()
-        state[wiki].metadata.get_wiki = wiki_builder(WIKI_APIS[wiki])
+        setattr(state[wiki].metadata, "get_wiki", wiki_builder(WIKI_APIS[wiki]))
 
 
 def summary_from_page(text: str) -> str:
@@ -109,7 +110,6 @@ def summary_from_page(text: str) -> str:
 
 def wikipop(wiki: tuple, chan, nick, user=None) -> str:
     """Pops the first result from the list and returns the formated summary."""
-    global state
     if user:
         queue = state[wiki][chan][user]
     else:
@@ -139,7 +139,6 @@ def wikipop(wiki: tuple, chan, nick, user=None) -> str:
 def search(wiki: tuple, query: str, chan, nick) -> str:
     """Searches for the query and returns the formated summary populating the
     results list."""
-    global state
     try:
         wikipedia = state[wiki].metadata.get_wiki()
     except Exception as e:
@@ -154,7 +153,6 @@ def search(wiki: tuple, query: str, chan, nick) -> str:
 def process_irc_input(wiki: tuple, text: str, chan, nick) -> str:
     """Processes the input from the irc user and returns a random result from
     the wiki if no arguments is passed, otherwise performs the search."""
-    global state
     if text.strip() == "":
         try:
             wikipedia = state[wiki].metadata.get_wiki()
@@ -179,7 +177,6 @@ def make_next_hook(commands):
     name = commands[0]
 
     def wikinext(text, bot, chan, nick):
-        global state
         user = text.strip().split()[0] if text.strip() else None
         if user:
             if user not in state[commands][chan]:
@@ -206,7 +203,7 @@ for commands in WIKI_APIS:
     hooks_map[tuple(commands)] = make_search_hook(commands)
 
     # creates the next commands
-    next_cmds = ()
+    next_cmds: tuple[str, ...] = ()
     for command in commands:
         if len(command) > 4:
             command += "_next"

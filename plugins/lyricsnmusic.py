@@ -11,7 +11,6 @@ poped3 = Queue()
 
 
 def pop3(results, reply, chan, nick):
-    global poped3
     songs = []
     for i in range(3):
         try:
@@ -31,7 +30,6 @@ def pop3(results, reply, chan, nick):
 @hook.command("lyricsn", "lyn", autohelp=False)
 def lyricsn(text, bot, chan, nick, reply):
     """<nick> - Returns next search result for pkg command for nick or yours by default. Use lyricsn to paginate"""
-    global results_queue
     results = results_queue[chan][nick]
     user = text.strip().split()[0] if text.strip() else ""
     if user:
@@ -56,12 +54,12 @@ def parse_args(text: str):
     args = re.match(r'\s*"(.+)"\s+(.+)\s*', text)
     if args:
         return args.groups()
+    return None
 
 
 @hook.command("lyrics", autohost=False)
 def lyricsnmusic(text, chan, nick, reply):
     """<artist> <song> - will fetch the first 150 characters of a song and a link to the full lyrics. Enclose with quotes to deliminate arguments. Use lyricsn to paginate"""
-    global results_queue
     args = text.split()
     if len(args) > 2 and '"' in text:
         args = parse_args(text)
@@ -77,7 +75,6 @@ def lyricsnmusic(text, chan, nick, reply):
 @hook.command("lysearch", autohelp=False)
 def lysearch(text, chan, nick, reply):
     """<search_queue> - Searches for a song from its lyrics. Use lyricsn to paginate"""
-    global results_queue
     if len(text.strip()) == 0:
         return "Usage: .lysearch <search_queue>"
     client = ChartLyricsClient()
@@ -88,7 +85,6 @@ def lysearch(text, chan, nick, reply):
 @hook.command("getlyrics", autohelp=False)
 def getlyrics(text, chan, nick, reply):
     """<num> - will fetch the first verse of a song where 'num' is the number on the last list. Use 'lyricsn' to paginate."""
-    global poped3, results_queue
     if len(text.strip()) == 0:
         return "Usage: .getlyrics <num>"
     if not text.strip().isdigit():

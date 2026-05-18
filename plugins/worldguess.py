@@ -102,7 +102,8 @@ class WorldGuessClient:
         )
         response.raise_for_status()
         data = response.json()
-        return EndChallengeResponse(**data)
+        rankings = [RankingItem(**item) for item in data.pop("rankings", [])]
+        return EndChallengeResponse(rankings=rankings, **data)
 
 
 def get_client(bot) -> WorldGuessClient:
@@ -212,11 +213,11 @@ def end_worldguess_challenge_cmd(bot, chan, notice, db) -> str | list[str]:
 
         for i, ranking in enumerate(result.rankings[:5], 1):
             score_emoji = {"good": "🟢", "meh": "🟡", "bad": "🔴"}.get(
-                ranking.get("score", "bad"), "⚪"
+                ranking.score, "⚪"
             )
             response.append(
-                f"{i}. {ranking['username']}: {ranking['guess']:,} "
-                f"(off by {ranking['difference']:,}) {score_emoji}"
+                f"{i}. {ranking.username}: {ranking.guess:,} "
+                f"(off by {ranking.difference:,}) {score_emoji}"
             )
 
         if len(result.rankings) > 5:

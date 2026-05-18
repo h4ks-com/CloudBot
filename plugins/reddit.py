@@ -2,7 +2,6 @@ import random
 import re
 from datetime import datetime
 
-import requests
 from yarl import URL
 
 from cloudbot import hook

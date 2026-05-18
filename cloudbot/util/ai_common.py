@@ -109,7 +109,8 @@ def upload_history(nick: str, messages: list[Message], header: str) -> str:
         .replace("__TITLE_JSON__", _js_safe_json(header))
         .replace("__MESSAGES_JSON__", _js_safe_json(msgs_data))
     )
-    return web.paste(html.encode("utf-8"), ext="html")
+    url: str = web.paste(html.encode("utf-8"), ext="html")
+    return url
 
 
 def collapse_whitespace(text: str) -> str:

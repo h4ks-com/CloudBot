@@ -41,7 +41,8 @@ def _default_headers() -> dict[str, str]:
 
 
 def get_config(bot: CloudBot) -> dict[str, Any]:
-    return bot.config.get("browserless", {})
+    cfg: dict[str, Any] = bot.config.get("browserless", {})
+    return cfg
 
 
 def is_configured(bot: CloudBot) -> bool:
@@ -121,7 +122,8 @@ def fetch_scrape(
         timeout=timeout + 5,
     )
     response.raise_for_status()
-    return response.json()
+    data: dict[str, Any] = response.json()
+    return data
 
 
 def get_soup(
@@ -285,7 +287,8 @@ def fetch_console_logs(
     if isinstance(result, list):
         return result
     if isinstance(result, dict) and "data" in result:
-        return result["data"]
+        messages: list[dict[str, Any]] = result["data"]
+        return messages
     return []
 
 
@@ -343,7 +346,8 @@ def evaluate_in_page(
         timeout=timeout + settle_ms // 1000 + 10,
     )
     if isinstance(result, dict) and "data" in result:
-        return result["data"]
+        payload_data: dict[str, Any] = result["data"]
+        return payload_data
     if isinstance(result, dict):
         return result
     return {"ok": False, "error": "unexpected response shape", "value": result}

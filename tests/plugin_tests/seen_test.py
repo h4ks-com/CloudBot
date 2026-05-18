@@ -1,8 +1,11 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from cloudbot.event import CommandEvent, Event, EventType
-from plugins import seen
 from tests.util.mock_conn import MockConn
+
+seen = pytest.importorskip("plugins.seen")
 
 
 def test_seen_track_correction(mock_db, freeze_time):

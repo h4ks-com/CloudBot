@@ -9,8 +9,6 @@ import html
 import re
 from dataclasses import dataclass
 
-import requests
-
 from cloudbot import hook
 from cloudbot.util.queue import Queue
 from cloudbot.util.web import get_session
@@ -1015,7 +1013,7 @@ class Answer:
         return "https://stackoverflow.com/a/" + self.id
 
 
-def search(query: str, tag: str = None) -> [Question]:
+def search(query: str, tag: str | None = None) -> list[Question]:
     params = {
         "order": "desc",
         "sort": "relevance",
@@ -1026,7 +1024,7 @@ def search(query: str, tag: str = None) -> [Question]:
     if tag:
         params.update({"tagged": tag})
 
-    req = get_session().get(API_URL + "/search/advanced", params)
+    req = get_session().get(API_URL + "/search/advanced", params=params)
     ans = req.json()
 
     if not ans["items"]:
@@ -1046,27 +1044,29 @@ def search(query: str, tag: str = None) -> [Question]:
     )
 
 
-def find_best_answer_in_html(text: str) -> Answer:
+def find_best_answer_in_html(text: str) -> Answer | None:
     """Returns the best ranked answer code or none."""
     answers = re.findall(r'(<div id="answer-(\d+)".*?</table)', text, re.DOTALL)
 
-    def votecount(x):
+    def votecount(x: tuple[str, str]) -> int:
         """Return the negative number of votes a question has.
 
         Might return the negative question id instead if its less than
         100k. That's a feature.
         """
-        r = int(re.search(r"\D(\d{1,5})\D", x[0]).group(1))
-        return -r
+        match = re.search(r"\D(\d{1,5})\D", x[0])
+        if match is None:
+            return 0
+        return -int(match.group(1))
 
     for answer in sorted(answers, key=votecount):
-        id = answer[1]
-        answer = answer[0]
-        codez = re.finditer(
+        answer_id = answer[1]
+        answer_html = answer[0]
+        codez_iter = re.finditer(
             r"<pre[^>]*>[^<]*<code[^>]*>((?:\s|[^<]|<span[^>]*>[^<]+</span>)*)</code></pre>",
-            answer,
+            answer_html,
         )
-        codez = map(lambda x: x.group(1), codez)
+        codez = [m.group(1) for m in codez_iter]
         for code in sorted(
             codez, key=lambda x: -len(x)
         ):  # more code is obviously better
@@ -1074,13 +1074,13 @@ def find_best_answer_in_html(text: str) -> Answer:
             code = re.sub(r"<[^>]+>([^<]*)<[^>]*>", "\1", code)
             try:
                 ast.parse(code)
-                return Answer(code, id)
-            except Exception:
+                return Answer(code, answer_id)
+            except (SyntaxError, ValueError):
                 pass
+    return None
 
 
-def find_best_code(chan, nick) -> (Question, Answer):
-    global results_queue
+def find_best_code(chan, nick) -> tuple[Question | None, Answer | None]:
     results = results_queue[chan][nick]
     no_good_code = results_queue[chan][nick].metadata.no_good_code
     if not no_good_code:
@@ -1105,7 +1105,6 @@ def find_best_code(chan, nick) -> (Question, Answer):
 @hook.command("son", autohelp=False)
 def sonext(reply, chan, nick, text) -> str:
     """Gets next result in stack overflow and return formated text."""
-    global results_queue
     results = results_queue[chan][nick]
     user = text.strip().split()[0] if text.strip() else ""
     if user:
@@ -1125,7 +1124,7 @@ def sonext(reply, chan, nick, text) -> str:
     reply(f"{r.url}")
 
     if answer is None:
-        return
+        return None
 
     lines = [line for line in answer.code.split("\n") if line.strip()]
 
@@ -1135,12 +1134,12 @@ def sonext(reply, chan, nick, text) -> str:
         reply(f"... {answer}")
     else:
         reply(f"{answer}")
+    return None
 
 
 @hook.command("stackoverflow", "so")
 def sosearchhook(text, reply, chan, nick):
     """gitgrep <query> - Searches for <query> in stack overflow returning the first answer with code. If you want a more precise search start the query with a tag (separating words with '-') like 'python' or 'windows-10'"""
-    global results_queue
     results = results_queue[chan][nick]
     results.metadata.no_good_code = False
     tag = text.split()[0] if text.split()[0] in TAGS else None

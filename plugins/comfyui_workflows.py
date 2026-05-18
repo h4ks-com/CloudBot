@@ -10,7 +10,7 @@ from typing import TypedDict
 import requests
 
 from cloudbot import hook
-from cloudbot.util.web import get_session
+from cloudbot.util.web import TimeoutSession, get_session
 from plugins.huggingface import FileIrcResponseWrapper
 
 AUDIO_LENGTH = 60
@@ -47,9 +47,9 @@ class ComfyUIClient:
         self.api_url = api_url.rstrip("/")
         self.username = username
         self.password = password
-        self._session = None
+        self._session: TimeoutSession | None = None
 
-    def _get_session(self):
+    def _get_session(self) -> TimeoutSession:
         if self._session is None:
             self._session = get_session()
             if self.username and self.password:
@@ -60,7 +60,7 @@ class ComfyUIClient:
                 )
         return self._session
 
-    def submit_prompt(self, workflow_data: dict[str, any]) -> str:
+    def submit_prompt(self, workflow_data: dict) -> str:
         session = self._get_session()
         response = session.post(
             f"{self.api_url}/api/prompt",
@@ -71,7 +71,7 @@ class ComfyUIClient:
         result = response.json()
         return result.get("prompt_id")
 
-    def get_history(self, prompt_id: str) -> dict[str, any] | None:
+    def get_history(self, prompt_id: str) -> dict | None:
         session = self._get_session()
         response = session.get(f"{self.api_url}/api/history/{prompt_id}")
         response.raise_for_status()
@@ -94,13 +94,13 @@ class ComfyUIClient:
 class WorkflowExecutor:
     """Manages workflow execution and job tracking."""
 
-    def __init__(self, client: ComfyUIClient, config: dict[str, any]):
+    def __init__(self, client: ComfyUIClient, config: dict):
         self.client = client
         self.config = config
         self.pending_jobs: deque[PendingJob] = deque()
         self.workflow_template = self._load_workflow_template()
 
-    def _load_workflow_template(self) -> dict[str, any]:
+    def _load_workflow_template(self) -> dict:
         """Load the base workflow template for audio generation."""
         return {
             "client_id": "",
@@ -228,7 +228,7 @@ class WorkflowExecutor:
         for job in completed_jobs:
             self.pending_jobs.remove(job)
 
-    def _is_job_complete(self, history: dict[str, any]) -> bool:
+    def _is_job_complete(self, history: dict) -> bool:
         status = history.get("status", {})
         if not status.get("completed", False):
             return False
@@ -236,7 +236,7 @@ class WorkflowExecutor:
         outputs = history.get("outputs", {})
         return bool(outputs)
 
-    def _is_job_failed(self, history: dict[str, any]) -> bool:
+    def _is_job_failed(self, history: dict) -> bool:
         status = history.get("status", {})
         if not status.get("completed", False):
             return False
@@ -245,13 +245,13 @@ class WorkflowExecutor:
         return not bool(outputs)
 
     def _process_completed_job(
-        self, bot, job: PendingJob, history: dict[str, any]
+        self, bot, job: PendingJob, history: dict
     ) -> None:
         try:
             outputs = history.get("outputs", {})
 
             output_filename = None
-            for node_id, node_output in outputs.items():
+            for node_output in outputs.values():
                 if "audio" in node_output:
                     audio_data = node_output["audio"]
                     if audio_data:
@@ -294,9 +294,7 @@ class WorkflowExecutor:
             message = f"{job.nick}: Audio generated! {url}"
             conn.message(job.chan, message)
 
-    def _notify_failure(
-        self, bot, job: PendingJob, history: dict[str, any]
-    ) -> None:
+    def _notify_failure(self, bot, job: PendingJob, history: dict) -> None:
         _release_lock()
         conn = bot.connections.get(job.network)
         if conn and conn.ready:
@@ -325,24 +323,26 @@ class WorkflowExecutor:
             conn.message(job.chan, message)
 
 
-_executor: WorkflowExecutor | None = None
-_global_lock: GlobalLock | None = None
 _LOCK_DURATION_MINUTES = 3
 
 
+class _State:
+    executor: WorkflowExecutor | None = None
+    global_lock: GlobalLock | None = None
+
+
 def _acquire_lock(nick: str) -> str | None:
-    global _global_lock
     now = datetime.now()
+    current_lock = _State.global_lock
 
-    if _global_lock:
-        if now < _global_lock["expires_at"]:
-            locked_nick = _global_lock["nick"]
-            time_left = (_global_lock["expires_at"] - now).total_seconds()
+    if current_lock is not None:
+        if now < current_lock["expires_at"]:
+            locked_nick = current_lock["nick"]
+            time_left = (current_lock["expires_at"] - now).total_seconds()
             return f"⏳ Audio generation is currently in use by {locked_nick}. Please wait {int(time_left)}s or try again later."
-        else:
-            _global_lock = None
+        _State.global_lock = None
 
-    _global_lock = GlobalLock(
+    _State.global_lock = GlobalLock(
         nick=nick,
         locked_at=now,
         expires_at=now + timedelta(minutes=_LOCK_DURATION_MINUTES),
@@ -351,14 +351,11 @@ def _acquire_lock(nick: str) -> str | None:
 
 
 def _release_lock() -> None:
-    global _global_lock
-    _global_lock = None
+    _State.global_lock = None
 
 
 @hook.on_start()
 def init_comfyui(bot) -> None:
-    global _executor
-
     config = bot.config.get("plugins", {}).get("comfyui_workflows", {})
 
     if not config.get("api_url"):
@@ -373,20 +370,20 @@ def init_comfyui(bot) -> None:
     password = basic_auth.get("password")
 
     client = ComfyUIClient(api_url, username, password)
-    _executor = WorkflowExecutor(client, config)
+    _State.executor = WorkflowExecutor(client, config)
 
     print(f"ComfyUI workflows plugin initialized: {api_url}")
 
 
 @hook.periodic(2, initial_interval=2)
 def check_jobs(bot) -> None:
-    if _executor:
-        _executor.check_pending_jobs(bot)
+    if _State.executor:
+        _State.executor.check_pending_jobs(bot)
 
 
 @hook.command("aimusic", autohelp=False)
 def aiaudio_cmd(text: str, chan: str, nick: str, conn) -> str:
-    if not _executor:
+    if not _State.executor:
         return "❌ ComfyUI workflows plugin not configured"
 
     if not text or not text.strip():
@@ -397,6 +394,6 @@ def aiaudio_cmd(text: str, chan: str, nick: str, conn) -> str:
         return lock_error
 
     prompt = text.strip()
-    return _executor.submit_workflow(
+    return _State.executor.submit_workflow(
         "audio_stable_audio_example", prompt, chan, nick, conn.name
     )

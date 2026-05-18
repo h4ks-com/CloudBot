@@ -69,8 +69,8 @@ def text2morse(message):
         if letter != " ":
             try:
                 cipher += MORSE_CODE_DICT[letter] + " "
-            except KeyError:
-                raise CharacterNotFount(letter)
+            except KeyError as exc:
+                raise CharacterNotFount(letter) from exc
         else:
             cipher += " "
 
@@ -101,8 +101,8 @@ def morse2text(message):
                     decipher += list(MORSE_CODE_DICT.keys())[
                         list(MORSE_CODE_DICT.values()).index(citext)
                     ]
-                except (KeyError, ValueError):
-                    raise CharacterNotFount(letter)
+                except (KeyError, ValueError) as exc:
+                    raise CharacterNotFount(letter) from exc
                 citext = ""
 
     return decipher

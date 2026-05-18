@@ -1,11 +1,10 @@
 import re
 import shlex
+from collections.abc import Generator
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generator
 
 import pytz
-import requests
 from github import Auth, Github, GithubException
 from requests import HTTPError
 
@@ -206,18 +205,17 @@ commands = {
     "user": search_user,
 }
 
-user_results = {}
+user_results: dict[str, dict[str, Generator[Result, None, None]]] = {}
 
 
 @hook.command("ghn", "ghnext", autohelp=False)
 def ghn_cmd(chan, nick):
     """Next result in the for GitHub search"""
-    global user_results
     next_result_generator = user_results.get(chan, {}).get(nick)
     if not next_result_generator:
         return "You haven't searched for anything yet. Use gh <subcommand> <query> to search."
     try:
-        result = next_result_generator.__next__()
+        result = next(next_result_generator)
     except StopIteration:
         return "No more results."
     return result.as_list()
@@ -225,7 +223,6 @@ def ghn_cmd(chan, nick):
 
 @hook.command("gh", "github", autohelp=False)
 def gh_cmd(text, event, reply, bot, nick, chan):
-    global user_results
 
     arguments = shlex.split(text)
     if not arguments:

@@ -1,7 +1,9 @@
 import logging
 import re
+from collections.abc import Iterable, Mapping
 from functools import lru_cache
-from typing import Iterable, Mapping, Match, Optional, Union
+from re import Match
+from typing import Union
 from urllib.parse import parse_qs, urlparse
 
 import isodate
@@ -199,7 +201,7 @@ def search_youtube_videos(
 
 
 class APIError(Exception):
-    def __init__(self, message: str, response: Optional[str] = None) -> None:
+    def __init__(self, message: str, response: str | None = None) -> None:
         super().__init__(message)
         self.message = message
         self.response = response
@@ -249,7 +251,7 @@ Parts = Iterable[str]
 def do_request(
     method: str,
     parts: Parts,
-    params: Optional[ParamMap] = None,
+    params: ParamMap | None = None,
     **kwargs: ParamValues,
 ) -> requests.Response:
     api_key = bot.config.get_api_key("google")
@@ -261,7 +263,7 @@ def do_request(
 
     kwargs["part"] = ",".join(parts)
     kwargs["key"] = api_key
-    return get_session().get(base_url + method, kwargs)
+    return get_session().get(base_url + method, params=kwargs)
 
 
 def get_video(video_id: str, parts: Parts) -> requests.Response:
@@ -384,13 +386,12 @@ def youtube_url(match: Match[str]) -> str:
     )
 
 
-user_results = {}
+user_results: dict[str, list[str]] = {}
 last_youtube_url: dict[tuple[str, str], str] = {}
 
 
 @hook.command("ytn")
 def youtube_next(text: str, nick: str, chan: str, reply) -> str:
-    global user_results, last_youtube_url
     client = get_client()
     url = user_results[nick].pop(0)
     last_youtube_url[(chan, nick)] = url
@@ -411,7 +412,6 @@ def youtube(text: str, nick: str, chan: str, reply) -> str:
 
     :param text: User input
     """
-    global user_results
     client = get_client()
     results = search_youtube_videos(client, text)
     user_results[nick] = results

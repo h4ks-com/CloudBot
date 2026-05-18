@@ -3,15 +3,14 @@ import importlib
 import re
 import time
 from collections import deque
-from dataclasses import dataclass
-from datetime import datetime
-from typing import Deque, Literal
+from typing import Deque
 from urllib.parse import urlparse
 
 import jwt
 import pywikibot
 import requests
 from markitdown import MarkItDown
+from pywikibot import input as original_pywikibot_input
 
 from cloudbot import hook
 from cloudbot.bot import bot
@@ -51,9 +50,7 @@ def patch_input(wiki_password: str):
     def mock_input(question, password=False, default="", force=False):
         if password:
             return wiki_password
-        from pywikibot import input as original_input
-
-        return original_input(
+        return original_pywikibot_input(
             question, password=password, default=default, force=force
         )
 
@@ -71,8 +68,8 @@ def on_start():
 def generate_z_ai_token(apikey: str, exp_seconds: int = 3600) -> str:
     try:
         api_id, secret = apikey.split(".")
-    except Exception as e:
-        raise ValueError(f"Invalid Z.ai API key format: {e}")
+    except ValueError as e:
+        raise ValueError(f"Invalid Z.ai API key format: {e}") from e
 
     payload = {
         "api_key": api_id,
@@ -135,7 +132,6 @@ gpt_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
 @hook.command("gpt")
 def gpt_command(text: str, nick: str, chan: str) -> str:
     """<text> - Get a response from text generating LLM."""
-    global gpt_messages_cache
 
     history = get_or_create_history(
         gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
@@ -172,7 +168,6 @@ def create_web_app(text: str, history: list[Message] | Deque[Message]) -> str:
 @hook.command("gptweb", "gptapp")
 def gpt_app(text: str, nick: str, chan: str) -> str:
     """<text> - Create a single page html web app on the fly with gpt"""
-    global gpt_messages_cache
 
     history = get_or_create_history(
         gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
@@ -190,7 +185,6 @@ def agi_app(conn, text: str, nick: str, chan: str) -> str:
 @hook.command("gpth", "gpthistory", "gptpaste", autohelp=False)
 def gpt_paste_command(nick: str, chan: str, text: str) -> str:
     """[nick] - Pastes the GPT conversation history with nick if specified."""
-    global gpt_messages_cache
 
     text = text.strip()
     if text:
@@ -211,7 +205,6 @@ def gpt_paste_command(nick: str, chan: str, text: str) -> str:
 @hook.command("gptcopy")
 def gpt_copy_command(text: str, nick: str, chan: str) -> str:
     """<user> - Copy another user's conversation history into yours, replacing your own."""
-    global gpt_messages_cache
 
     target = text.strip()
     if not target:
@@ -228,7 +221,8 @@ def gpt_clear_command(nick: str, chan: str) -> str:
     return clear_history(gpt_messages_cache, chan, nick)
 
 
-last_summary = ""
+class _SummaryState:
+    last_summary: str = ""
 
 
 def summarize(
@@ -241,7 +235,6 @@ def summarize(
     what: str = "conversation",
     max_words: int | None = None,
 ) -> str | list[str] | None:
-    global last_summary
     if image:
         question_header = (
             f"Please convert the following {what} into an image prompt for a text generating model with only the main"
@@ -270,14 +263,17 @@ def summarize(
             return "error: missing api key for huggingface"
 
         client = HuggingFaceClient([api_key])
-        response = attempt_inference(
+        inference = attempt_inference(
             client, summarize_body, ALIASES["image"].id, reply
         )
-        if isinstance(response, str):
-            return formatting.truncate(response, 420)
-        return formatting.truncate(process_response(response, chan, nick), 420)
+        if isinstance(inference, str):
+            return formatting.truncate(inference, 420)
+        processed = process_response(inference, chan, nick)
+        if isinstance(processed, list):
+            processed = " ".join(processed)
+        return formatting.truncate(processed, 420)
     else:
-        last_summary = response
+        _SummaryState.last_summary = response
         output = formatting.chunk_str(response.replace("\n", " - "))
         if len(output) > 3:
             paste_url = upload_history(
@@ -334,7 +330,7 @@ def summarize_command(
     messages = list(reversed(inner))
     if not messages:
         reply("Nothing found in history to summarize")
-        return
+        return None
     return summarize(
         messages, image, nick, chan, bot, reply, max_words=worcount
     )
@@ -345,11 +341,16 @@ def sumsum(
     bot, text: str, reply, nick: str, chan: str, conn
 ) -> str | list[str] | None:
     """Summarizes the last summary"""
-    global last_summary
-    if not last_summary:
+    if not _SummaryState.last_summary:
         return "No summary to summarize."
     return summarize(
-        [last_summary], False, nick, chan, bot, reply, what="text even more"
+        [_SummaryState.last_summary],
+        False,
+        nick,
+        chan,
+        bot,
+        reply,
+        what="text even more",
     )
 
 
@@ -357,7 +358,6 @@ agi_messages_cache: Deque[tuple[float, str]] = deque(maxlen=AGI_HISTORY_LENGTH)
 
 
 def generate_agi_history(conn, chan: str) -> list[Message]:
-    global agi_messages_cache
     prefix = conn.config["command_prefix"]
 
     inner: list[tuple[RoleType, float, str]] = []
@@ -557,7 +557,6 @@ def gptwiki(
     bot, reply, text: str, chan: str, nick: str, conn
 ) -> list[str] | str:
     """<text> - Create or edit a wiki page on demand from AI prompt"""
-    global gpt_messages_cache
     history = get_or_create_history(
         gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
     )
@@ -569,7 +568,6 @@ def gptsummarize(
     bot, reply, text: str, chan: str, nick: str, conn
 ) -> list[str] | str:
     """<url> - Summarizes the contents of the given url. Can also be youtube urls or anything supported by https://github.com/microsoft/markitdown"""
-    global gpt_messages_cache
     if not text.strip():
         return "Error: You must provide a url to summarize."
     parsed_url = urlparse(text.strip())

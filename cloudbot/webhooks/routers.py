@@ -2,6 +2,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -9,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from cloudbot.bot import bot
+from cloudbot.bot import CloudBot, bot
 from cloudbot.util import database
 from cloudbot.webhooks.handlers import call_webhook_handler
 from cloudbot.webhooks.plugin_parser import PluginParser
@@ -100,7 +101,7 @@ def authenticate(
             logger.info(
                 "Webhook authentication successful with token: %s", token_name
             )
-            return token_name
+            return str(token_name)
 
     raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -109,8 +110,10 @@ def get_repo_link() -> str:
     """Get repository link from bot config."""
     bot_instance = bot.get()
     if bot_instance:
-        return bot_instance.config.get(
-            "repo_link", "https://github.com/h4ks-com/CloudBot"
+        return str(
+            bot_instance.config.get(
+                "repo_link", "https://github.com/h4ks-com/CloudBot"
+            )
         )
     return "https://github.com/h4ks-com/CloudBot"
 
@@ -122,7 +125,7 @@ def get_command_prefix() -> str:
         connections = bot_instance.config.get("connections", [])
         if connections:
             # Get command_prefix from first connection
-            return connections[0].get("command_prefix", ".")
+            return str(connections[0].get("command_prefix", "."))
     return "."
 
 
@@ -130,7 +133,7 @@ def get_plugins_directory() -> str:
     """Get the plugins directory path."""
     bot_instance = bot.get()
     if bot_instance:
-        bot_dir = Path(bot_instance.base_dir)
+        bot_dir = Path(cast(CloudBot, bot_instance).base_dir)
         return str(bot_dir / "plugins")
     # Fallback to relative path
     current_dir = Path(__file__).parent.parent.parent
@@ -260,7 +263,7 @@ def send_message(
     bot_instance = bot.get()
     if not bot_instance:
         raise HTTPException(status_code=500, detail="Bot not available")
-    connection = bot_instance.connections.get("gobot")
+    connection = cast(CloudBot, bot_instance).connections.get("gobot")
     if not connection:
         return SendMessageResponse(
             status="error", detail="Connection not found"

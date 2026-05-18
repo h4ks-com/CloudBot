@@ -4,17 +4,37 @@
 
 
 import re
-from argparse import Namespace
-from dataclasses import InitVar, dataclass
+from collections.abc import Callable, Generator
+from dataclasses import InitVar, dataclass, field
 from datetime import datetime
-from typing import Generator, Union
 from urllib.parse import quote
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from curl_cffi import requests
 from thefuzz import fuzz
 
 from cloudbot import hook
+from cloudbot.util.web import get_session
+
+
+def _tag_text(tag: Tag | None) -> str:
+    """Return stripped text of an optional bs4 Tag, '' if None."""
+    if tag is None:
+        return ""
+    return tag.text.strip()
+
+
+def _tag_attr(tag: Tag | None, attr: str) -> str:
+    """Return single string attribute of an optional bs4 Tag, '' if None."""
+    if tag is None:
+        return ""
+    value = tag.get(attr)
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return value[0].strip() if value else ""
+    return value.strip()
 
 
 class Config:
@@ -39,11 +59,12 @@ class Package:
     version: str
     updated: str
     description: str
-    link: InitVar[str] = None
+    link_init: InitVar[str | None] = None
+    link: str = field(init=False)
+    released_date: datetime | str | None = field(init=False, default=None)
 
-    def __post_init__(self, link: str = None):
-        self.link = link or config.link_defualt_format.format(package=self)
-        self.released_date = None
+    def __post_init__(self, link_init: str | None = None) -> None:
+        self.link = link_init or config.link_defualt_format.format(package=self)
         if self.updated:
             for strfmt in ["%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z"]:
                 try:
@@ -61,22 +82,20 @@ class Package:
         Returns:
             str: Formatted date string
         """
-        return self.released_date.strftime(date_format)
+        if isinstance(self.released_date, datetime):
+            return self.released_date.strftime(date_format)
+        return self.released_date or ""
 
     def __str__(self) -> str:
         return f"\x02{self.name}\x02 {self.link} - {self.version} - {self.description} - {self.released_date or self.updated or ''}"
 
 
-def pypi_search(
-    query: str, opts: Union[dict, Namespace] = {}
-) -> Generator[Package, None, None]:
+def pypi_search(query: str) -> Generator[Package, None, None]:
     """Search for packages matching the query.
 
     Yields:
         Package: package object
     """
-    from cloudbot.util.web import get_session
-
     headers = {
         "Accept": "application/vnd.pypi.simple.v1+json",
     }
@@ -110,8 +129,10 @@ def pypi_search(
         if version in releases and len(releases[version]) > 0:
             released = releases[version][0]["upload_time"]
         else:
-            version_ = next(iter(releases))
-            if len(releases[version_]) > 0:
+            version_ = next(iter(releases), None)
+            if version_ is None:
+                released = ""
+            elif len(releases[version_]) > 0:
                 released = releases[version_][0]["upload_time"]
                 version = version_
             else:
@@ -129,10 +150,9 @@ def aur_search(query: str) -> Generator[Package, None, None]:
     try:
         for package in soup.select("tbody tr"):
             columns = package.select("td")
-            name = columns[0].select_one("a").text.strip()
-            link = (
-                "https://aur.archlinux.org"
-                + columns[0].select_one("a").get("href").strip()
+            name = _tag_text(columns[0].select_one("a"))
+            link = "https://aur.archlinux.org" + _tag_attr(
+                columns[0].select_one("a"), "href"
             )
             version = columns[1].text.strip()
             released = ""
@@ -151,10 +171,9 @@ def arch_search(query: str) -> Generator[Package, None, None]:
     try:
         for package in soup.select("tbody tr"):
             columns = package.select("td")
-            name = columns[2].select_one("a").text.strip()
-            link = (
-                "https://archlinux.org"
-                + columns[2].select_one("a").get("href").strip()
+            name = _tag_text(columns[2].select_one("a"))
+            link = "https://archlinux.org" + _tag_attr(
+                columns[2].select_one("a"), "href"
             )
             version = columns[3].text.strip()
             released = ""
@@ -179,8 +198,8 @@ def crates_search(query: str) -> Generator[Package, None, None]:
     data = response.json()
     for package in data["crates"]:
 
-        def safeget(key: str) -> str:
-            return (package.get(key, "") or "").strip()
+        def safeget(key: str, _pkg=package) -> str:
+            return (_pkg.get(key, "") or "").strip()
 
         name = safeget("name")
         link = f"https://crates.io/crates/{name}"
@@ -197,26 +216,26 @@ def pubdev_search(query: str) -> Generator[Package, None, None]:
         return
     soup = BeautifulSoup(response.text, "html.parser")
     for package in soup.select("div.packages-item"):
-        name = package.select_one("h3 a").text.strip()
-        link = package.select_one("h3 a").get("href").strip()
+        name = _tag_text(package.select_one("h3 a"))
+        link = _tag_attr(package.select_one("h3 a"), "href")
         if link.startswith("/"):
             link = "https://pub.dev" + link
-        version = package.select_one(
-            "span.packages-metadata-block"
-        ).text.strip()
+        version = _tag_text(package.select_one("span.packages-metadata-block"))
 
         # Remove release date from version
         version = re.sub(r"\(.+\)", "", version).strip()
 
         date = package.select_one("a.-x-ago")
         released = date.text.strip() if date else ""
-        description = package.select_one("div.packages-description")
-        description = description.text.strip() if description else ""
-        platforms = []
-        for m in package.select("div.-pub-tag-badge") or []:
-            m = " ".join([s.text for s in m.select("a.tag-badge-sub")])
-            if m:
-                platforms.append(m)
+        description_tag = package.select_one("div.packages-description")
+        description = description_tag.text.strip() if description_tag else ""
+        platforms: list[str] = []
+        for badge in package.select("div.-pub-tag-badge") or []:
+            badge_text = " ".join(
+                [s.text for s in badge.select("a.tag-badge-sub")]
+            )
+            if badge_text:
+                platforms.append(badge_text)
         if platforms:
             description += f" Platforms: {platforms}"
 
@@ -238,17 +257,20 @@ def ubuntu_search(query: str) -> Generator[Package, None, None]:
         return
     soup = BeautifulSoup(response.text, "html.parser")
     soup.select("h3")
-    for name, package in zip(soup.select("h3"), soup.select("h3+ul")):
-        name = name.text.strip().lstrip("Package ")
-        ubuntus = []
+    for name_tag, package in zip(soup.select("h3"), soup.select("h3+ul")):
+        name = name_tag.text.strip().lstrip("Package ")
+        ubuntus: list[str] = []
+        link = ""
+        li: Tag | None = None
         for li in package.select("li"):
-            ver = li.select_one("a.resultlink").text.strip()
-            link = (
-                "https://packages.ubuntu.com"
-                + li.select_one("a.resultlink").get("href").strip()
+            ver = _tag_text(li.select_one("a.resultlink"))
+            link = "https://packages.ubuntu.com" + _tag_attr(
+                li.select_one("a.resultlink"), "href"
             )
             ubuntus.append(ver)
 
+        if li is None:
+            continue
         rows = li.text.strip().split("\n")
         description = " ".join(rows[:3]).strip().replace("\t", " ")
         version = rows[3].strip()
@@ -268,11 +290,11 @@ def search_npmjs(query: str) -> Generator[Package, None, None]:
     for package in data["objects"]:
         package = package["package"]
 
-        def safeget(key: Union[str, list]) -> str:
+        def safeget(key: str | list, _pkg=package) -> str:
             if isinstance(key, str):
-                return (package.get(key, "") or "").strip()
+                return (_pkg.get(key, "") or "").strip()
             if isinstance(key, list):
-                d = package.get(key[0])
+                d = _pkg.get(key[0])
                 for k in key[1:]:
                     d = d.get(k)
                     if d is None:
@@ -300,20 +322,20 @@ def search_nuget(query: str) -> Generator[Package, None, None]:
         return
     for package in results[0].select("li.package"):
         title = package.select_one("h2.package-title")
+        if title is None:
+            continue
         name = title.text.strip()
-        link = (
-            "https://www.nuget.org" + title.select_one("a").get("href").strip()
+        link = "https://www.nuget.org" + _tag_attr(
+            title.select_one("a"), "href"
         )
+        package_list = package.select_one("ul.package-list")
+        if package_list is None:
+            continue
         version = (
-            package.select_one("ul.package-list")
-            .select("li")[3]
-            .text.strip()
-            .lstrip("Latest version ")
+            package_list.select("li")[3].text.strip().lstrip("Latest version ")
         )
-        released = (
-            package.select_one("ul.package-list").select("li")[2].text.strip()
-        )
-        description = package.select_one("div.package-details").text.strip()
+        released = package_list.select("li")[2].text.strip()
+        description = _tag_text(package.select_one("div.package-details"))
         yield Package(name, version, released, description, link)
 
 
@@ -367,7 +389,7 @@ _REPOS = {
     ("docker", "dockerhub"): search_dockerhub,
 }
 
-REPOS = {}
+REPOS: dict[str, Callable[[str], Generator[Package, None, None]]] = {}
 
 # Flatten keys
 for k, v in _REPOS.items():
@@ -376,7 +398,7 @@ for k, v in _REPOS.items():
             REPOS[i] = v
 
 
-results_queue = {}
+results_queue: dict[tuple[str, str], Generator[Package, None, None]] = {}
 
 
 @hook.command("pkglist", autohelp=False)
@@ -391,19 +413,19 @@ def pop3(results, reply):
             reply(str(next(results)))
         except StopIteration:
             return "No [more] results found."
+    return None
 
 
 @hook.command("pkgn", autohelp=False)
 def pkgn(text, bot, chan, nick, reply):
     """<nick> - Returns next search result for pkg command for nick or yours by default"""
-    global results_queue
     if (chan, nick) not in results_queue:
         return f"Nick '{nick}' has no queue."
     results = results_queue[(chan, nick)]
     user = text.strip().split()[0] if text.strip() else ""
     if user:
-        if user in results_queue[chan]:
-            results = results_queue[chan][user]
+        if (chan, user) in results_queue:
+            results = results_queue[(chan, user)]
         else:
             return f"Nick '{user}' has no queue."
     return pop3(results, reply)
@@ -412,7 +434,6 @@ def pkgn(text, bot, chan, nick, reply):
 @hook.command("pkg", autohelp=False)
 def pkg(text, bot, chan, nick, reply):
     """<query> - Returns first search result for pkg command"""
-    global results_queue
     if not text:
         return "Please specify a repo and query."
 

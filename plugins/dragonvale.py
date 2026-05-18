@@ -1,7 +1,5 @@
 import re
-from typing import Dict, Union
 
-import requests
 from requests import HTTPError
 
 from cloudbot import hook
@@ -49,7 +47,7 @@ def egg_calculator(text):
     """<time> - Parses dragonvalebreedingguide.com for a list of possible dragons based on the incubation time.
     Enter the time as 5 hours, 30 minutes. For upgraded incubation times put 'upgrade' at the front of the time length
     """
-    params: Dict[str, Union[int, float]] = {"avail": 1}
+    params: dict[str, int | float] = {"avail": 1}
     if text.lower().startswith("upgrade"):
         timer = text.replace("upgrade", "")
         time2 = time_parse(timer.strip())
@@ -68,7 +66,9 @@ def egg_calculator(text):
     r = get_session().get(egg_calc_url, params=params, timeout=5)
     soup = parse_soup(r.text)
     dragons = []
-    for line in soup.findAll("td", {"class": "views-field views-field-title"}):
+    for line in soup.find_all(
+        "td", attrs={"class": "views-field views-field-title"}
+    ):
         dragons.append(line.text.replace("\n", "").strip())
 
     return ", ".join(dragons)

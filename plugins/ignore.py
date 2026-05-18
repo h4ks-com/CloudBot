@@ -1,4 +1,3 @@
-import asyncio
 from fnmatch import fnmatch
 
 from sqlalchemy import (
@@ -24,14 +23,15 @@ table = Table(
     PrimaryKeyConstraint("connection", "channel", "mask"),
 )
 
+ignore_cache: list[tuple[str, str, str]] = []
+
 
 @hook.on_start
 def load_cache(db):
     """
     :type db: sqlalchemy.orm.Session
     """
-    global ignore_cache
-    ignore_cache = []
+    ignore_cache.clear()
     for row in db.execute(table.select()):
         conn = row["connection"]
         chan = row["channel"]
@@ -72,16 +72,16 @@ def is_ignored(conn, chan, mask):
                 return True
         else:
             # this is a channel-specific ignore
-            if not (conn, chan) == (_conn, _chan):
+            if (conn, chan) != (_conn, _chan):
                 continue
             if fnmatch(mask_cf, _mask_cf):
                 return True
+    return False
 
 
 # noinspection PyUnusedLocal
 @hook.sieve(priority=50)
-@asyncio.coroutine
-def ignore_sieve(bot, event, _hook):
+async def ignore_sieve(bot, event, _hook):
     """
     :type bot: cloudbot.bot.CloudBot
     :type event: cloudbot.event.Event

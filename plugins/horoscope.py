@@ -1,5 +1,6 @@
 # Plugin by Infinity - <https://github.com/infinitylabs/UguuBot>
 import requests
+from bs4 import Tag
 from sqlalchemy import Column, String, Table, select
 from yarl import URL
 
@@ -36,7 +37,7 @@ SIGN_MAP = {
 
 def get_sign(db, nick):
     row = db.execute(
-        select([table.c.sign]).where(table.c.nick == nick.lower())
+        select(table.c.sign).where(table.c.nick == nick.lower())
     ).fetchone()
     if not row:
         return None
@@ -116,7 +117,7 @@ def parse_page(content):
     """
     soup = parse_soup(content)
     container = soup.find("div", class_="main-horoscope")
-    if not container:
+    if not isinstance(container, Tag):
         raise HoroscopeParseError("Unable to parse horoscope", content)
 
     para = container.p

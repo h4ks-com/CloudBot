@@ -9,7 +9,8 @@ import functools
 import json
 import logging
 import re
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import openai
 import requests
@@ -46,10 +47,13 @@ _SECRET_PATTERNS = [
 
 def parse_args(args_json: str) -> dict[str, Any]:
     """Tolerant JSON arg parser — returns {} on bad input rather than raising."""
+    if not args_json:
+        return {}
     try:
-        return json.loads(args_json) if args_json else {}
+        parsed = json.loads(args_json)
     except json.JSONDecodeError:
         return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def parse_namespace(data: dict[str, Any], ctx: RunContextWrapper) -> str:
@@ -71,10 +75,11 @@ def sanitise_err_message(msg: str) -> str:
     return msg
 
 
-def resolve_config_path(bot, dotted: str) -> Optional[str]:
+def resolve_config_path(bot, dotted: str) -> str | None:
     """Resolve dotted config path. Bare names (no dot) hit `api_keys.<name>`."""
     if "." not in dotted:
-        return bot.config.get_api_key(dotted)
+        key = bot.config.get_api_key(dotted)
+        return key if isinstance(key, str) else None
     node: Any = bot.config
     for part in dotted.split("."):
         if hasattr(node, "get"):
@@ -90,7 +95,7 @@ def resolve_config_path(bot, dotted: str) -> Optional[str]:
 _GH_USERNAME_CACHE: dict[str, str] = {}
 
 
-def fetch_github_username(bot) -> Optional[str]:
+def fetch_github_username(bot) -> str | None:
     """PAT owner login. Cached by token because tokens are pinned in config."""
     token = bot.config.get_api_key("github") or ""
     if not token:
@@ -111,8 +116,9 @@ def fetch_github_username(bot) -> Optional[str]:
     except (requests.RequestException, ValueError, KeyError):
         logger.warning("agent: github /user lookup failed", exc_info=True)
         return None
-    if login:
-        _GH_USERNAME_CACHE[token] = login
+    if not isinstance(login, str) or not login:
+        return None
+    _GH_USERNAME_CACHE[token] = login
     return login
 
 

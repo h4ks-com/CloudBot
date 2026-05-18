@@ -239,7 +239,9 @@ def howlongtobeat(text, nick, chan):
     if not text:
         return "Please provide a game name to search for"
 
-    games = try_api_search(text) or scrape_hltb_search(text)
+    games = try_api_search(text)
+    if not games:
+        games = scrape_hltb_search(text)
     if games:
         results_queue[chan][nick] = games[1:]
         return str(games[0])

@@ -2,6 +2,7 @@ import random
 
 from cloudbot import hook
 from cloudbot.util import formatting, http
+from plugins.ddg import search as ddg_search_impl
 
 
 def api_get(kind, query):
@@ -58,24 +59,21 @@ def google(text):
     )
 
 
-last_results = []
+last_results: list[dict[str, str]] = []
 
 
 @hook.command("ddg", "g")
 def ddg_search(text):
     """<query> - returns the first duckduckgo search result for <query>"""
-    global last_results
-    from .ddg import search
-
-    results = search(text)
+    results = ddg_search_impl(text)
     result = results.pop()
-    last_results = results
+    last_results.clear()
+    last_results.extend(results)
     return f"{ result['text'] }   ---   \x02{result['url']}\x02"
 
 
 @hook.command("ddg_next", "gn")
 def ddg_gn(text):
-    global last_results
     result = last_results.pop()
     if last_results:
         return f"{ result['text'] }   ---   \x02{result['url']}\x02"

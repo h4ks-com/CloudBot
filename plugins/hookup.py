@@ -1,7 +1,7 @@
 import json
 import random
 import time
-from typing import Any, Dict
+from typing import Any
 
 from sqlalchemy import and_, select
 
@@ -10,7 +10,7 @@ from cloudbot.util.database import metadata
 from cloudbot.util.textgen import TextGenerator
 from plugins.history import seen_table
 
-hookups: Dict[str, Any] = {}
+hookups: dict[str, Any] = {}
 
 
 @hook.on_start()
@@ -28,10 +28,11 @@ def hookup(db, chan):
 
     times = time.time() - 86400
     results = db.execute(
-        select(
-            [seen_table.c.name],
+        select(seen_table.c.name)
+        .where(
             and_(seen_table.c.chan == chan, seen_table.c.time > times),
-        ).order_by(seen_table.c.time)
+        )
+        .order_by(seen_table.c.time)
     ).fetchall()
 
     if not results or len(results) < 2:

@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -27,7 +27,9 @@ QUEUE_RATE_LIMIT_UNAUTHENTICATED = 10
 QUEUE_RATE_LIMIT_WINDOW = 3600
 
 last_sent_messages: dict[str, dict[str, Any]] = {}
-stream_token_cache = TTLCache(maxsize=1000, ttl=3600)
+stream_token_cache: TTLCache[str, bool] = cast(
+    "TTLCache[str, bool]", TTLCache(maxsize=1000, ttl=3600)
+)
 queue_additions_tracker: dict[tuple[str, str], list[float]] = {}
 
 

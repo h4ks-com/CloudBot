@@ -113,12 +113,13 @@ dependencies = [
     "venusian==3.0.0",
     "watchdog==2.1.6",
     "asyncwhois>=1.1.9",
-    "wrapt==1.12.1",
+    "wrapt>=1.16.0",
     "yarl>=1.8.1",
     "youtube-search==2.1.0",
     "youtube-transcript-api>=1.1.0",
-    "openai-agents>=0.0.6",
+    "openai-agents==0.0.6",
     "litellm>=1.41.1",
+    "griffe>=1.5.6,<1.6",
 ]
 
 [tool.isort]
@@ -143,11 +144,13 @@ dev = [
     "responses==0.25.0",
     "typing-extensions>=4.12.2",
     "types-requests~=2.32.4.20250611",
+    "types-pytz>=2024.1",
+    "types-cachetools>=7.0.0",
 ]
 
 [tool.black]
 line-length = 80
-target-version = ['py38']
+target-version = ['py310']
 include = '\.pyi?$'
 exclude = '''
 (
@@ -171,9 +174,74 @@ exclude = '''
 package = false
 
 [tool.pylint.main]
-analyse-fallback-blocks = true
-py-version = "3.8"
+py-version = "3.10"
 extension-pkg-allow-list=["lxml"]
+max-module-lines = 2000
+ignored-modules = [
+  "agents",
+  "agents.exceptions",
+  "agents.models.openai_chatcompletions",
+  "agents.models.openai_provider",
+  "agents.run",
+  "asyncwhois",
+  "chartlyrics",
+  "chartlyrics.lyrics",
+  "chatbot",
+  "cleverwrap",
+  "curl_cffi",
+  "dictcc",
+  "enchant",
+  "enchant.checker",
+  "enchant.tokenize",
+  "ety",
+  "feedparser",
+  "freezegun",
+  "fuzzywuzzy",
+  "gazpacho",
+  "github",
+  "google.transliteration",
+  "google.transliteration.numerals",
+  "google_play_scraper",
+  "googlemaps",
+  "googlemaps.exceptions",
+  "humanfriendly",
+  "imgurpython",
+  "irclib.parser",
+  "irclib.util.compare",
+  "isodate",
+  "lightstreamer.client",
+  "magic",
+  "markitdown",
+  "mcstatus",
+  "mcstatus.status_response",
+  "mediawiki",
+  "microdata",
+  "mwparserfromhell",
+  "natsort",
+  "newsapi",
+  "nltk",
+  "openai",
+  "openrouter",
+  "openrouter.components.model",
+  "openrouter.errors",
+  "pyocr.builders",
+  "pyproj",
+  "pypdf",
+  "pywikibot",
+  "pywikibot.exceptions",
+  "pyyoutube",
+  "responses",
+  "responses.matchers",
+  "streetview",
+  "timezonefinder",
+  "unidecode",
+  "uwuipy",
+  "validators",
+  "watchdog.events",
+  "watchdog.observers",
+  "youtube_search",
+  "youtube_transcript_api",
+]
 
 [tool.pylint.messages_control]
 disable = [
@@ -225,6 +293,7 @@ disable = [
   "not-callable",
   "unnecessary-lambda-assignment",
   "abstract-method",
+  "abstract-class-instantiated",
   "consider-using-generator",
   "too-many-return-statements",
   "line-too-long",
@@ -240,7 +309,7 @@ generated-members = "(requests\\.)?codes\\.[a-zA-Z0-9_]+"
 
 [tool.mypy]
 namespace_packages = true
-python_version = "3.8"
+python_version = "3.10"
 warn_unused_configs = true
 strict = false
 strict_optional = false

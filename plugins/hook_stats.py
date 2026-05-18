@@ -6,11 +6,15 @@ Author:
 """
 
 from collections import defaultdict
+from collections.abc import Callable
 
 from cloudbot import hook
 from cloudbot.hook import Priority
 from cloudbot.util import web
 from cloudbot.util.formatting import gen_markdown_table
+
+StatsRow = tuple[tuple[str, ...], list[tuple[str, ...]]]
+StatsHandler = Callable[..., StatsRow]
 
 
 def default_hook_counter():
@@ -92,7 +96,7 @@ def do_hook_stats(data, hook_name):
     ]
 
 
-stats_funcs = {
+stats_funcs: dict[str, tuple[StatsHandler, int]] = {
     "global": (do_global_stats, 0),
     "network": (do_network_stats, 1),
     "channel": (do_channel_stats, 2),
@@ -112,11 +116,11 @@ def hookstats(text, bot, notice_doc):
         handler, arg_count = stats_funcs[stats_type]
     except LookupError:
         notice_doc()
-        return
+        return None
 
     if len(args) < arg_count:
         notice_doc()
-        return
+        return None
 
     headers, data = handler(data, *args[:arg_count])
 

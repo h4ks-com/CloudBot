@@ -109,12 +109,12 @@ class MessageTag(Parseable):
         """
         new_value = ""
         found = False
-        for i in range(len(value)):
+        for i, char in enumerate(value):
             if found:
                 found = False
                 continue
 
-            if value[i] == "\\":
+            if char == "\\":
                 if i + 1 >= len(value):
                     raise ValueError(
                         f"Unexpected end of string while parsing: {value}"
@@ -123,7 +123,7 @@ class MessageTag(Parseable):
                 new_value += TAG_VALUE_ESCAPES[value[i : i + 2]]
                 found = True
             else:
-                new_value += value[i]
+                new_value += char
 
         return new_value
 

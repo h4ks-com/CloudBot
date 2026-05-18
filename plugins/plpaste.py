@@ -26,7 +26,7 @@ Use this to understand how any command works before calling it."""
                     if f"def {text}(" in line:
                         line_number = i
                         break
-                    elif "@hook.command" in line and f'"{text}"' in line:
+                    if "@hook.command" in line and f'"{text}"' in line:
                         for j in range(i, len(lines)):
                             s = lines[j].strip()
                             if s.startswith("def ") or s.startswith(

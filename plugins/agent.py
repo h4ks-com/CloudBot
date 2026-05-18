@@ -15,7 +15,6 @@ import re
 import time
 from collections import deque
 from datetime import datetime
-from typing import Optional
 
 from agents import Agent, FunctionTool, RunContextWrapper, RunHooks, Runner
 from agents.exceptions import MaxTurnsExceeded
@@ -35,7 +34,6 @@ from cloudbot.agent import (
     upload_markdown_paste,
 )
 from cloudbot.event import CommandEvent
-from cloudbot.util import formatting
 from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
@@ -162,7 +160,6 @@ DEFAULT_INCLUDE = frozenset(
         "kero",
         "kerowhack",
         "l",
-        "l33t",
         "l33t",
         "la",
         "langlist",
@@ -811,7 +808,7 @@ async def _run_agent(event, prompt: str) -> None:
     tracker = _RunTracker()
     backends_tried: list[str] = []
     try:
-        last_err: Optional[BaseException] = await _try_backends(
+        last_err: BaseException | None = await _try_backends(
             agent,
             agent_input,
             event,
@@ -846,11 +843,11 @@ async def _try_backends(
     bot,
     history,
     enriched_prompt,
-) -> Optional[BaseException]:
+) -> BaseException | None:
     """Run the agent against each backend in order. Return the last error (or
     None on success — in which case we've already replied to IRC and the caller
     skips the failure path)."""
-    last_err: Optional[BaseException] = None
+    last_err: BaseException | None = None
     for backend in backends_to_try:
         backends_tried.append(backend)
         try:

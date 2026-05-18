@@ -11,7 +11,6 @@ Commands:
 
 import asyncio
 import time
-from typing import Optional
 
 import aiohttp
 
@@ -44,50 +43,60 @@ async def _fetch_status() -> dict:
             return await resp.json()
 
 
-async def _probe_ping() -> Optional[float]:
-    """WebSocket ping via SIG 0.0.2 protocol. Returns ms or None on any failure."""
-    timeout = aiohttp.ClientTimeout(total=_TIMEOUT)
+async def _do_probe() -> float | None:
     headers = {"Origin": "https://sigmally.h4ks.com"}
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(_WS_URL, headers=headers, timeout=timeout) as ws:
-                await ws.send_bytes(_HANDSHAKE)
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect(_WS_URL, headers=headers) as ws:
+            await ws.send_bytes(_HANDSHAKE)
 
-                msg = await asyncio.wait_for(ws.receive(), timeout=5.0)
-                if msg.type != aiohttp.WSMsgType.BINARY:
-                    return None
+            msg = await asyncio.wait_for(ws.receive(), timeout=5.0)
+            if msg.type != aiohttp.WSMsgType.BINARY:
+                return None
 
-                raw: bytes = msg.data
-                null_pos = raw.index(b"\x00")
-                shuffle_start = null_pos + 1
-                if len(raw) < shuffle_start + 256:
-                    return None
+            raw: bytes = msg.data
+            null_pos = raw.index(b"\x00")
+            shuffle_start = null_pos + 1
+            if len(raw) < shuffle_start + 256:
+                return None
 
-                forward = raw[shuffle_start: shuffle_start + 256]
-                inverse = bytearray(256)
-                for i, b in enumerate(forward):
-                    inverse[b] = i
+            forward = raw[shuffle_start : shuffle_start + 256]
+            inverse = bytearray(256)
+            for i, b in enumerate(forward):
+                inverse[b] = i
 
-                ping_sent_at: Optional[float] = None
-                deadline = time.monotonic() + _TIMEOUT
+            ping_sent_at: float | None = None
+            deadline = time.monotonic() + _TIMEOUT
 
-                while time.monotonic() < deadline:
-                    remaining = deadline - time.monotonic()
-                    try:
-                        msg = await asyncio.wait_for(ws.receive(), timeout=max(0.1, remaining))
-                    except asyncio.TimeoutError:
-                        break
-                    if msg.type != aiohttp.WSMsgType.BINARY or not msg.data:
-                        break
-                    logical_op = inverse[msg.data[0]]
-                    if logical_op == _OP_BORDER and ping_sent_at is None:
-                        ping_sent_at = time.monotonic()
-                        await ws.send_bytes(bytes([forward[_OP_PING]]))
-                    elif logical_op == _OP_PING and ping_sent_at is not None:
-                        return (time.monotonic() - ping_sent_at) * 1000
-    except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError, ValueError):
-        pass
+            while time.monotonic() < deadline:
+                remaining = deadline - time.monotonic()
+                try:
+                    msg = await asyncio.wait_for(
+                        ws.receive(), timeout=max(0.1, remaining)
+                    )
+                except asyncio.TimeoutError:
+                    break
+                if msg.type != aiohttp.WSMsgType.BINARY or not msg.data:
+                    break
+                logical_op = inverse[msg.data[0]]
+                if logical_op == _OP_BORDER and ping_sent_at is None:
+                    ping_sent_at = time.monotonic()
+                    await ws.send_bytes(bytes([forward[_OP_PING]]))
+                elif logical_op == _OP_PING and ping_sent_at is not None:
+                    return (time.monotonic() - ping_sent_at) * 1000
     return None
+
+
+async def _probe_ping() -> float | None:
+    """WebSocket ping via SIG 0.0.2 protocol. Returns ms or None on any failure."""
+    try:
+        return await asyncio.wait_for(_do_probe(), timeout=_TIMEOUT)
+    except (
+        aiohttp.ClientError,
+        asyncio.TimeoutError,
+        ConnectionError,
+        ValueError,
+    ):
+        return None
 
 
 async def _fetch_skins() -> str:
@@ -149,12 +158,12 @@ async def sigmally_cmd(text, reply):
         spec_count = status.get("spectatorCount", 0)
 
         filled = min(player_count, 10)
-        bar = "■" * filled + "□" * (10 - filled)
+        progress_bar = "■" * filled + "□" * (10 - filled)
 
         parts = [
             "\x02Online\x02: https://sigmally.h4ks.com",
             f"\x02Ping\x02: {ping_str}",
-            f"\x02Players\x02: {player_count} [{bar}]",
+            f"\x02Players\x02: {player_count} [{progress_bar}]",
             f"\x02Bots\x02: {bot_count}",
             f"\x02Spectators\x02: {spec_count}",
         ]
@@ -162,10 +171,14 @@ async def sigmally_cmd(text, reply):
 
     match sub:
         case "who":
-            players = [p for p in status.get("players", []) if not p.get("isBot")]
+            players = [
+                p for p in status.get("players", []) if not p.get("isBot")
+            ]
             if not players:
                 return "\x02sigmally\x02: No players online right now."
-            ranked = sorted(players, key=lambda p: p.get("score", 0), reverse=True)
+            ranked = sorted(
+                players, key=lambda p: p.get("score", 0), reverse=True
+            )
             parts = []
             for p in ranked:
                 name = p["name"]
@@ -176,7 +189,9 @@ async def sigmally_cmd(text, reply):
             return "\x02Players\x02: " + " | ".join(parts)
 
         case "top":
-            players = [p for p in status.get("players", []) if not p.get("isBot")]
+            players = [
+                p for p in status.get("players", []) if not p.get("isBot")
+            ]
             if not players:
                 return "\x02sigmally\x02: No players online right now."
             top = max(players, key=lambda p: p.get("score", 0))

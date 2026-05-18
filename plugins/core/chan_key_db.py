@@ -6,12 +6,12 @@ Author:
 """
 
 from itertools import zip_longest
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from irclib.parser import Message
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table, and_, select
 from sqlalchemy.orm import Session
-from sqlalchemy.sql.elements import BooleanClauseList, ClauseElement
+from sqlalchemy.sql.elements import ColumnElement
 
 from cloudbot import hook
 from cloudbot.client import Client
@@ -35,8 +35,8 @@ def load_keys(conn: IrcClient, db) -> None:
     """
     Load channel keys to the client
     """
-    query = select(
-        [table.c.chan, table.c.key], table.c.conn == conn.name.lower()
+    query = select(table.c.chan, table.c.key).where(
+        table.c.conn == conn.name.lower()
     )
     conn.clear_channel_keys()
     for row in db.execute(query):
@@ -45,7 +45,7 @@ def load_keys(conn: IrcClient, db) -> None:
 
 @hook.irc_raw("MODE")
 def handle_modes(
-    irc_paramlist: List[str], conn: IrcClient, db, chan: str
+    irc_paramlist: list[str], conn: IrcClient, db, chan: str
 ) -> None:
     """
     Handle mode changes
@@ -73,7 +73,10 @@ def handle_modes(
 
 
 def insert_or_update(
-    db: Session, tbl: Table, data: Dict[str, Any], query: ClauseElement
+    db: Session,
+    tbl: Table,
+    data: dict[str, Any],
+    query: ColumnElement[bool],
 ) -> None:
     """
     Insert a new row or update an existing matching row
@@ -85,7 +88,7 @@ def insert_or_update(
     db.commit()
 
 
-def make_clause(conn: Client, chan: str) -> BooleanClauseList:
+def make_clause(conn: Client, chan: str) -> ColumnElement[bool]:
     """
     Generate a WHERE clause to match keys for this conn+channel
     """
@@ -102,9 +105,7 @@ def clear_key(db: Session, conn, chan: str) -> None:
     db.execute(table.delete().where(make_clause(conn, chan)))
 
 
-def set_key(
-    db: Session, conn: IrcClient, chan: str, key: Optional[str]
-) -> None:
+def set_key(db: Session, conn: IrcClient, chan: str, key: str | None) -> None:
     """
     Set the key for a channel
     """

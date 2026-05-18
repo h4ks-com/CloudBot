@@ -42,7 +42,7 @@ class LoggingInfo:
 logging_info = LoggingInfo()
 
 
-def _setup(base_path: Optional[Path] = None) -> None:
+def _setup(base_path: Path | None = None) -> None:
     base_path = base_path or Path().resolve()
     cfg_file = base_path / "config.json"
     if cfg_file.exists():
@@ -65,7 +65,7 @@ def _setup(base_path: Optional[Path] = None) -> None:
 
     logger_names = ["cloudbot", "plugins"]
 
-    dict_config: Dict[str, Any] = {
+    dict_config: dict[str, Any] = {
         "version": 1,
         "formatters": {
             "brief": {

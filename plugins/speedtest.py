@@ -1,6 +1,5 @@
 import re
 
-import requests
 from lxml import html
 
 from cloudbot import hook

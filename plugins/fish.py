@@ -194,7 +194,7 @@ def get_bait_status(username: str, db: Any) -> tuple[int, bool]:
     current_time = int(time.time())
 
     result = db.execute(
-        select([fish_baits_table.c.baits, fish_baits_table.c.last_reset]).where(
+        select(fish_baits_table.c.baits, fish_baits_table.c.last_reset).where(
             fish_baits_table.c.username == username
         )
     ).fetchone()
@@ -232,7 +232,7 @@ def use_bait(username: str, db: Any) -> bool:
     username = username.lower()
 
     result = db.execute(
-        select([fish_baits_table.c.baits]).where(
+        select(fish_baits_table.c.baits).where(
             fish_baits_table.c.username == username
         )
     ).fetchone()
@@ -255,7 +255,7 @@ def get_time_until_reset(username: str, db: Any) -> int:
     current_time = int(time.time())
 
     result = db.execute(
-        select([fish_baits_table.c.last_reset]).where(
+        select(fish_baits_table.c.last_reset).where(
             fish_baits_table.c.username == username
         )
     ).fetchone()
@@ -309,7 +309,7 @@ def record_catch(username: str, fish: Fish, db: Any) -> int:
     username = username.lower()
 
     result = db.execute(
-        select([fish_catches_table.c.count])
+        select(fish_catches_table.c.count)
         .where(fish_catches_table.c.username == username)
         .where(fish_catches_table.c.fish_type == fish.name)
     ).fetchone()
@@ -337,7 +337,7 @@ def record_catch(username: str, fish: Fish, db: Any) -> int:
 @hook.command("fish", autohelp=False)
 def fish_command(nick: str, db: Any) -> str | list[str]:
     """- Cast your line and try to catch a fish!"""
-    baits, was_reset = get_bait_status(nick, db)
+    baits, _ = get_bait_status(nick, db)
 
     if baits <= 0:
         time_left = get_time_until_reset(nick, db)
@@ -399,7 +399,7 @@ def fishes_command(text: str, nick: str, db: Any) -> str:
 
     results = db.execute(
         select(
-            [fish_catches_table.c.fish_type, fish_catches_table.c.count]
+            fish_catches_table.c.fish_type, fish_catches_table.c.count
         ).where(fish_catches_table.c.username == target)
     ).fetchall()
 
@@ -419,7 +419,7 @@ def fishstats_command(db: Any) -> str:
     """- Show top fishers across all channels"""
     # Get total catches per user
     results = db.execute(
-        select([fish_catches_table.c.username, fish_catches_table.c.count])
+        select(fish_catches_table.c.username, fish_catches_table.c.count)
     ).fetchall()
 
     if not results:
@@ -451,7 +451,7 @@ def fishstats_command(db: Any) -> str:
 @hook.command("baits", autohelp=False)
 def baits_command(nick: str, db: Any) -> str:
     """- Show your remaining bait count and time until reset"""
-    baits, was_reset = get_bait_status(nick, db)
+    baits, _ = get_bait_status(nick, db)
 
     if baits <= 0:
         time_left = get_time_until_reset(nick, db)
@@ -479,7 +479,7 @@ def fishreset_command(text: str, db: Any) -> str:
 
     # Check if user exists in bait table
     result = db.execute(
-        select([fish_baits_table.c.username]).where(
+        select(fish_baits_table.c.username).where(
             fish_baits_table.c.username == target_user
         )
     ).fetchone()

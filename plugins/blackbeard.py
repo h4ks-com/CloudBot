@@ -1,6 +1,5 @@
 import re
 
-import requests
 from thefuzz import fuzz
 
 from cloudbot import hook
@@ -9,8 +8,8 @@ from cloudbot.util.web import get_session
 API = "https://blackbeard.fly.dev/"
 
 
-def getJson(path, params={}):
-    r = get_session().get(API + path, params=params)
+def getJson(path, params=None):
+    r = get_session().get(API + path, params=params or {})
     return r.json()
 
 
@@ -21,14 +20,14 @@ def pastebin(text):
     return response.text
 
 
-providers = {}
+providers: list[str] = []
 
 
 @hook.on_start
 def load_providers():
-    global providers
-    providers = getJson("providers")["providers"]
-    providers = [prov["Name"] for prov in providers]
+    raw_providers = getJson("providers")["providers"]
+    providers.clear()
+    providers.extend(prov["Name"] for prov in raw_providers)
 
 
 def search_show(provider, search):
@@ -57,7 +56,6 @@ def blackbeard(text, reply):
     [provider] <search> -N - searches for <search> on <provider>. If -N is provided, where N is a number
     , will return the Nth episode. You can also use `list` to list providers
     """
-    global providers
     args = text.strip().split()
     if len(args) < 1:
         return "Usage: .blackbeard [provider] <search> or .blackbeard list"
@@ -110,7 +108,7 @@ def blackbeard(text, reply):
         if len(show["Metadata"]["Description"]) > 512:
             msg += f' -->  {pastebin(show["Metadata"]["Description"])}'
         reply(msg)
-        return
+        return None
 
     episodes = getJson(
         "episodes", {"provider": show["provider"], "showurl": show["Url"]}
@@ -118,26 +116,26 @@ def blackbeard(text, reply):
     if "error" in episodes:
         return episodes["message"]
 
-    episodes = episodes["episodes"]
-    if episode > len(episodes):
-        return "Invalid episode number. Max episode is " + str(len(episodes))
+    episodes_list = episodes["episodes"]
+    if episode > len(episodes_list):
+        return "Invalid episode number. Max episode is " + str(
+            len(episodes_list)
+        )
 
-    episode = episodes[episode]
-    url = episode["Url"]
+    ep = episodes_list[episode]
+    url = ep["Url"]
     if len(url) > 150:
         url = pastebin(url)
-    reply("Episode/Video: " + episode["Title"] + " - " + url)
+    reply("Episode/Video: " + ep["Title"] + " - " + url)
 
-    msg = "Description: " + episode["Metadata"]["Description"][:400].replace(
+    msg = "Description: " + ep["Metadata"]["Description"][:400].replace(
         "\n", " "
     )
-    if len(episode["Metadata"]["Description"]) > 512:
-        msg += f' -->  {pastebin(episode["Metadata"]["Description"])}'
+    if len(ep["Metadata"]["Description"]) > 512:
+        msg += f' -->  {pastebin(ep["Metadata"]["Description"])}'
     reply(msg)
 
-    video = getJson(
-        "video", {"provider": show["provider"], "epurl": episode["Url"]}
-    )
+    video = getJson("video", {"provider": show["provider"], "epurl": ep["Url"]})
     url = video.get("Request", {}).get("Url")
     cmd = video.get("Metadata", {}).get("CurlCommand")
     if cmd:
@@ -145,3 +143,4 @@ def blackbeard(text, reply):
         reply(f"Run with curl and mpv: {pastebin(cmd)}")
     if url:
         reply(f"Direct url: {pastebin(url)}")
+    return None
