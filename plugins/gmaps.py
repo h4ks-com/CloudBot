@@ -21,8 +21,15 @@ from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 from plugins.locate import GeolocationException, GoogleLocation
 
+from plugins.ratelimit import Limit, check, record
+
+GMAPS_BUCKET = "gmaps"
 MAX_HOURLY_REQUESTS = 30
 MAX_DAILY_REQUESTS = 300
+GMAPS_LIMITS = [
+    Limit(3600, MAX_HOURLY_REQUESTS, "Too many gmaps requests this hour. Try later."),
+    Limit(86400, MAX_DAILY_REQUESTS, f"Daily gmaps cap reached ({MAX_DAILY_REQUESTS}). Resets in 24h."),
+]
 MAX_OUTPUT_LINES = 10
 MIN_GUESS_GAME_DURATION = 60  # seconds
 
@@ -52,35 +59,17 @@ emoji_map = {
 
 lat_lng_re = re.compile(r"^\s*(-?\d+\.\d+),\s*(-?\d+\.\d+)\s*$")
 
-last_hour_usages = []
-
-
-def ratelimit():
-    global last_hour_usage
-
-    now = datetime.now(pytz.timezone("UTC"))
-    day_ago = now - timedelta(days=1)
-
-    while last_hour_usages and last_hour_usages[0] < day_ago:
-        last_hour_usages.pop(0)
-
-    if len(last_hour_usages) >= MAX_DAILY_REQUESTS:
-        return True
-
-    hour_ago = now - timedelta(hours=1)
-    recent = sum(1 for u in last_hour_usages if u >= hour_ago)
-    if recent >= MAX_HOURLY_REQUESTS:
-        return True
-
-    last_hour_usages.append(now)
-    return False
+def ratelimit(db) -> str | None:
+    """Return error message if any window is exceeded, else None."""
+    return check(db, GMAPS_BUCKET, GMAPS_LIMITS)
 
 
 @hook.command("gd", "gmd", "directions", autohelp=False)
-def directions(text, event, reply, bot, nick, chan):
+def directions(text, event, reply, bot, nick, chan, db):
     """<type> <origin> to <destination> - Get directions from Google Maps"""
-    if ratelimit():
-        return "Too many requests. Please try again later."
+    msg = ratelimit(db)
+    if msg:
+        return msg
 
     api_key = bot.config.get("api_keys", {}).get("google", None)
     try:
@@ -124,7 +113,7 @@ def directions(text, event, reply, bot, nick, chan):
         f"🔍 Searching directions from '{points[0]}' to '{points[1]}' using '{mode or 'all'}'"
     )
     now = datetime.now(pytz.timezone("UTC"))
-    last_hour_usages.append(now)
+    record(db, GMAPS_BUCKET)
 
     try:
         directions = gmaps.directions(
@@ -185,7 +174,7 @@ def upload_image(image: Image) -> str:
 
 
 @hook.command("sv", "streetview", autohelp=False)
-def streetview(text, reply, bot):
+def streetview(text, reply, bot, db):
     """<location> - Get a street view image from Google Maps. Possible parameters are: fov, heading, pitch, width, height, move (meters), move_heading - e.g. 'sv 40.7128, -74.0060 fov:120'"""
     text = text.strip()
     if not text:
@@ -195,8 +184,9 @@ def streetview(text, reply, bot):
     if not api_key:
         return "This command requires a Google API key."
 
-    if ratelimit():
-        return "Too many requests. Please try again later."
+    msg = ratelimit(db)
+    if msg:
+        return msg
 
     # Parameters have the format key:value
     params: dict[str, int] = {}
@@ -256,6 +246,7 @@ def streetview(text, reply, bot):
     pano = panos[0]
     streetview = get_streetview(pano.pano_id, api_key=api_key, **params)
     image_url = upload_image(streetview)
+    record(db, GMAPS_BUCKET)
 
     return f"📸 {location_name} - {image_url}"
 
@@ -270,13 +261,14 @@ class GuessGame:
 guess_games: "dict[str, GuessGame]" = {}
 
 
-def new_guess_game(bot, chan) -> str:
+def new_guess_game(bot, chan, db) -> str:
     api_key = bot.config.get("api_keys", {}).get("google", None)
     if not api_key:
         return "This command requires a Google API key."
 
-    if ratelimit():
-        return "Too many requests. Please try again later."
+    msg = ratelimit(db)
+    if msg:
+        return msg
 
     def get_random_land_location() -> GoogleLocation:
         countries: "dict[str, str]" = json.loads(
@@ -317,6 +309,7 @@ def new_guess_game(bot, chan) -> str:
         return "Could not find a location with a street view image."
 
     image_url = upload_image(streetview)
+    record(db, GMAPS_BUCKET)
 
     guess_games[chan] = GuessGame(
         location, datetime.now(pytz.timezone("UTC")), image_url
@@ -325,7 +318,7 @@ def new_guess_game(bot, chan) -> str:
 
 
 @hook.command("geoguess", autohelp=False)
-def geo_guess(text, chan, nick, reply, bot):
+def geo_guess(text, chan, nick, reply, bot, db):
     """[country] - Play a game of GeoGuessr with a random location. Use 'reveal' to show the answer."""
     global guess_games
     text = text.strip()
@@ -355,4 +348,4 @@ def geo_guess(text, chan, nick, reply, bot):
         return f"There is already an active GeoGuess game in this channel {guess_games[chan].image_url} - Try to guess the country with '.geoguess <country>'."
 
     reply("🔍 Starting a new GeoGuess game...")
-    return new_guess_game(bot, chan)
+    return new_guess_game(bot, chan, db)

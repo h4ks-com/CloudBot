@@ -1,37 +1,29 @@
-import time
-from collections import deque
-
 from cloudbot import hook
 from cloudbot.bot import bot
 from cloudbot.util.web import get_session
+from plugins.ratelimit import Limit, check, record
 
 max_length = 100
-MAX_CHARS_PER_DAY = 16000
 
-_char_log: deque[tuple[float, int]] = deque()
-
-
-def _check_daily_chars(n: int) -> str | None:
-    now = time.monotonic()
-    while _char_log and now - _char_log[0][0] > 86400:
-        _char_log.popleft()
-
-    used = sum(c for _, c in _char_log)
-    if used + n > MAX_CHARS_PER_DAY:
-        return f"Daily Translate cap reached ({used}/{MAX_CHARS_PER_DAY} chars). Resets in 24h."
-
-    _char_log.append((now, n))
-    return None
+TRANSLATE_BUCKET = "translate-chars"
+TRANSLATE_MAX_CHARS_PER_DAY = 16000
+TRANSLATE_LIMITS = [
+    Limit(
+        86400,
+        TRANSLATE_MAX_CHARS_PER_DAY,
+        f"Daily Translate cap reached ({TRANSLATE_MAX_CHARS_PER_DAY} chars). Resets in 24h.",
+    ),
+]
 
 
-def goog_trans(text, source, target):
+def goog_trans(db, text, source, target):
     api_key = bot.config.get_api_key("google")
     url = "https://www.googleapis.com/language/translate/v2"
 
     if len(text) > max_length:
         return "This command only supports input of less then 100 characters."
 
-    cap_msg = _check_daily_chars(len(text))
+    cap_msg = check(db, TRANSLATE_BUCKET, TRANSLATE_LIMITS)
     if cap_msg:
         return cap_msg
 
@@ -48,6 +40,8 @@ def goog_trans(text, source, target):
             return "The Translate API is off in the Google Developers Console."
 
         return "Google API error."
+
+    record(db, TRANSLATE_BUCKET, weight=len(text))
 
     if not source:
         return "(%(detectedSourceLanguage)s) %(translatedText)s" % (
@@ -71,7 +65,7 @@ def match_language(fragment):
 
 
 @hook.command("google_translate")
-def translate(text):
+def translate(text, db):
     """[source language [target language]] <sentence> - translates <sentence> from source language (default autodetect)
     to target language (default English) using Google Translate"""
     api_key = bot.config.get_api_key("google")
@@ -84,17 +78,17 @@ def translate(text):
         if len(args) >= 2:
             sl = match_language(args[0])
             if not sl:
-                return goog_trans(text, "", "en")
+                return goog_trans(db, text, "", "en")
             if len(args) == 2:
-                return goog_trans(args[1], sl, "en")
+                return goog_trans(db, args[1], sl, "en")
             if len(args) >= 3:
                 tl = match_language(args[1])
                 if not tl:
                     if sl == "en":
                         return "unable to determine desired target language"
-                    return goog_trans(args[1] + " " + args[2], sl, "en")
-                return goog_trans(args[2], sl, tl)
-        return goog_trans(text, "", "en")
+                    return goog_trans(db, args[1] + " " + args[2], sl, "en")
+                return goog_trans(db, args[2], sl, tl)
+        return goog_trans(db, text, "", "en")
     except OSError as e:
         return e
 

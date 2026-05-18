@@ -1,46 +1,51 @@
 import base64
 import logging
 import tempfile
-import time
-from collections import deque
+from typing import Deque
 
 from requests import HTTPError, RequestException
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.util.ai_common import (
+    Message,
+    clear_history,
+    get_or_create_history,
+    truncate_or_paste,
+    upload_history,
+)
 from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
+from plugins.ratelimit import Limit, check, record
 
-API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"
-MAX_RPM = 8
-MAX_RPH = 62
-MAX_RPD = 450
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
+GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
+GEMINI_TEXT_MODEL = "gemini-2.5-flash"
+
+# Image model — Free tier ~15 RPM / ~500 RPD on flash-image (Mar 2026).
+IMG_BUCKET = "gemini-img"
+IMG_MAX_RPM = 8
+IMG_MAX_RPH = 62
+IMG_MAX_RPD = 450
+IMG_LIMITS = [
+    Limit(60, IMG_MAX_RPM, "Rate limited. Try again in a minute."),
+    Limit(3600, IMG_MAX_RPH, "Hourly limit reached. Try again later."),
+    Limit(86400, IMG_MAX_RPD, "Daily Gemini-image cap reached. Resets in 24h."),
+]
+
+# Text model — Free tier 10 RPM / 250 RPD on gemini-2.5-flash.
+TEXT_BUCKET = "gemini-text"
+TEXT_MAX_RPM = 8
+TEXT_MAX_RPD = 220
+TEXT_LIMITS = [
+    Limit(60, TEXT_MAX_RPM, "Rate limited. Try again in a minute."),
+    Limit(86400, TEXT_MAX_RPD, "Daily Gemini-text cap reached. Resets in 24h."),
+]
+
 MAX_IMAGE_SIZE = 20 * 1024 * 1024
+MAX_TEXT_HISTORY_LENGTH = 32
 
-_request_times = deque()
-
-
-def _check_ratelimit():
-    now = time.monotonic()
-    while _request_times and now - _request_times[0] > 86400:
-        _request_times.popleft()
-
-    recent_min = sum(1 for t in _request_times if now - t <= 60)
-    if recent_min >= MAX_RPM:
-        return "Rate limited. Try again in a minute."
-
-    recent_hour = sum(1 for t in _request_times if now - t <= 3600)
-    if recent_hour >= MAX_RPH:
-        return "Hourly limit reached. Try again later."
-
-    if len(_request_times) >= MAX_RPD:
-        return "Daily free-tier limit reached. Resets in 24h."
-
-    return None
-
-
-def _record_call():
-    _request_times.append(time.monotonic())
+gemt_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
 
 
 def _get_api_key():
@@ -53,11 +58,11 @@ def _get_api_key():
     return api_key, None
 
 
-def _call_gemini(api_key, parts, chan, nick):
+def _call_gemini_image(api_key, parts, chan, nick, db):
     session = get_session()
     try:
         response = session.post(
-            API_URL,
+            GEMINI_BASE + GEMINI_IMAGE_MODEL + ":generateContent",
             params={"key": api_key},
             json={
                 "contents": [{"parts": parts}],
@@ -70,7 +75,7 @@ def _call_gemini(api_key, parts, chan, nick):
     except RequestException as e:
         return f"Request failed: {e}"
 
-    _record_call()
+    record(db, IMG_BUCKET)
     data = response.json()
     logger = logging.getLogger("cloudbot")
     candidates = data.get("candidates", [])
@@ -157,8 +162,36 @@ def _fetch_image(url):
     return resp.content, mime, None
 
 
+def _call_gemini_text(api_key, history):
+    contents = [
+        {
+            "role": "user" if m.role == "user" else "model",
+            "parts": [{"text": m.content}],
+        }
+        for m in history
+    ]
+    response = get_session().post(
+        GEMINI_BASE + GEMINI_TEXT_MODEL + ":generateContent",
+        params={"key": api_key},
+        json={"contents": contents},
+    )
+    response.raise_for_status()
+    data = response.json()
+    candidates = data.get("candidates", [])
+    if not candidates:
+        feedback = data.get("promptFeedback", {})
+        if feedback.get("blockReason"):
+            return None, f"Gemini blocked: {feedback['blockReason']}"
+        return None, "Gemini returned no candidates."
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts)
+    if not text:
+        return None, "Gemini returned no text."
+    return text, None
+
+
 @hook.command("gemimg")
-def gemimg_command(text, chan, nick):
+def gemimg_command(text, chan, nick, db):
     """<prompt> - Generate an image using Google Gemini."""
     api_key, err = _get_api_key()
     if err:
@@ -168,15 +201,15 @@ def gemimg_command(text, chan, nick):
     if not prompt:
         return "Usage: .gemimg <prompt>"
 
-    limit_msg = _check_ratelimit()
+    limit_msg = check(db, IMG_BUCKET, IMG_LIMITS)
     if limit_msg:
         return limit_msg
 
-    return _call_gemini(api_key, [{"text": prompt}], chan, nick)
+    return _call_gemini_image(api_key, [{"text": prompt}], chan, nick, db)
 
 
 @hook.command("gemedit")
-def gemedit_command(text, chan, nick):
+def gemedit_command(text, chan, nick, db):
     """<url> <prompt> - Edit an image using Google Gemini."""
     api_key, err = _get_api_key()
     if err:
@@ -191,7 +224,7 @@ def gemedit_command(text, chan, nick):
     if not url.startswith(("http://", "https://")):
         return "First argument must be a URL."
 
-    limit_msg = _check_ratelimit()
+    limit_msg = check(db, IMG_BUCKET, IMG_LIMITS)
     if limit_msg:
         return limit_msg
 
@@ -200,7 +233,7 @@ def gemedit_command(text, chan, nick):
         return err
 
     b64 = base64.b64encode(image_data).decode()
-    return _call_gemini(
+    return _call_gemini_image(
         api_key,
         [
             {"text": prompt},
@@ -208,4 +241,67 @@ def gemedit_command(text, chan, nick):
         ],
         chan,
         nick,
+        db,
+    )
+
+
+@hook.command("gemt", "gai", "gae")
+def gemt_command(text, nick, chan, db):
+    """<text> - Chat with Google Gemini's free Flash text model."""
+    api_key, err = _get_api_key()
+    if err:
+        return err
+
+    prompt = text.strip()
+    if not prompt:
+        return "Usage: .gemt <text>"
+
+    limit_msg = check(db, TEXT_BUCKET, TEXT_LIMITS)
+    if limit_msg:
+        return limit_msg
+
+    history = get_or_create_history(
+        gemt_messages_cache, chan, nick, MAX_TEXT_HISTORY_LENGTH
+    )
+    history.append(Message(role="user", content=prompt))
+    try:
+        response, err = _call_gemini_text(api_key, list(history))
+    except HTTPError as e:
+        history.pop()
+        return f"Gemini API error: {e.response.status_code} {e.response.reason}"
+    except RequestException as e:
+        history.pop()
+        return f"Request failed: {e}"
+
+    if err is not None or response is None:
+        history.pop()
+        return err or "Gemini returned no text."
+
+    record(db, TEXT_BUCKET)
+    history.append(Message(role="assistant", content=response))
+    return truncate_or_paste(
+        response,
+        nick,
+        list(history),
+        f"{nick}'s Gemini conversation in {chan}",
+    )
+
+
+@hook.command("gemtclear", autohelp=False)
+def gemtclear_command(nick, chan):
+    """Clear your Gemini text conversation."""
+    return clear_history(gemt_messages_cache, chan, nick)
+
+
+@hook.command("gemtpaste", "gemth", autohelp=False)
+def gemtpaste_command(text, nick, chan):
+    """[nick] - Paste your (or another nick's) Gemini text conversation."""
+    target = text.strip() or nick
+    channick = (chan, target)
+    if channick not in gemt_messages_cache:
+        return f"No Gemini conversation history for {target}."
+    return upload_history(
+        target,
+        list(gemt_messages_cache[channick]),
+        f"{target}'s Gemini conversation in {chan}",
     )
