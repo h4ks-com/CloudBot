@@ -73,7 +73,6 @@ async def describe_image(ctx, data):
                 }
             ],
             max_tokens=_VISION_MAX_TOKENS,
-            extra_body={"thinking": {"type": "enabled"}},
         )
         content = completion.choices[0].message.content
         if content:
