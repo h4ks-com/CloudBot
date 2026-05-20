@@ -7,7 +7,12 @@ from cloudbot.agent.registry import tool
 
 @tool(
     name="chat_history",
-    description="Get recent chat messages from the current IRC channel. Use to understand conversation context before answering.",
+    description=(
+        "Fetch older channel messages beyond what is already in your system context. "
+        "You already see the last ~6 messages there. Use this tool ONLY when you need "
+        "older history (up to 100 messages back) to understand a reference or follow "
+        "a conversation thread."
+    ),
     schema={
         "type": "object",
         "properties": {
