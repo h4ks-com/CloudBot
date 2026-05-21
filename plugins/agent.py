@@ -376,6 +376,10 @@ _PR_URL_RE = re.compile(r"https://github\.com/[\w.\-]+/[\w.\-]+/pull/\d+")
 _PR_CLAIM_RE = re.compile(
     r"\b(PR (?:opened|created)|pull request (?:opened|created))", re.I
 )
+_DEPLOY_URL_RE = re.compile(r"https?://[a-z0-9-]+\.[a-z0-9-]+\.\w{2,}/\S+")
+_URL_TOOL_NAMES = frozenset(
+    {"web_app", "paste_markdown", "vibegame_upload", "vibegame_import_url"}
+)
 
 
 def _guard_pr_hallucination(
@@ -405,11 +409,60 @@ def _guard_pr_hallucination(
     return answer
 
 
-class _RunTracker(RunHooks):
-    """Per-run hook recording tool call sequence + PR URLs.
+def _tool_manifest(tracker) -> str:
+    """Compact summary of tools called and their key results for history."""
+    if not tracker._results:
+        return ""
+    parts = []
+    for name, snippet in tracker._results:
+        snippet = snippet.replace("\n", " ").strip()
+        if len(snippet) > 80:
+            snippet = snippet[:77] + "..."
+        parts.append(f"{name} → {snippet}")
+    return "; ".join(parts)
 
-    Names and timing only — never args or outputs — so summaries can be
-    pasted publicly without leaking file contents, tokens, or API responses.
+
+def _guard_url_hallucination(answer: str, tracker) -> str:
+    """Detect fabricated deploy/paste URLs when no URL-producing tool was called.
+
+    The agent sometimes pattern-matches from history and generates a fake
+    URL without actually calling the tool that produces it.
+    """
+    found = _DEPLOY_URL_RE.findall(answer)
+    if not found:
+        return answer
+    clean = [u.rstrip(").,;:>") for u in found]
+    legit = set(tracker._tool_urls)
+    fabricated = [u for u in clean if u not in legit]
+    if not fabricated:
+        return answer
+    any_url_tool = bool(
+        _URL_TOOL_NAMES.intersection(n for n, _ in tracker._calls)
+    )
+    if not any_url_tool:
+        logger.warning(
+            "agent: hallucinated URLs with no tool call: %s",
+            fabricated,
+        )
+        cleaned = _DEPLOY_URL_RE.sub("<fabricated-url>", answer)
+        return (
+            "(agent fabricated URLs without calling any tools — "
+            "task was not completed)\n\n" + cleaned
+        )
+    logger.warning(
+        "agent: fabricated URLs mismatch: %s vs real %s", fabricated, legit
+    )
+    for f in fabricated:
+        answer = answer.replace(f, "<fabricated-url>")
+    return answer
+
+
+class _RunTracker(RunHooks):
+    """Per-run hook recording tool call sequence + PR URLs + result snippets.
+
+    Names, timing, and short result prefixes only — never full args or
+    outputs — so summaries can be pasted publicly without leaking file
+    contents, tokens, or API responses.
     """
 
     def __init__(self):
@@ -417,6 +470,8 @@ class _RunTracker(RunHooks):
         self._calls: list[tuple[str, float]] = []
         self._errors: set[int] = set()
         self._pr_urls: list[str] = []
+        self._results: list[tuple[str, str]] = []
+        self._tool_urls: list[str] = []
 
     async def on_tool_start(self, context, agent, tool) -> None:
         logger.info("agent: tool invoked: %s", tool.name)
@@ -434,10 +489,15 @@ class _RunTracker(RunHooks):
                 if self._calls[i][0] == tool.name and i not in self._errors:
                     self._errors.add(i)
                     break
-        elif tool.name == "open_github_pr":
-            m = _PR_URL_RE.search(result_str)
-            if m:
-                self._pr_urls.append(m.group(0))
+        else:
+            self._results.append((tool.name, result_str[:120]))
+            if tool.name == "open_github_pr":
+                m = _PR_URL_RE.search(result_str)
+                if m:
+                    self._pr_urls.append(m.group(0))
+            if tool.name in _URL_TOOL_NAMES:
+                for m in _DEPLOY_URL_RE.finditer(result_str):
+                    self._tool_urls.append(m.group(0).rstrip(").,;:>"))
 
     def failure_summary(self, err: BaseException) -> str:
         err_type = type(err).__name__
@@ -957,8 +1017,18 @@ async def _try_backends(
         answer = _guard_pr_hallucination(
             answer, tracker._pr_urls, pr_tool_called
         )
+        answer = _guard_url_hallucination(answer, tracker)
+        manifest = _tool_manifest(tracker)
         history.append({"role": "user", "content": prompt})
-        history.append({"role": "assistant", "content": answer})
+        if manifest:
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": f"{answer}\n[tools used: {manifest}]",
+                }
+            )
+        else:
+            history.append({"role": "assistant", "content": answer})
         event.reply(*_format_answer(answer, cfg))
         return None
     return last_err
