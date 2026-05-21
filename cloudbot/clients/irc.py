@@ -6,6 +6,7 @@ import socket
 import ssl
 import traceback
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from functools import partial
 from itertools import chain
 from pathlib import Path
@@ -106,6 +107,18 @@ def _get_param(msg: Message, index_map: Mapping[str, int]) -> str | None:
             return cast(str, msg.parameters[idx])
 
     return None
+
+
+_BATCH_TIMEOUT = 0.5
+
+
+@dataclass
+class _PendingBatch:
+    ref: str
+    batch_type: str
+    params: list[str]
+    lines: list[tuple[Message, str]] = field(default_factory=list)
+    timer: asyncio.TimerHandle | None = field(default=None)
 
 
 @client("irc")
@@ -430,6 +443,9 @@ class _IrcProtocol(asyncio.Protocol):
         # input buffer
         self._input_buffer = b""
 
+        # batch buffering
+        self._active_batches: dict[str, _PendingBatch] = {}
+
         # connected
         self._connected = False
         self._connecting = True
@@ -450,6 +466,7 @@ class _IrcProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc):
         self._connected = False
+        self._cancel_batch_timers()
         if exc:
             logger.error("[%s] Connection lost: %s", self.conn.name, exc)
 
@@ -458,6 +475,7 @@ class _IrcProtocol(asyncio.Protocol):
     def close(self):
         self._connecting = False
         self._connected = False
+        self._cancel_batch_timers()
         if self._transport:
             self._transport.close()
 
@@ -525,19 +543,148 @@ class _IrcProtocol(asyncio.Protocol):
         while b"\r\n" in self._input_buffer:
             line_data, self._input_buffer = self._input_buffer.split(b"\r\n", 1)
             line = decode(line_data)
+            self._process_line(line)
 
+    def _cancel_batch_timers(self):
+        for batch in self._active_batches.values():
+            if batch.timer is not None:
+                batch.timer.cancel()
+        self._active_batches.clear()
+
+    def _process_line(self, line: str):
+        message = Message.parse(line)
+        command = message.command
+
+        if command == "BATCH":
+            self._handle_batch_verb(message)
+            return
+
+        if message.tags and "batch" in message.tags:
+            ref = message.tags["batch"].value
+            if ref in self._active_batches:
+                self._active_batches[ref].lines.append((message, line))
+                return
+
+        try:
+            event = self.parse_line(line)
+        except Exception:
+            logger.exception(
+                "[%s] Error occurred while parsing IRC line '%s' from %s",
+                self.conn.name,
+                line,
+                self.conn.describe_server(),
+            )
+        else:
+            async_util.wrap_future(self.bot.process(event), loop=self.loop)
+
+    def _handle_batch_verb(self, message: Message):
+        if not message.parameters:
+            return
+
+        ref_param = message.parameters[0]
+        if ref_param.startswith("+"):
+            ref = ref_param[1:]
+            batch_type = (
+                message.parameters[1] if len(message.parameters) > 1 else ""
+            )
+            params = list(message.parameters[2:])
+            timer = self.loop.call_later(
+                _BATCH_TIMEOUT, self._batch_timeout, ref
+            )
+            self._active_batches[ref] = _PendingBatch(
+                ref=ref,
+                batch_type=batch_type,
+                params=params,
+                timer=timer,
+            )
+        elif ref_param.startswith("-"):
+            ref = ref_param[1:]
+            if ref in self._active_batches:
+                self._flush_batch(ref)
+
+    def _flush_batch(self, ref: str):
+        batch = self._active_batches.pop(ref, None)
+        if batch is None:
+            return
+        if batch.timer is not None:
+            batch.timer.cancel()
+            batch.timer = None
+
+        if not batch.lines:
+            return
+
+        if batch.batch_type == "draft/multiline":
+            self._flush_multiline(batch)
+        else:
+            self._flush_generic(batch)
+
+    def _flush_multiline(self, batch: _PendingBatch):
+        _first_msg, first_line = batch.lines[0]
+        combined_raw = self._combine_multiline(batch.lines)
+
+        parts: list[str] = []
+        for msg, _raw in batch.lines:
+            line_content = msg.parameters[-1] if msg.parameters else ""
+            has_concat = msg.tags and "draft/multiline-concat" in msg.tags
+            if parts and has_concat:
+                parts[-1] += irc_clean_colors(line_content)
+            else:
+                parts.append(irc_clean_colors(line_content))
+        combined_clean = "\n".join(parts)
+
+        try:
+            event = self.parse_line(first_line)
+        except Exception:
+            logger.exception(
+                "[%s] Error parsing first line of multiline batch from %s",
+                self.conn.name,
+                self.conn.describe_server(),
+            )
+            return
+
+        event.content_raw = combined_raw
+        event.content = combined_clean
+        event.irc_raw = first_line
+        async_util.wrap_future(self.bot.process(event), loop=self.loop)
+
+    def _flush_generic(self, batch: _PendingBatch):
+        for _msg, line in batch.lines:
             try:
                 event = self.parse_line(line)
             except Exception:
                 logger.exception(
-                    "[%s] Error occurred while parsing IRC line '%s' from %s",
+                    "[%s] Error parsing buffered batch line '%s'",
                     self.conn.name,
                     line,
-                    self.conn.describe_server(),
                 )
             else:
-                # handle the message, async
                 async_util.wrap_future(self.bot.process(event), loop=self.loop)
+
+    @staticmethod
+    def _combine_multiline(
+        lines: list[tuple[Message, str]],
+    ) -> str:
+        parts: list[str] = []
+        for msg, _raw in lines:
+            line_content = msg.parameters[-1] if msg.parameters else ""
+            has_concat = msg.tags and "draft/multiline-concat" in msg.tags
+            if parts and has_concat:
+                parts[-1] += line_content
+            else:
+                parts.append(line_content)
+        return "\n".join(parts)
+
+    def _batch_timeout(self, ref: str):
+        batch = self._active_batches.get(ref)
+        if batch is None:
+            return
+        logger.warning(
+            "[%s] Batch %s timed out after %ss, flushing partial",
+            self.conn.name,
+            ref,
+            _BATCH_TIMEOUT,
+        )
+        self._flush_batch(ref)
 
     def parse_line(self, line: str) -> Event:
         message = Message.parse(line)

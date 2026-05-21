@@ -439,6 +439,166 @@ class TestLineParsing:
         assert conn.mock_calls == []
 
 
+class TestBatchBuffering:
+    def make_proto(self, event_loop):
+        conn = make_mock_conn(event_loop)
+        conn.nick = "me"
+        out = []
+
+        async def func(e):
+            out.append(TestLineParsing._filter_event(e))
+
+        conn.bot.process = func
+        proto = irc._IrcProtocol(conn)
+        return conn, out, proto
+
+    def test_batch_start_and_end_buffers_messages(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +abc draft/multiline #channel\r\n"
+            b"@batch=abc :nick!u@h PRIVMSG #channel :hello\r\n"
+            b"@batch=abc :nick!u@h PRIVMSG #channel :world\r\n"
+            b"BATCH -abc\r\n"
+        )
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 1
+        assert out[0]["content"] == "hello\nworld"
+        assert out[0]["content_raw"] == "hello\nworld"
+        assert out[0]["chan"] == "#channel"
+        assert out[0]["nick"] == "nick"
+        assert out[0]["irc_command"] == "PRIVMSG"
+        assert out[0]["type"] == EventType.message
+
+    def test_batch_multiline_concat(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +xyz draft/multiline #channel\r\n"
+            b"@batch=xyz :nick!u@h PRIVMSG #channel :how is \r\n"
+            b"@batch=xyz;draft/multiline-concat :nick!u@h PRIVMSG #channel :everyone?\r\n"
+            b"BATCH -xyz\r\n"
+        )
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 1
+        assert out[0]["content"] == "how is everyone?"
+        assert out[0]["content_raw"] == "how is everyone?"
+
+    def test_batch_multiline_empty_line(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +e1 draft/multiline #channel\r\n"
+            b"@batch=e1 :nick!u@h PRIVMSG #channel :hello\r\n"
+            b"@batch=e1 :nick!u@h PRIVMSG #channel :\r\n"
+            b"@batch=e1 :nick!u@h PRIVMSG #channel :world\r\n"
+            b"BATCH -e1\r\n"
+        )
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 1
+        assert out[0]["content"] == "hello\n\nworld"
+
+    def test_batch_empty_batch_no_event(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +empty draft/multiline #channel\r\n"
+            b"BATCH -empty\r\n"
+        )
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 0
+
+    def test_batch_non_multiline_replays_lines(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +ns netsplit irc.hub other.host\r\n"
+            b"@batch=ns :nick1!a@a QUIT :irc.hub other.host\r\n"
+            b"@batch=ns :nick2!a@a QUIT :irc.hub other.host\r\n"
+            b"BATCH -ns\r\n"
+        )
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 2
+        assert out[0]["nick"] == "nick1"
+        assert out[0]["irc_command"] == "QUIT"
+        assert out[1]["nick"] == "nick2"
+        assert out[1]["irc_command"] == "QUIT"
+
+    def test_batch_messages_not_processed_immediately(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +pending draft/multiline #channel\r\n"
+            b"@batch=pending :nick!u@h PRIVMSG #channel :buffered\r\n"
+        )
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 0
+        assert "pending" in proto._active_batches
+
+    def test_non_batch_messages_processed_immediately(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +x draft/multiline #channel\r\n"
+            b":nick!u@h PRIVMSG #channel :immediate\r\n"
+            b"@batch=x :nick!u@h PRIVMSG #channel :buffered\r\n"
+            b"BATCH -x\r\n"
+        )
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 2
+        assert out[0]["content"] == "immediate"
+        assert out[1]["content"] == "buffered"
+
+    def test_unknown_batch_ref_ignored(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b"@batch=nonexistent :nick!u@h PRIVMSG #channel :orphan\r\n"
+        )
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 1
+        assert out[0]["content"] == "orphan"
+
+    def test_batch_timeout_flushes_partial(self, event_loop):
+        conn, out, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +tout draft/multiline #channel\r\n"
+            b"@batch=tout :nick!u@h PRIVMSG #channel :partial\r\n"
+        )
+        event_loop.call_later(irc._BATCH_TIMEOUT + 0.05, lambda: None)
+        event_loop.run_until_complete(asyncio.sleep(irc._BATCH_TIMEOUT + 0.1))
+        TestLineParsing.wait_tasks(conn)
+
+        assert len(out) == 1
+        assert out[0]["content"] == "partial"
+
+    def test_connection_lost_cancels_batch_timers(self, event_loop):
+        conn, _, proto = self.make_proto(event_loop)
+
+        conn.auto_reconnect = lambda: async_util.create_future(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +x draft/multiline #channel\r\n"
+            b"@batch=x :nick!u@h PRIVMSG #channel :hi\r\n"
+        )
+        assert "x" in proto._active_batches
+        batch = proto._active_batches["x"]
+        assert batch.timer is not None
+
+        proto.connection_lost(None)
+        assert len(proto._active_batches) == 0
+
+    def test_close_cancels_batch_timers(self, event_loop):
+        _conn, _, proto = self.make_proto(event_loop)
+        proto.data_received(
+            b":irc.host BATCH +y draft/multiline #channel\r\n"
+            b"@batch=y :nick!u@h PRIVMSG #channel :hi\r\n"
+        )
+        assert "y" in proto._active_batches
+
+        proto.close()
+        assert len(proto._active_batches) == 0
+
+
 class TestConnect:
     async def make_client(self, event_loop) -> irc.IrcClient:
         bot = MagicMock(loop=event_loop, config={})

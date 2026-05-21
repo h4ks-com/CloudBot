@@ -7,10 +7,10 @@ import pytest
 
 from plugins.agent import (
     _DEPLOY_URL_RE,
-    _extract_urls,
-    _guard_pr_hallucination,
     _PR_CLAIM_RE,
     _PR_URL_RE,
+    _extract_urls,
+    _guard_pr_hallucination,
     _tool_manifest,
     _url_validation_feedback,
     _validate_urls,
@@ -26,9 +26,7 @@ class TestExtractUrls:
         assert result == ["https://example.com/foo"]
 
     def test_multiple_urls(self):
-        result = _extract_urls(
-            "check https://a.com and http://b.org/page?q=1"
-        )
+        result = _extract_urls("check https://a.com and http://b.org/page?q=1")
         assert result == ["https://a.com", "http://b.org/page?q=1"]
 
     def test_trailing_punctuation_stripped(self):
@@ -109,7 +107,9 @@ class TestValidateUrls:
 
 class TestUrlValidationFeedback:
     def test_feedback_message(self):
-        msg = _url_validation_feedback(["https://fake.com/a", "https://fake.com/b"])
+        msg = _url_validation_feedback(
+            ["https://fake.com/a", "https://fake.com/b"]
+        )
         assert "https://fake.com/a" in msg
         assert "https://fake.com/b" in msg
         assert "MUST call the actual tool" in msg
@@ -133,7 +133,10 @@ class TestToolManifest:
         tracker = MagicMock()
         tracker._results = [
             ("web_app", "https://example.com/app.html"),
-            ("describe_image", "A mountain landscape with a fjord and blue sky"),
+            (
+                "describe_image",
+                "A mountain landscape with a fjord and blue sky",
+            ),
         ]
         result = _tool_manifest(tracker)
         assert "web_app" in result
