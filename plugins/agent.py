@@ -16,6 +16,7 @@ import time
 from collections import deque
 from datetime import datetime
 
+import httpx
 from agents import Agent, FunctionTool, RunContextWrapper, RunHooks, Runner
 from agents.exceptions import MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
@@ -376,10 +377,8 @@ _PR_URL_RE = re.compile(r"https://github\.com/[\w.\-]+/[\w.\-]+/pull/\d+")
 _PR_CLAIM_RE = re.compile(
     r"\b(PR (?:opened|created)|pull request (?:opened|created))", re.I
 )
-_DEPLOY_URL_RE = re.compile(r"https?://[a-z0-9-]+\.[a-z0-9-]+\.\w{2,}/\S+")
-_URL_TOOL_NAMES = frozenset(
-    {"web_app", "paste_markdown", "vibegame_upload", "vibegame_import_url"}
-)
+_DEPLOY_URL_RE = re.compile(r"https?://\S+")
+_URL_CHECK_TIMEOUT = 5
 
 
 def _guard_pr_hallucination(
@@ -422,39 +421,50 @@ def _tool_manifest(tracker) -> str:
     return "; ".join(parts)
 
 
-def _guard_url_hallucination(answer: str, tracker) -> str:
-    """Detect fabricated deploy/paste URLs when no URL-producing tool was called.
+def _extract_urls(text: str) -> list[str]:
+    """Extract clean URLs from text."""
+    raw = _DEPLOY_URL_RE.findall(text)
+    cleaned = []
+    for u in raw:
+        u = u.rstrip(").,;:>")
+        if u.startswith(("http://", "https://")):
+            cleaned.append(u)
+    return cleaned
 
-    The agent sometimes pattern-matches from history and generates a fake
-    URL without actually calling the tool that produces it.
-    """
-    found = _DEPLOY_URL_RE.findall(answer)
-    if not found:
-        return answer
-    clean = [u.rstrip(").,;:>") for u in found]
-    legit = set(tracker._tool_urls)
-    fabricated = [u for u in clean if u not in legit]
-    if not fabricated:
-        return answer
-    any_url_tool = bool(
-        _URL_TOOL_NAMES.intersection(n for n, _ in tracker._calls)
+
+def _validate_urls(answer: str) -> list[str]:
+    """HEAD-check every URL in the answer. Return list of dead ones."""
+    urls = _extract_urls(answer)
+    if not urls:
+        return []
+    dead = []
+    with httpx.Client(
+        timeout=_URL_CHECK_TIMEOUT, follow_redirects=True
+    ) as client:
+        for url in urls:
+            try:
+                r = client.head(url)
+                if r.status_code >= 400:
+                    dead.append(url)
+            except httpx.TimeoutException:
+                pass
+            except (httpx.HTTPError, OSError):
+                dead.append(url)
+    return dead
+
+
+def _url_validation_feedback(dead_urls: list[str]) -> str:
+    """Build a feedback message telling the agent its URLs are invalid."""
+    lines = [
+        "Your previous response contained URLs that do not exist (returned errors when checked):"
+    ]
+    for u in dead_urls:
+        lines.append(f"  - {u}")
+    lines.append(
+        "You MUST call the actual tool (web_app, paste_markdown, etc.) to generate real URLs. "
+        "Do not invent or guess URLs. Try again."
     )
-    if not any_url_tool:
-        logger.warning(
-            "agent: hallucinated URLs with no tool call: %s",
-            fabricated,
-        )
-        cleaned = _DEPLOY_URL_RE.sub("<fabricated-url>", answer)
-        return (
-            "(agent fabricated URLs without calling any tools — "
-            "task was not completed)\n\n" + cleaned
-        )
-    logger.warning(
-        "agent: fabricated URLs mismatch: %s vs real %s", fabricated, legit
-    )
-    for f in fabricated:
-        answer = answer.replace(f, "<fabricated-url>")
-    return answer
+    return "\n".join(lines)
 
 
 class _RunTracker(RunHooks):
@@ -471,7 +481,6 @@ class _RunTracker(RunHooks):
         self._errors: set[int] = set()
         self._pr_urls: list[str] = []
         self._results: list[tuple[str, str]] = []
-        self._tool_urls: list[str] = []
 
     async def on_tool_start(self, context, agent, tool) -> None:
         logger.info("agent: tool invoked: %s", tool.name)
@@ -495,9 +504,6 @@ class _RunTracker(RunHooks):
                 m = _PR_URL_RE.search(result_str)
                 if m:
                     self._pr_urls.append(m.group(0))
-            if tool.name in _URL_TOOL_NAMES:
-                for m in _DEPLOY_URL_RE.finditer(result_str):
-                    self._tool_urls.append(m.group(0).rstrip(").,;:>"))
 
     def failure_summary(self, err: BaseException) -> str:
         err_type = type(err).__name__
@@ -1061,7 +1067,34 @@ async def _try_backends(
         answer = _guard_pr_hallucination(
             answer, tracker._pr_urls, pr_tool_called
         )
-        answer = _guard_url_hallucination(answer, tracker)
+
+        dead = _validate_urls(answer)
+        if dead:
+            logger.warning("agent: dead URLs in response: %s", dead)
+            feedback = _url_validation_feedback(dead)
+            retry_input = agent_input + [
+                {"role": "assistant", "content": answer},
+                {"role": "user", "content": feedback},
+            ]
+            try:
+                result = await asyncio.wait_for(
+                    Runner.run(
+                        agent,
+                        retry_input,
+                        context=event,
+                        run_config=run_cfg,
+                        hooks=tracker,
+                        max_turns=max_turns,
+                    ),
+                    timeout=timeout,
+                )
+                answer = str(result.final_output or "").strip() or "(no answer)"
+                answer = _guard_pr_hallucination(
+                    answer, tracker._pr_urls, pr_tool_called
+                )
+            except Exception as e:
+                logger.warning("agent: URL retry failed: %s", e)
+
         manifest = _tool_manifest(tracker)
         history.append({"role": "user", "content": prompt})
         if manifest:
