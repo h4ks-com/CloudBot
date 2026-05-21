@@ -687,6 +687,44 @@ def _build_tool(cmd_name: str, cmd_hook) -> FunctionTool:
     )
 
 
+def _build_big_brain_tool(bot, cfg: dict):
+    """Build a think_hard tool backed by a more capable model as a sub-agent."""
+    bb_cfg = cfg.get("big_brain") or {}
+    if not bb_cfg.get("enabled"):
+        return None
+
+    base_url = bb_cfg.get("base_url", "https://api.z.ai/api/coding/paas/v4")
+    model = bb_cfg.get("model") or "glm-5.1"
+    api_key_path = bb_cfg.get("api_key_config_path") or "z_ai"
+    api_key = bot.config.get_api_key(api_key_path)
+    if not api_key:
+        logger.warning("agent: big_brain enabled but no api key")
+        return None
+
+    client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+    bb_model = OpenAIChatCompletionsModel(model=model, openai_client=client)
+
+    bb_agent = Agent(
+        name="BigBrain",
+        model=bb_model,
+        instructions=(
+            "You are a deep reasoning assistant. Analyze the problem thoroughly. "
+            "Consider edge cases, provide step-by-step reasoning, and give a clear "
+            "conclusion. Be precise and technical. If the problem has multiple valid "
+            "approaches, explain the trade-offs and recommend the best one."
+        ),
+    )
+    return bb_agent.as_tool(
+        tool_name="think_hard",
+        tool_description=(
+            "Delegate a complex problem to a more capable reasoning model. "
+            "Use for: difficult math, multi-step logic, uncertain code architecture "
+            "decisions, debugging complex issues, or when you need a second opinion "
+            "on a tricky problem. Do NOT use for simple lookups or straightforward tasks."
+        ),
+    )
+
+
 def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
     key = id(bot)
     if key in _TOOLS_CACHE:
@@ -710,6 +748,12 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
 
     custom = build_custom_tools()
     tools.extend(custom)
+
+    bb_tool = _build_big_brain_tool(bot, cfg)
+    if bb_tool:
+        tools.append(bb_tool)
+        logger.info("agent: big brain tool enabled")
+
     logger.info("agent: built %d tools (%d custom)", len(tools), len(custom))
     _TOOLS_CACHE[key] = tools
     return tools
