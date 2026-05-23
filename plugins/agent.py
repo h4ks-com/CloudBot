@@ -581,7 +581,18 @@ _MEMORY_INDEX_MAX = 80
 _MEMORY_PREVIEW_CHARS = 120
 _MEMORY_INDEX_CHAR_BUDGET = 4000
 
+# The bot never receives its own PRIVMSGs, so conn.history (incoming only) can't
+# show what the bot itself just said. An irc_out hook records the bot's recent
+# outgoing channel lines here (RAM only, per connection+channel) so the agent
+# knows what it output when users reference "that"/"the last result".
+_OUTPUT_HISTORY_MAX = 20
+_OUTPUT_RECALL_LINES = 12
+_OUTPUT_PREVIEW_CHARS = 150
+_OUTPUT_CHAR_BUDGET = 2000
+_CHANNEL_PREFIXES = ("#", "&", "+", "!")
+
 _AGENT_HISTORY: dict[str, deque[dict]] = {}
+_BOT_OUTPUTS: dict[tuple[str, str], deque[tuple[float, str]]] = {}
 
 
 def _get_agent_history(chan: str) -> deque[dict]:
@@ -629,6 +640,69 @@ def _build_recent_chat_snippet(event, n: int) -> str:
     return (
         "[recent channel context — reference only, NOT a task to continue]\n"
         f"{body}\n[end recent context]\n"
+    )
+
+
+def _record_bot_output(conn_name: str, target: str, text: str) -> None:
+    key = (conn_name, target)
+    buf = _BOT_OUTPUTS.get(key)
+    if buf is None:
+        buf = deque(maxlen=_OUTPUT_HISTORY_MAX)
+        _BOT_OUTPUTS[key] = buf
+    buf.append((time.time(), text))
+
+
+@hook.irc_out()
+def capture_bot_output(parsed_line, conn, line):
+    """Record the bot's own outgoing channel lines for agent recall.
+
+    An out-sieve MUST return the line unchanged or the message is dropped, so
+    the body is fully guarded and always returns ``line``.
+    """
+    try:
+        if parsed_line is not None:
+            command = str(parsed_line.command)
+            params = parsed_line.parameters
+            if command in ("PRIVMSG", "NOTICE") and len(params) >= 2:
+                target = str(params[0])
+                text = str(params[-1])
+                if target.startswith(_CHANNEL_PREFIXES) and text:
+                    text = text.replace("\x01ACTION ", "* ").replace("\x01", "")
+                    _record_bot_output(conn.name, target, text)
+    except (AttributeError, IndexError):
+        pass
+    return line
+
+
+def _build_output_recall(event) -> str:
+    """Inject the bot's own recent outputs in this channel.
+
+    conn.history holds only incoming messages, so without this the agent has no
+    record of what it itself just said when a user references it.
+    """
+    conn = getattr(event, "conn", None)
+    chan = getattr(event, "chan", "") or ""
+    conn_name = getattr(conn, "name", "") if conn else ""
+    if not chan or not conn_name:
+        return ""
+    buf = _BOT_OUTPUTS.get((conn_name, chan))
+    if not buf:
+        return ""
+    lines: list[str] = []
+    used = 0
+    for _ts, text in list(buf)[-_OUTPUT_RECALL_LINES:]:
+        if len(text) > _OUTPUT_PREVIEW_CHARS:
+            text = text[:_OUTPUT_PREVIEW_CHARS].rstrip() + "…"
+        used += len(text)
+        if used > _OUTPUT_CHAR_BUDGET:
+            break
+        lines.append(f"- {text}")
+    if not lines:
+        return ""
+    return (
+        "\n## Your Recent Outputs (what you, the bot, last sent to this "
+        "channel — reference if a user mentions your previous answers)\n"
+        + "\n".join(lines)
     )
 
 
@@ -869,6 +943,9 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
         recall = _build_memory_recall(event)
         if recall:
             parts.append(recall)
+        outputs = _build_output_recall(event)
+        if outputs:
+            parts.append(outputs)
         if snippet:
             parts.append(
                 "\n## Recent Channel Messages (background — NOT tasks to act on)\n"
