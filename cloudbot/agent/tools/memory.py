@@ -5,11 +5,13 @@ metadata object alongside other CloudBot tables — same pattern as the rest of
 the codebase.
 """
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Column, String, Table, Text, or_
+from sqlalchemy import Column, String, Table, Text, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from cloudbot.agent.common import parse_namespace, run_in_executor
@@ -28,6 +30,122 @@ _MEMORY_TABLE = Table(
 
 _MEMORY_VALUE_MAX = 2000
 _MEMORY_SEARCH_LIMIT = 20
+
+
+def ensure_memory_table(engine: Engine) -> None:
+    """Create the agent_memory table if absent (idempotent, for fresh DBs)."""
+    _MEMORY_TABLE.create(bind=engine, checkfirst=True)
+
+
+def all_memories(namespace: str, limit: int) -> list[tuple[str, str]]:
+    """Every memory in a namespace, newest first (capped at limit)."""
+    db = database.Session()
+    rows = db.execute(
+        _MEMORY_TABLE.select()
+        .with_only_columns(_MEMORY_TABLE.c.key, _MEMORY_TABLE.c.value)
+        .where(_MEMORY_TABLE.c.namespace == namespace)
+        .order_by(_MEMORY_TABLE.c.updated_at.desc())
+        .limit(limit)
+    ).fetchall()
+    return [(r[0], r[1]) for r in rows]
+
+
+def store_memory(namespace: str, key: str, value: str) -> None:
+    """Upsert one memory (insert, or overwrite by namespace+key)."""
+    db = database.Session()
+    now = datetime.now(timezone.utc).isoformat()
+    stmt = (
+        sqlite_insert(_MEMORY_TABLE)
+        .values(namespace=namespace, key=key, value=value, updated_at=now)
+        .on_conflict_do_update(
+            index_elements=["namespace", "key"],
+            set_={"value": value, "updated_at": now},
+        )
+    )
+    try:
+        db.execute(stmt)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+
+
+# FTS5 mirror powering the memory_search tool: bm25-ranked, word-boundary
+# matching via the unicode61 tokenizer (language-neutral — no English stemmer,
+# diacritics folded consistently on both index and query). External content off
+# agent_memory's rowid; triggers keep it synced. Recall (the prompt index) does
+# NOT use this — only the agent's explicit memory_search does.
+_FTS_TABLE = "agent_memory_fts"
+_FTS_TOKEN_RE = re.compile(r"[^\W_]+")
+
+_FTS_DDL = (
+    f"CREATE VIRTUAL TABLE IF NOT EXISTS {_FTS_TABLE} USING fts5("
+    "namespace UNINDEXED, key, value, "
+    "content='agent_memory', content_rowid='rowid', tokenize='unicode61')",
+    "CREATE TRIGGER IF NOT EXISTS agent_memory_ai AFTER INSERT ON agent_memory "
+    f"BEGIN INSERT INTO {_FTS_TABLE}(rowid, namespace, key, value) "
+    "VALUES (new.rowid, new.namespace, new.key, new.value); END",
+    "CREATE TRIGGER IF NOT EXISTS agent_memory_ad AFTER DELETE ON agent_memory "
+    f"BEGIN INSERT INTO {_FTS_TABLE}({_FTS_TABLE}, rowid, namespace, key, value) "
+    "VALUES ('delete', old.rowid, old.namespace, old.key, old.value); END",
+    "CREATE TRIGGER IF NOT EXISTS agent_memory_au AFTER UPDATE ON agent_memory "
+    f"BEGIN INSERT INTO {_FTS_TABLE}({_FTS_TABLE}, rowid, namespace, key, value) "
+    "VALUES ('delete', old.rowid, old.namespace, old.key, old.value); "
+    f"INSERT INTO {_FTS_TABLE}(rowid, namespace, key, value) "
+    "VALUES (new.rowid, new.namespace, new.key, new.value); END",
+)
+
+
+def ensure_fts(engine: Engine) -> None:
+    """Create the base table + FTS5 mirror & sync triggers (idempotent).
+
+    Rebuilt at startup so the index always matches the base table even if a
+    write ever bypassed the triggers.
+    """
+    ensure_memory_table(engine)
+    with engine.begin() as cx:
+        for stmt in _FTS_DDL:
+            cx.exec_driver_sql(stmt)
+        cx.exec_driver_sql(
+            f"INSERT INTO {_FTS_TABLE}({_FTS_TABLE}) VALUES ('rebuild')"
+        )
+
+
+def _fts_match_query(raw: str) -> str | None:
+    """Build a safe FTS5 MATCH expression (OR of quoted terms) from user text.
+
+    Quoting each term neutralises FTS5 operators in free-form input; the
+    unicode61 tokenizer keeps it language-agnostic. No stopword list.
+    """
+    seen: set[str] = set()
+    terms: list[str] = []
+    for tok in _FTS_TOKEN_RE.findall(raw.lower()):
+        if len(tok) < 2 or tok in seen:
+            continue
+        seen.add(tok)
+        terms.append(tok)
+        if len(terms) >= 20:
+            break
+    if not terms:
+        return None
+    return " OR ".join(f'"{tok}"' for tok in terms)
+
+
+def fts_search(namespace: str, query: str, limit: int) -> list[tuple[str, str]]:
+    """bm25-ranked keyword search over stored memories in one namespace."""
+    match = _fts_match_query(query)
+    if not match:
+        return []
+    db = database.Session()
+    sql = text(
+        f"SELECT key, value FROM {_FTS_TABLE} "
+        f"WHERE {_FTS_TABLE} MATCH :q AND namespace = :ns "
+        f"ORDER BY bm25({_FTS_TABLE}) LIMIT :lim"
+    )
+    rows = db.execute(
+        sql, {"q": match, "ns": namespace, "lim": limit}
+    ).fetchall()
+    return [(r[0], r[1]) for r in rows]
 
 
 @tool(
@@ -68,22 +186,7 @@ async def memory_set(ctx, data):
         return f"(error: value too long, max {_MEMORY_VALUE_MAX} chars)"
 
     def _do_upsert() -> None:
-        db = database.Session()
-        now = datetime.now(timezone.utc).isoformat()
-        stmt = (
-            sqlite_insert(_MEMORY_TABLE)
-            .values(namespace=ns, key=key, value=value, updated_at=now)
-            .on_conflict_do_update(
-                index_elements=["namespace", "key"],
-                set_={"value": value, "updated_at": now},
-            )
-        )
-        try:
-            db.execute(stmt)
-            db.commit()
-        except SQLAlchemyError as e:
-            db.rollback()
-            raise e
+        store_memory(ns, key, value)
 
     try:
         await run_in_executor(_do_upsert)
@@ -164,23 +267,8 @@ async def memory_search(ctx, data):
     if not query:
         return "(error: query required)"
 
-    like = f"%{query}%"
-
-    def _do_search() -> list[Any]:
-        db = database.Session()
-        rows = db.execute(
-            _MEMORY_TABLE.select()
-            .where(
-                (_MEMORY_TABLE.c.namespace == ns)
-                & or_(
-                    _MEMORY_TABLE.c.key.ilike(like),
-                    _MEMORY_TABLE.c.value.ilike(like),
-                )
-            )
-            .order_by(_MEMORY_TABLE.c.updated_at.desc())
-            .limit(_MEMORY_SEARCH_LIMIT)
-        ).fetchall()
-        return list(rows)
+    def _do_search() -> list[tuple[str, str]]:
+        return fts_search(ns, query, _MEMORY_SEARCH_LIMIT)
 
     try:
         matches = await run_in_executor(_do_search)
@@ -188,5 +276,5 @@ async def memory_search(ctx, data):
         return f"(error searching memory: {e})"
     if not matches:
         return f"(no memories found for '{query}' in {ns})"
-    lines = [f"{r['key']}: {(r['value'] or '')[:200]}" for r in matches]
+    lines = [f"{key}: {(value or '')[:200]}" for key, value in matches]
     return "\n".join(lines)
