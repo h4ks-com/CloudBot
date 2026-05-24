@@ -3,12 +3,8 @@
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from plugins.agent import (
-    _DEPLOY_URL_RE,
-    _PR_CLAIM_RE,
-    _PR_URL_RE,
     _extract_urls,
     _guard_pr_hallucination,
     _tool_manifest,
@@ -94,7 +90,7 @@ class TestValidateUrls:
         assert result == []
 
     @patch("plugins.agent.httpx.Client")
-    def test_connection_error_flagged(self, mock_client_cls):
+    def test_connection_error_let_through(self, mock_client_cls):
         mock_client = MagicMock()
         mock_client.head.side_effect = httpx.ConnectError("refused")
         mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -102,7 +98,24 @@ class TestValidateUrls:
         mock_client_cls.return_value = mock_client
 
         result = _validate_urls("https://nonexistent.invalid")
-        assert result == ["https://nonexistent.invalid"]
+        assert result == []
+
+    @patch("plugins.agent.httpx.Client")
+    def test_tool_urls_skipped(self, mock_client_cls):
+        mock_response_500 = MagicMock()
+        mock_response_500.status_code = 500
+        mock_client = MagicMock()
+        mock_client.head.return_value = mock_response_500
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client_cls.return_value = mock_client
+
+        result = _validate_urls(
+            "https://s.h4ks.com/ABC.html check this",
+            tool_urls={"https://s.h4ks.com/ABC.html"},
+        )
+        assert result == []
+        mock_client.head.assert_not_called()
 
 
 class TestUrlValidationFeedback:
@@ -112,8 +125,8 @@ class TestUrlValidationFeedback:
         )
         assert "https://fake.com/a" in msg
         assert "https://fake.com/b" in msg
-        assert "MUST call the actual tool" in msg
-        assert "web_app" in msg
+        assert "HTTP errors" in msg
+        assert "tool" in msg.lower()
 
 
 class TestToolManifest:

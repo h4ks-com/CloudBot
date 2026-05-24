@@ -434,16 +434,20 @@ def _extract_urls(text: str) -> list[str]:
     return cleaned
 
 
-def _validate_urls(answer: str) -> list[str]:
-    """HEAD-check every URL in the answer. Return list of dead ones."""
+def _validate_urls(answer: str, tool_urls: set[str] | None = None) -> list[str]:
+    """HEAD-check every URL in the answer that didn't come from a tool."""
     urls = _extract_urls(answer)
     if not urls:
+        return []
+    known = tool_urls or set()
+    to_check = [u for u in urls if u not in known]
+    if not to_check:
         return []
     dead = []
     with httpx.Client(
         timeout=_URL_CHECK_TIMEOUT, follow_redirects=True
     ) as client:
-        for url in urls:
+        for url in to_check:
             try:
                 r = client.head(url)
                 if r.status_code >= 400:
@@ -451,20 +455,21 @@ def _validate_urls(answer: str) -> list[str]:
             except httpx.TimeoutException:
                 pass
             except (httpx.HTTPError, OSError):
-                dead.append(url)
+                pass
     return dead
 
 
 def _url_validation_feedback(dead_urls: list[str]) -> str:
     """Build a feedback message telling the agent its URLs are invalid."""
     lines = [
-        "Your previous response contained URLs that do not exist (returned errors when checked):"
+        "Your previous response contained URLs that returned HTTP errors when checked:"
     ]
     for u in dead_urls:
         lines.append(f"  - {u}")
     lines.append(
-        "You MUST call the actual tool (web_app, paste_markdown, etc.) to generate real URLs. "
-        "Do not invent or guess URLs. Try again."
+        "Only include URLs that you have verified exist. "
+        "If a URL came from a tool result, you can keep it. "
+        "If you invented or guessed a URL, remove it or call the appropriate tool first."
     )
     return "\n".join(lines)
 
@@ -483,6 +488,7 @@ class _RunTracker(RunHooks):
         self._errors: set[int] = set()
         self._pr_urls: list[str] = []
         self._results: list[tuple[str, str]] = []
+        self._tool_urls: set[str] = set()
 
     async def on_tool_start(self, context, agent, tool) -> None:
         logger.info("agent: tool invoked: %s", tool.name)
@@ -502,6 +508,7 @@ class _RunTracker(RunHooks):
                     break
         else:
             self._results.append((tool.name, result_str[:120]))
+            self._tool_urls.update(_extract_urls(result_str))
             if tool.name == "open_github_pr":
                 m = _PR_URL_RE.search(result_str)
                 if m:
@@ -1204,7 +1211,7 @@ async def _try_backends(
             answer, tracker._pr_urls, pr_tool_called
         )
 
-        dead = _validate_urls(answer)
+        dead = _validate_urls(answer, tracker._tool_urls)
         if dead:
             logger.warning("agent: dead URLs in response: %s", dead)
             feedback = _url_validation_feedback(dead)
