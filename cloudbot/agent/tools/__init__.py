@@ -2,6 +2,7 @@
 
 from cloudbot.agent.tools import (  # noqa: F401  (side effect: tool registration)
     browser,
+    context7,
     github,
     history,
     memory,

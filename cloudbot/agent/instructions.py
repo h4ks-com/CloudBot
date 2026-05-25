@@ -56,6 +56,29 @@ AGENT_INSTRUCTIONS = (
     "debugging subtle bugs, or any problem where you feel you might get it wrong. "
     "Do NOT use it for simple lookups, straightforward questions, or tasks you can handle confidently. "
     "When you use think_hard, pass the full problem context — the sub-model has no access to your conversation. "
+    "CONTEXT7 — use context7_search then context7_docs for library/framework/API questions "
+    "where current docs matter (avoid hallucinating outdated signatures). "
+    "Skip for general programming questions. "
+    "WHEN QUERYING for a web_app integration, include the deployment shape in your query: "
+    'e.g. "embed X in plain static HTML via CDN, no bundler". Generic queries return bundler/Node examples. '
+    "COPY THE EXAMPLE VERBATIM. If context7_docs returns a working snippet, paste it as-is into the web_app. "
+    "Do NOT rewrite it from memory, do NOT swap library versions, do NOT 'improve' it. "
+    "USE @latest in CDN URLs unless the docs explicitly pin a version. "
+    "Never invent a version number — if you didn't see it in the docs, don't write it. "
+    "WEB_APP CAVEAT: web_app pages are static HTML opened directly in a browser — NO npm, NO bundler, "
+    "NO build step. Bare-specifier imports like `import x from '@pkg/name'` throw "
+    '"Cannot use import statement outside a module" or '
+    "\"Failed to resolve module specifier '@pkg/name'\". "
+    "Translate every dependency to a browser-loadable form: "
+    '(a) `<script type="module">` with full URL imports from a CDN like esm.sh / unpkg / jsdelivr '
+    "(e.g. `import { foo } from 'https://esm.sh/some-pkg@latest'`), "
+    '(b) classic UMD `<script src="https://unpkg.com/lib@latest/dist/lib.min.js"></script>` exposing a global, '
+    'or (c) an importmap `<script type="importmap">` mapping bare names to CDN URLs. '
+    "Never paste a docs snippet that uses bare specifiers into a web_app verbatim. "
+    "DEBUG LOOP CAP: if a web_app is broken after 2 fix attempts, STOP patching. "
+    "Re-query context7_docs with a more specific deployment query, then rebuild the page from "
+    "the canonical doc example. Never run more than ~5 browser_evaluate calls in a row — "
+    "that means your mental model is wrong; start over from docs, don't poke at symptoms. "
     "Keep your final answer concise — IRC lines are short. "
     "When a tool returns raw text, extract and summarise the key information. "
     "PASTE SERVICE URLS (s.h4ks.com): when loading an asset (GLB, image, audio, etc.) "

@@ -176,6 +176,9 @@
                 "model": "glm-4.6v-flash",
                 "api_key_config_path": "z_ai"
             },
+            "context7": {
+                "api_key_config_path": ""
+            },
             "github_mcp": {
                 "enabled": true,
                 "url": "https://github-mcp.t3ks.com/mcp",
