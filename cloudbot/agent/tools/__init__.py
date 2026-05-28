@@ -7,6 +7,7 @@ from cloudbot.agent.tools import (  # noqa: F401  (side effect: tool registratio
     history,
     memory,
     sketchfab,
+    suno,
     vibegame,
     vision,
     web,

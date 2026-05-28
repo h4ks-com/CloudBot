@@ -105,6 +105,10 @@
         "worldguess": {
             "api_url": "http://localhost:8000"
         },
+        "suno": {
+            "api_url": "",
+            "api_key": ""
+        },
         "radio": {
             "api_url": "http://localhost:8383",
             "api_token": "",

@@ -118,6 +118,10 @@
             "api_key": "your_api_key_here",
             "model": "qwen:latest"
         },
+        "suno": {
+            "api_url": "https://your-suno-instance.example",
+            "api_key": "your_suno_api_key_here"
+        },
         "radio": {
             "api_url": "http://localhost:8383",
             "api_token": "your_bearer_token_here",
