@@ -23,9 +23,19 @@ def _client(bot):
         return str(e)
 
 
+def _channel_only(chan):
+    """Error string if used outside a channel (PMs have chan == sender nick)."""
+    if not chan or not chan.startswith("#"):
+        return "🎵 suno commands work in channels only, not PMs"
+    return None
+
+
 @hook.command("suno", autohelp=False)
 def suno_generate(text, bot, chan, nick, conn):
     """<prompt> - generate a song from a text prompt with Suno AI."""
+    pm = _channel_only(chan)
+    if pm:
+        return pm
     prompt = (text or "").strip()
     if not prompt:
         return "usage: .suno <prompt>"
@@ -51,6 +61,9 @@ def suno_generate(text, bot, chan, nick, conn):
 @hook.command("sunocover", autohelp=False)
 def suno_cover(text, bot, chan, nick, conn):
     """<audio_url> [style prompt] - cover a remote audio URL (async)."""
+    pm = _channel_only(chan)
+    if pm:
+        return pm
     audio_url, prompt = suno.split_audio_prompt(text)
     if not audio_url:
         return "usage: .sunocover <http(s) audio url> [style prompt]"
@@ -73,8 +86,11 @@ def suno_cover(text, bot, chan, nick, conn):
 
 
 @hook.command("sunojob", autohelp=False)
-def suno_job(text, bot):
+def suno_job(text, bot, chan):
     """<job_id> - check an async Suno cover job."""
+    pm = _channel_only(chan)
+    if pm:
+        return pm
     job_id = (text or "").strip().split()[0] if text else ""
     if not job_id:
         return "usage: .sunojob <job_id>"
@@ -90,8 +106,11 @@ def suno_job(text, bot):
 
 
 @hook.command("sunocredits", "sunostatus", autohelp=False)
-def suno_credits(bot):
+def suno_credits(bot, chan):
     """- show remaining Suno credits across all accounts."""
+    pm = _channel_only(chan)
+    if pm:
+        return pm
     cfg = _client(bot)
     if isinstance(cfg, str):
         return cfg
