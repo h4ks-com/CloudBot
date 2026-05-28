@@ -357,3 +357,69 @@ def poll_watches(post: PostFn) -> None:
             post(watch.network, watch.chan, message)
         if done:
             _watches.remove(watch)
+
+
+# ── Blocking wait (agent chaining) ───────────────────────────────────────────
+# Lets the agent generate a song and block until it has a usable URL, so the
+# result can feed a next step. Text clips have no /jobs entry (resolved via the
+# CDN directly); covers are tracked as jobs.
+
+WAIT_TIMEOUT = 700.0  # under the agent's 900s per-run budget
+WAIT_INTERVAL = 6.0
+
+
+def _job_or_none(url: str, key: str, ident: str) -> dict[str, Any] | None:
+    """Return the job for ``ident`` if it is a cover job, else None (a clip id)."""
+    try:
+        return get_job(url, key, ident)
+    except SunoError as exc:
+        if "HTTP 404" in str(exc):
+            return None
+        raise
+
+
+def wait_for_song(
+    url: str,
+    key: str,
+    ident: str,
+    *,
+    mode: str = "final",
+    timeout: float = WAIT_TIMEOUT,
+    interval: float = WAIT_INTERVAL,
+) -> str:
+    """Block until ``ident`` reaches ``mode`` and return its URL(s).
+
+    ``mode='stream'`` returns the live audiopipe URL as soon as clips exist
+    (text: instant; cover: ~80s). ``mode='final'`` polls until the finished CDN
+    mp3 lands (text: ~1-2min; cover: ~6min). On timeout, returns whatever URL is
+    available with a note; on a failed cover, returns the error.
+    """
+    job = _job_or_none(url, key, ident)
+    is_job = job is not None
+    deadline = time.time() + timeout
+    while True:
+        if is_job and job is not None:
+            status = job.get("status")
+            ids = extract_clip_ids(job)
+            if status == "failed":
+                return f"failed: {job.get('error') or 'unknown error'}"
+            if status == "complete":
+                return " | ".join(clip_cdn_url(i) for i in ids)
+            if mode == "stream" and ids:
+                return " | ".join(clip_stream_url(i) for i in ids)
+        elif mode == "stream":
+            return clip_stream_url(ident)
+        elif clip_ready(ident):
+            return clip_cdn_url(ident)
+
+        if time.time() > deadline:
+            if is_job:
+                live_ids = extract_clip_ids(job) if job is not None else []
+                if live_ids:
+                    live = " | ".join(clip_stream_url(i) for i in live_ids)
+                    return f"(timeout, still rendering) {live}"
+                return f"(timeout) job {ident} not ready yet"
+            return f"(timeout) {clip_stream_url(ident)}"
+        time.sleep(interval)
+        if is_job:
+            job = get_job(url, key, ident)

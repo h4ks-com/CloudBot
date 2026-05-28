@@ -76,22 +76,20 @@ async def suno_generate_song(ctx, data):
     except suno.SunoError as e:
         return f"(error: {e})"
     chan, network, nick = _reply_target(ctx)
-    suno.watch_text(
-        url,
-        key,
-        suno.extract_clip_ids(resp),
-        chan=chan,
-        network=network,
-        nick=nick,
-    )
-    return suno.format_generation(resp)
+    ids = suno.extract_clip_ids(resp)
+    suno.watch_text(url, key, ids, chan=chan, network=network, nick=nick)
+    summary = suno.format_generation(resp)
+    if ids:
+        summary += f" [ids: {','.join(ids)} — suno_wait_for_song to chain]"
+    return summary
 
 
 @tool(
     name="suno_cover_from_url",
     description=(
-        "Generate a Suno cover/remix from a remote audio URL. Runs asynchronously "
-        "(~6 min); returns a job id. Poll it later with suno_job_status."
+        "Generate a Suno cover/remix from a remote audio URL, optionally steered "
+        "by a style prompt (e.g. cover this URL 'as epic orchestral'). Runs "
+        "asynchronously (~6 min); returns a job id. Poll it later with suno_job_status."
     ),
     schema={
         "type": "object",
@@ -135,7 +133,54 @@ async def suno_cover_from_url(ctx, data):
     job_id = str(resp.get("id", ""))
     chan, network, nick = _reply_target(ctx)
     suno.watch_cover(url, key, job_id, chan=chan, network=network, nick=nick)
-    return f"cover submitted: job {job_id or '?'} — I'll post the link when it's ready"
+    return (
+        f"cover submitted: job {job_id or '?'} — posted to channel when ready; "
+        "suno_wait_for_song to chain on the result"
+    )
+
+
+@tool(
+    name="suno_wait_for_song",
+    description=(
+        "Block until a song/cover is ready and return its URL, so you can chain "
+        "on the result (e.g. then hand the file to another tool). Pass a clip id "
+        "(from suno_generate_song) or a job id (from suno_cover_from_url). "
+        "mode='stream' returns a playable live URL fast (text instant, cover "
+        "~80s); mode='final' waits for the finished CDN mp3 (text ~1-2min, cover "
+        "~6min). Only use when a later step needs the audio — plain 'make a song' "
+        "requests don't need it."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "id": {
+                "type": "string",
+                "description": "Clip id (text) or job id (cover) to wait on",
+            },
+            "mode": {
+                "type": "string",
+                "enum": ["stream", "final"],
+                "description": "'stream' = fast live URL; 'final' = finished mp3 (slower)",
+            },
+        },
+        "required": ["id"],
+    },
+)
+async def suno_wait_for_song(ctx, data):
+    cfg = _config(ctx)
+    if cfg is None:
+        return "(error: Suno not configured)"
+    url, key = cfg
+    ident = str(data.get("id") or "").strip()
+    if not ident:
+        return "(error: id required)"
+    mode = "stream" if data.get("mode") == "stream" else "final"
+    try:
+        return await run_in_executor(
+            suno.wait_for_song, url, key, ident, mode=mode
+        )
+    except suno.SunoError as e:
+        return f"(error: {e})"
 
 
 @tool(
