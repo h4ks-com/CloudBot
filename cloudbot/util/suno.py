@@ -174,6 +174,23 @@ def clip_stream_url(clip_id: str) -> str:
     return STREAM_TEMPLATE.format(clip_id=clip_id)
 
 
+def final_url(url: str, key: str, clip_id: str) -> str:
+    """Public bucket URL for a finished clip. The API's /download mirrors the
+    clip to the bucket on first hit and 302s there, so this both stores it and
+    returns the stable link; falls back to Suno's CDN if the API is unreachable."""
+    try:
+        resp = get_session().get(
+            f"{url}/download/{clip_id}",
+            headers={"X-API-Key": key},
+            timeout=TIMEOUT,
+            allow_redirects=False,
+        )
+    except requests.RequestException:
+        return clip_cdn_url(clip_id)
+    location = resp.headers.get("Location", "")
+    return location if resp.is_redirect and location else clip_cdn_url(clip_id)
+
+
 def extract_clip_ids(resp: dict[str, Any]) -> list[str]:
     """Clip ids present in a /generate or /jobs response."""
     return [c["id"] for c in (resp.get("clips") or []) if c.get("id")]
@@ -194,12 +211,12 @@ def clip_ready(clip_id: str) -> bool:
     return resp.status_code == 200
 
 
-def format_generation(resp: dict[str, Any]) -> str:
+def format_generation(resp: dict[str, Any], url: str, key: str) -> str:
     """One-line summary of a /generate or /jobs response.
 
     Once we have clip ids we return links immediately — no waiting for full
     render. While the clip is still generating we hand back the live stream
-    URL; once complete we hand back the finished CDN file.
+    URL; once complete we hand back the finished file from the bucket.
     """
     status = resp.get("status", "?")
     error = resp.get("error")
@@ -210,7 +227,7 @@ def format_generation(resp: dict[str, Any]) -> str:
         job_id = resp.get("id", "?")
         return f"⏳ {status} — job {_b(job_id)} still rendering (.sunojob {job_id})"
     if status == "complete":
-        links = " | ".join(clip_cdn_url(i) for i in ids)
+        links = " | ".join(final_url(url, key, i) for i in ids)
         return f"{_b('✅ complete')} → {links}"
     links = " | ".join(clip_stream_url(i) for i in ids)
     return f"🎵 {_b(status)} — ▶ live: {links}"
@@ -307,10 +324,11 @@ def _tick(watch: _Watch) -> tuple[str | None, bool]:
     """
     timed_out = time.time() > watch.deadline
     if watch.kind == "text":
-        cdn = " | ".join(clip_cdn_url(i) for i in watch.clip_ids)
         if all(clip_ready(i) for i in watch.clip_ids):
-            return f"{watch.nick}: {_b('✅ song ready')} → {cdn}", True
+            links = " | ".join(final_url(watch.url, watch.key, i) for i in watch.clip_ids)
+            return f"{watch.nick}: {_b('✅ song ready')} → {links}", True
         if timed_out:
+            cdn = " | ".join(clip_cdn_url(i) for i in watch.clip_ids)
             return f"{watch.nick}: ⏰ still rendering — try {cdn} shortly", True
         return None, False
     try:
@@ -324,8 +342,8 @@ def _tick(watch: _Watch) -> tuple[str | None, bool]:
         return None, False
     status = resp.get("status")
     if status == "complete":
-        cdn = " | ".join(clip_cdn_url(i) for i in extract_clip_ids(resp))
-        return f"{watch.nick}: {_b('✅ cover ready')} → {cdn}", True
+        links = " | ".join(final_url(watch.url, watch.key, i) for i in extract_clip_ids(resp))
+        return f"{watch.nick}: {_b('✅ cover ready')} → {links}", True
     if status == "failed":
         err = resp.get("error") or "unknown error"
         return f"{watch.nick}: {_b('❌ cover failed')}: {err}", True
@@ -404,13 +422,13 @@ def wait_for_song(
             if status == "failed":
                 return f"failed: {job.get('error') or 'unknown error'}"
             if status == "complete":
-                return " | ".join(clip_cdn_url(i) for i in ids)
+                return " | ".join(final_url(url, key, i) for i in ids)
             if mode == "stream" and ids:
                 return " | ".join(clip_stream_url(i) for i in ids)
         elif mode == "stream":
             return clip_stream_url(ident)
         elif clip_ready(ident):
-            return clip_cdn_url(ident)
+            return final_url(url, key, ident)
 
         if time.time() > deadline:
             if is_job:

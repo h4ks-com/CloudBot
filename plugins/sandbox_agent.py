@@ -9,20 +9,20 @@ Backend and model config is shared with plugins/agent.py (plugins.agent section)
 Sandbox connection config lives in plugins.sandbox_agent section.
 """
 
-import asyncio
 import json
 import logging
 from datetime import datetime
 
 import httpx
-from agents import Agent, FunctionTool, RunContextWrapper, Runner
+from agents import Agent, FunctionTool, RunContextWrapper
 
 from cloudbot import hook
+from cloudbot.agent.subagent import SubagentError, run_subagent
 from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
 )
-from plugins.agent import _format_answer, _make_run_config
+from plugins.agent import _format_answer
 
 logger = logging.getLogger("cloudbot")
 
@@ -284,12 +284,6 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
     )
     timeout = float(sandbox_cfg.get("timeout_s", 300))
 
-    backend = agent_cfg.get("backend", "z_ai")
-    fallback = agent_cfg.get("fallback_backend")
-    backends_to_try = [backend]
-    if fallback and fallback != backend:
-        backends_to_try.append(fallback)
-
     ts = datetime.now().strftime("%H:%M:%S")
     enriched = (
         f"[channel: {event.chan} | user: {event.nick} | time: {ts}]\n{prompt}"
@@ -298,48 +292,13 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
     typing_id = id(event)
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
-
     try:
-        last_err: BaseException | None = None
-        for b in backends_to_try:
-            try:
-                run_cfg = _make_run_config(agent_cfg, bot, b)
-            except Exception as e:
-                logger.warning(
-                    "sandbox_agent: cannot build run config for %s: %s", b, e
-                )
-                last_err = e
-                continue
-            try:
-                result = await asyncio.wait_for(
-                    Runner.run(
-                        agent,
-                        enriched,
-                        context={},
-                        run_config=run_cfg,
-                        max_turns=max_turns,
-                    ),
-                    timeout=timeout,
-                )
-            except asyncio.TimeoutError as e:
-                logger.warning(
-                    "sandbox_agent: %s timed out after %ss", b, timeout
-                )
-                last_err = e
-                continue
-            except Exception as e:
-                logger.warning(
-                    "sandbox_agent: %s failed: %s: %s", b, type(e).__name__, e
-                )
-                last_err = e
-                continue
-
-            answer = str(result.final_output or "").strip() or "(no answer)"
-            event.reply(_format_answer(answer, agent_cfg))
-            return
-
-        err_name = type(last_err).__name__ if last_err else "unknown"
-        event.reply(f"Agent failed: {err_name}")
+        answer = await run_subagent(
+            bot, agent=agent, prompt=enriched, max_turns=max_turns, timeout_s=timeout
+        )
+        event.reply(_format_answer(answer, agent_cfg))
+    except SubagentError as e:
+        event.reply(f"Agent failed: {e}")
     finally:
         await stop_typing_for_command(event.conn, target, typing_id)
 

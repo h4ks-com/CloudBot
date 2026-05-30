@@ -109,6 +109,10 @@
             "api_url": "",
             "api_key": ""
         },
+        "strudel": {
+            "api_url": "",
+            "api_key": ""
+        },
         "radio": {
             "api_url": "http://localhost:8383",
             "api_token": "",
@@ -222,7 +226,8 @@
                 "prove",
                 "pv",
                 "code",
-                "cd"
+                "cd",
+                "strudel"
             ]
         },
         "sandbox_agent": {
@@ -231,6 +236,10 @@
             "prove_max_turns": 20,
             "code_max_turns": 10,
             "timeout_s": 300
+        },
+        "strudel_agent": {
+            "max_turns": 24,
+            "timeout_s": 420
         }
     },
     "browserless": {

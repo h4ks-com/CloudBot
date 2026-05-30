@@ -55,7 +55,7 @@ def suno_generate(text, bot, chan, nick, conn):
         network=conn.name,
         nick=nick,
     )
-    return suno.format_generation(resp)
+    return suno.format_generation(resp, url, key)
 
 
 @hook.command("sunocover", autohelp=False)
@@ -102,7 +102,7 @@ def suno_job(text, bot, chan):
         resp = suno.get_job(url, key, job_id)
     except suno.SunoError as e:
         return f"suno error: {e}"
-    return suno.format_generation(resp)
+    return suno.format_generation(resp, url, key)
 
 
 @hook.command("sunocredits", "sunostatus", autohelp=False)

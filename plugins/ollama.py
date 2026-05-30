@@ -467,18 +467,14 @@ def ai_image_command(text: str, nick: str, chan: str, bot, notice) -> str:
     return f"[{model}] {paste_url}"
 
 
-@hook.command("aiaudio", "tts")
-def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
-    """<[voice] text> - Generate speech via LocalAI TTS. '.aiaudio list' to list voices."""
+def synthesize_speech(bot, text: str) -> str:
+    """Synthesize ``text`` to speech via LocalAI TTS; return the pasted WAV URL
+    (or an ``Error: ...`` string). ``text`` may be prefixed with a voice name.
+    Shared by the ``.tts`` command and the agent's text_to_speech tool."""
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
-        notice(
-            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
-        )
-        return ""
-
+        return "Error: Ollama plugin not configured"
     text = text.strip()
-
     try:
         tts_models = _fetch_tts_models(api_url, api_key)
     except _RateLimited:
@@ -487,14 +483,8 @@ def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
         return f"Error listing audio models: {e}"
     except requests.Timeout:
         return "Error: Request timed out"
-
-    if text.lower() == "list":
-        if not tts_models:
-            return "No TTS models detected."
-        return f"Available TTS models: {', '.join(tts_models)}"
-
     if not tts_models:
-        return "No TTS models detected. Try '.aiaudio list'."
+        return "No TTS models detected."
 
     parts = text.split(None, 1)
     model, prompt = tts_models[0], text
@@ -505,14 +495,12 @@ def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
         )
         if match:
             model, prompt = match, parts[1]
-
     if not prompt:
-        return "Usage: .aiaudio [voice] <text>"
+        return "Usage: [voice] <text>"
 
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["apikey"] = api_key
-
     try:
         response = get_session().post(
             f"{api_url.rstrip('/')}/v1/audio/speech",
@@ -529,23 +517,17 @@ def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
     wav_bytes = response.content
     if not wav_bytes or wav_bytes[:4] != b"RIFF":
         return "Error: server did not return a WAV"
-
-    paste_url = web.paste(wav_bytes, ext="wav")
-    return f"[{model}] {paste_url}"
+    return f"[{model}] {web.paste(wav_bytes, ext='wav')}"
 
 
-@hook.command("aistt", "stt")
-def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
-    """<audio_url> - Transcribe an audio URL via LocalAI Whisper. '.stt list' to list models."""
+def transcribe_audio(bot, text: str) -> str:
+    """Transcribe the audio at a URL via LocalAI Whisper; return the transcript
+    (or an ``Error: ...`` string). ``text`` may be prefixed with a model name.
+    Shared by the ``.stt`` command and the agent's speech_to_text tool."""
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
-        notice(
-            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
-        )
-        return ""
-
+        return "Error: Ollama plugin not configured"
     text = text.strip()
-
     try:
         stt_models = _fetch_stt_models(api_url, api_key)
     except _RateLimited:
@@ -554,36 +536,25 @@ def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
         return f"Error listing STT models: {e}"
     except requests.Timeout:
         return "Error: Request timed out"
-
-    if text.lower() == "list":
-        if not stt_models:
-            return "No STT models detected."
-        return f"Available STT models: {', '.join(stt_models)}"
-
     if not stt_models:
-        return "No STT models detected. Try '.stt list'."
+        return "No STT models detected."
 
     parts = text.split(None, 1)
     if len(parts) == 2 and parts[0] in stt_models:
         model, audio_url = parts[0], parts[1]
     else:
         model, audio_url = stt_models[0], text
-
     audio_url = audio_url.strip()
-    if not (
-        audio_url.startswith("http://") or audio_url.startswith("https://")
-    ):
-        return "Usage: .stt [model] <audio_url>"
+    if not (audio_url.startswith("http://") or audio_url.startswith("https://")):
+        return "Usage: [model] <audio_url>"
 
     try:
         audio_bytes = get_session().get(audio_url, timeout=30).content
     except requests.RequestException as e:
         return f"Error fetching audio: {e}"
-
     headers = {}
     if api_key:
         headers["apikey"] = api_key
-
     try:
         response = get_session().post(
             f"{api_url.rstrip('/')}/v1/audio/transcriptions",
@@ -602,10 +573,53 @@ def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
         transcript = response.json().get("text", "").strip()
     except ValueError:
         return "Error: unexpected response from server"
-
     if not transcript:
         return f"[{model}] (no speech detected)"
     msg = f"[{model}] {transcript}"
     if len(msg) > 400:
         return f"[{model}] {web.paste(transcript, ext='txt')}"
     return msg
+
+
+@hook.command("aiaudio", "tts")
+def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<[voice] text> - Generate speech via LocalAI TTS. '.aiaudio list' to list voices."""
+    api_url, api_key = get_ollama_config(bot)
+    if not api_url:
+        notice(
+            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
+        )
+        return ""
+    if text.strip().lower() == "list":
+        try:
+            tts_models = _fetch_tts_models(api_url, api_key)
+        except _RateLimited:
+            return "Error: server rate-limited enumeration — bot likely needs enterprise API key."
+        except requests.HTTPError as e:
+            return f"Error listing audio models: {e}"
+        except requests.Timeout:
+            return "Error: Request timed out"
+        return f"Available TTS models: {', '.join(tts_models)}" if tts_models else "No TTS models detected."
+    return synthesize_speech(bot, text)
+
+
+@hook.command("aistt", "stt")
+def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
+    """<audio_url> - Transcribe an audio URL via LocalAI Whisper. '.stt list' to list models."""
+    api_url, api_key = get_ollama_config(bot)
+    if not api_url:
+        notice(
+            "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
+        )
+        return ""
+    if text.strip().lower() == "list":
+        try:
+            stt_models = _fetch_stt_models(api_url, api_key)
+        except _RateLimited:
+            return "Error: server rate-limited enumeration — bot likely needs enterprise API key."
+        except requests.HTTPError as e:
+            return f"Error listing STT models: {e}"
+        except requests.Timeout:
+            return "Error: Request timed out"
+        return f"Available STT models: {', '.join(stt_models)}" if stt_models else "No STT models detected."
+    return transcribe_audio(bot, text)

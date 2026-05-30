@@ -78,7 +78,7 @@ async def suno_generate_song(ctx, data):
     chan, network, nick = _reply_target(ctx)
     ids = suno.extract_clip_ids(resp)
     suno.watch_text(url, key, ids, chan=chan, network=network, nick=nick)
-    summary = suno.format_generation(resp)
+    summary = suno.format_generation(resp, url, key)
     if ids:
         summary += f" [ids: {','.join(ids)} — suno_wait_for_song to chain]"
     return summary
@@ -209,7 +209,7 @@ async def suno_job_status(ctx, data):
         resp = await run_in_executor(suno.get_job, url, key, job_id)
     except suno.SunoError as e:
         return f"(error: {e})"
-    return suno.format_generation(resp)
+    return suno.format_generation(resp, url, key)
 
 
 @tool(
