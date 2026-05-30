@@ -105,7 +105,7 @@ def suno_job(text, bot, chan):
     return suno.format_generation(resp, url, key)
 
 
-@hook.command("sunocredits", "sunostatus", autohelp=False)
+@hook.command("sunoballance", "sunocredits", "sunostatus", autohelp=False)
 def suno_credits(bot, chan):
     """- show remaining Suno credits across all accounts."""
     pm = _channel_only(chan)
