@@ -26,12 +26,14 @@ MAX_USER_HISTORY_LENGTH = 10
 MODEL_SIZE_LIMIT_BYTES = 16 * 1024**3
 ALLOWED_MODELS_TTL_S = 300
 IMAGE_DEFAULT_SIZE = "512x512"
-# Usecase flags that mark a model as NOT a pure chat LLM.
+# Usecase flags that mark a model as NOT a pure chat LLM. Embedding models also
+# advertise FLAG_CHAT, so they must be excluded here or they leak into the chat list.
 _NON_CHAT_FLAGS = {
     "FLAG_IMAGE",
     "FLAG_TTS",
     "FLAG_TRANSCRIPT",
     "FLAG_EMBEDDING",
+    "FLAG_EMBEDDINGS",
     "FLAG_RERANK",
 }
 # Inference backends treated as chat-capable LLM runtimes.
@@ -41,6 +43,25 @@ _allowed_cache: dict[str, tuple[float, list[str]]] = {}
 _image_models_cache: dict[str, tuple[float, list[str]]] = {}
 _tts_models_cache: dict[str, tuple[float, list[str]]] = {}
 _stt_models_cache: dict[str, tuple[float, list[str]]] = {}
+_embedding_models_cache: dict[str, tuple[float, list[str]]] = {}
+
+
+def _rag_personas(bot) -> dict:
+    """Optional persona-clone config, read from the (private) bot config so no
+    persona text or personal data lives in this public repo. When a configured chat
+    model is selected, replies are grounded by retrieval over that person's lines
+    held in a LocalAI vector store (embeddings + store + chat all run in LocalAI; the
+    bot only orchestrates). Configure in the bot config as:
+
+        plugins.ollama.rag_personas = {
+          "<chat-model-id>": {
+            "store": "<localai vector store name>",
+            "k": 5,
+            "persona": "<system prompt describing the persona>"
+          }
+        }
+    """
+    return bot.config.get("plugins", {}).get("ollama", {}).get("rag_personas", {})
 
 
 def _model_is_allowed(api_url: str, headers: dict, mid: str) -> bool:
@@ -148,6 +169,63 @@ def _fetch_stt_models(api_url: str, api_key: str | None) -> list[str]:
     )
 
 
+def _fetch_embedding_models(api_url: str, api_key: str | None) -> list[str]:
+    return _fetch_models_by_flag(
+        api_url, api_key, "FLAG_EMBEDDINGS", _embedding_models_cache
+    )
+
+
+def _rag_system_message(
+    api_url: str, api_key: str | None, cfg: dict, query: str
+) -> Message | None:
+    """Retrieve the persona's most relevant real lines from its LocalAI vector store
+    and return a system message that grounds the reply. ``cfg`` is a persona entry
+    from the bot config (store/k/persona). Best-effort: returns None (plain chat) if
+    embeddings/store aren't available."""
+    base = api_url.rstrip("/")
+    headers = {"apikey": api_key} if api_key else {}
+    try:
+        embed_models = _fetch_embedding_models(base, api_key)
+    except (_RateLimited, requests.RequestException):
+        return None
+    if not embed_models:
+        return None
+    try:
+        emb = (
+            get_session()
+            .post(
+                f"{base}/v1/embeddings",
+                headers=headers,
+                json={"model": embed_models[0], "input": query},
+                timeout=30,
+            )
+            .json()["data"][0]["embedding"]
+        )
+        values = (
+            get_session()
+            .post(
+                f"{base}/stores/find",
+                headers=headers,
+                json={"store": cfg["store"], "key": emb, "topk": cfg.get("k", 5)},
+                timeout=15,
+            )
+            .json()
+            .get("values", [])
+        )
+    except (requests.RequestException, ValueError, KeyError, IndexError):
+        return None
+    if not values:
+        return Message(role="system", content=cfg["persona"])
+    facts = "\n".join(f"- {v}" for v in values)
+    return Message(
+        role="system",
+        content=cfg["persona"]
+        + "\n\nFor background, some things you have actually said before - draw on "
+        "them only if relevant, never quote them verbatim:\n"
+        + facts,
+    )
+
+
 def _fetch_allowed_models(api_url: str, api_key: str | None) -> list[str]:
     now = time.monotonic()
     cached = _allowed_cache.get(api_url)
@@ -238,8 +316,14 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
         ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
     )
     history.append(Message(role="user", content=text))
+    messages = list(history)
+    rag_cfg = _rag_personas(bot).get(model)
+    if rag_cfg:
+        rag = _rag_system_message(api_url, api_key, rag_cfg, text)
+        if rag is not None:
+            messages = [rag, *messages]
     try:
-        response = get_completion(api_url, api_key, model, list(history))
+        response = get_completion(api_url, api_key, model, messages)
     except requests.HTTPError as e:
         return f"Error: {e}"
     except requests.Timeout:
