@@ -183,7 +183,7 @@ def build_taxonomy_tree(
 
     tree_lines = []
     for i, (rank, taxon) in enumerate(hierarchy):
-        indent = "    " * (i - 1) + "└── " if i > 0 else ""
+        indent = "    " * (i - 1) + "âââ " if i > 0 else ""
         if taxon is None:
             taxon = f"(unknown {rank})"
         tree_lines.append(indent + bold(taxon))
@@ -192,7 +192,7 @@ def build_taxonomy_tree(
             genus = taxonomy_data.get("genus")
             family = taxonomy_data.get("family")
             related = get_related_species(genus or "?", family or "?")
-            sibling_indent = "    " * i + "├── "
+            sibling_indent = "    " * i + "âââ "
 
             if rank == "family":
                 tree_lines.extend(
@@ -305,10 +305,9 @@ def taxonomy(text: str, reply) -> None:
             reply(f"No taxonomic data found for '{species_name}'")
             return
 
-        for line in build_taxonomy_tree(
+        return list(build_taxonomy_tree(
             taxonomy_data, show_relatives=not simple_mode
-        ):
-            reply(line)
+        ))
 
     except Exception:
         reply(f"Error retrieving taxonomy data for '{species_name}'")
