@@ -20,11 +20,10 @@ from cloudbot.util.web import get_session
 
 
 @hook.command("etree")
-def etymology_tree(nick, text, reply):
+def etymology_tree(text):
     """<word> - retrieves etymolocial tree of <word>"""
-    # pager = CommandPager.from_multiline_string(str(ety.tree(text.strip())))
-    for page in str(ety.tree(text.strip())).split("\n"):
-        reply(page)
+    tree = str(ety.tree(text.strip()))
+    return tree.split("\n") if tree.strip() else None
 
 
 @hook.command("e", "etymology")
