@@ -26,44 +26,24 @@ searchURL = "https://html.duckduckgo.com/html/?q="
 
 
 def request(url, headers=None):
-    # Form request for url.
     request = Request(url)
 
-    # Add headers if supplied, or defaults.
     if headers:
-        # Supplied headers.
         for header in headers:
             request.add_header(header, headers[header])
     else:
-        # Default headers.
         request.add_header("User-Agent", DEFAULT_USER_AGENT)
 
     try:
         response = urlopen(request)
     except HTTPError as e:
-        # e.code, HTTP Error code.
-        #   404
-        # e.msg, HTTP Error message.
-        #   Not Found
-        # e.hdr, HTTP Response headers.
-        #   Content-Type: text/html; charset=UTF-8
-        #   Referrer-Policy: no-referrer
-        #   Content-Length: 1567
-        #   Date: Thu, 01 Apr 2021 04:31:31 GMT
-        #   Connection: close
-        # e.fp, pointer to the http.client.HTTPResponse object.
         return e
 
     return response
 
 
 def makeSoup(html):
-    try:
-        soup = BeautifulSoup(html, "lxml")
-        return soup
-    except Exception as e:
-        print(e)
-        return ""
+    return BeautifulSoup(html, "lxml")
 
 
 def parseLink(link):
@@ -73,31 +53,28 @@ def parseLink(link):
 
 
 def search(query):
-    # Quote the query string.
     query = quote("".join(query))
 
-    # Make search request.
     response = request(f"{searchURL}{query}")
-
-    # Parse response html.
     soup = makeSoup(response)
 
-    # Select the <div id='links'>.
-    searchResults = soup.find("div", match["searchResults"])
-
-    # Parse out each search result from the <div id='links'>
-    searchResults = searchResults.find_all("div", match["result"])
+    # DuckDuckGo serves a bot-challenge page with no results container to
+    # flagged IPs; treat a missing container as an empty result set instead
+    # of dereferencing None.
+    container = soup.find("div", match["searchResults"])
+    if container is None:
+        return []
 
     results = []
-    # Parse descritpion, link from the searchResults list.
-    for result in searchResults:
+    for result in container.find_all("div", match["result"]):
         anch = result.find("a", match["link"])
-        desc = anch.text
+        if anch is None:
+            continue
         link = parseLink(anch["href"])
         url = urlparse(link)
         if "duckduckgo.com" in url.netloc:
             continue
-        results.append({"text": desc, "url": link})
+        results.append({"text": anch.text, "url": link})
 
     return results
 

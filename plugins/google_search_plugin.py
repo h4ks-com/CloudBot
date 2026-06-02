@@ -1,8 +1,41 @@
+import json
 import random
+from urllib.error import HTTPError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from cloudbot import hook
 from cloudbot.util import formatting, http
 from plugins.ddg import search as ddg_search_impl
+
+# Self-hosted SearXNG metasearch instance backing the .g command. Public
+# engines block this server's IP directly, so search is proxied through our
+# own instance instead.
+SEARX_URL = "https://searx.h4ks.com"
+
+
+def searx_search(query):
+    params = urlencode({"q": query, "format": "json", "categories": "general"})
+    request = Request(
+        f"{SEARX_URL}/search?{params}", headers={"User-Agent": "Mozilla/5.0"}
+    )
+
+    try:
+        response = urlopen(request, timeout=15)
+    except HTTPError:
+        return []
+
+    data = json.loads(response.read().decode("utf-8", "replace"))
+
+    results = []
+    for result in data.get("results", []):
+        url = result.get("url")
+        if not url:
+            continue
+        text = result.get("content") or result.get("title") or url
+        results.append({"text": text, "url": url})
+
+    return results
 
 
 def api_get(kind, query):
@@ -62,20 +95,32 @@ def google(text):
 last_results: list[dict[str, str]] = []
 
 
-@hook.command("ddg", "g")
-def ddg_search(text):
-    """<query> - returns the first duckduckgo search result for <query>"""
-    results = ddg_search_impl(text)
-    result = results.pop()
+@hook.command("g")
+def g_search(text):
+    """<query> - returns the first web search result for <query> via SearXNG"""
+    results = searx_search(text)
+    if not results:
+        return "No results found."
     last_results.clear()
     last_results.extend(results)
+    result = last_results.pop(0)
     return f"{ result['text'] }   ---   \x02{result['url']}\x02"
 
 
-@hook.command("ddg_next", "gn")
-def ddg_gn(text):
-    result = last_results.pop()
-    if last_results:
-        return f"{ result['text'] }   ---   \x02{result['url']}\x02"
-    else:
+@hook.command("gn", "ddg_next")
+def g_next(text):
+    """returns the next result from the last .g search"""
+    if not last_results:
         return "No search results left"
+    result = last_results.pop(0)
+    return f"{ result['text'] }   ---   \x02{result['url']}\x02"
+
+
+@hook.command("ddg")
+def ddg_search(text):
+    """<query> - returns the first DuckDuckGo search result for <query>"""
+    results = ddg_search_impl(text)
+    if not results:
+        return "No results found."
+    result = results[0]
+    return f"{ result['text'] }   ---   \x02{result['url']}\x02"
