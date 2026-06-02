@@ -181,6 +181,10 @@ async def mcp_call_raw(event, tool_name: str, args: dict) -> Any:
             timeout=30,
         )
         resp2.raise_for_status()
+        # The MCP server streams SSE with no charset, so requests defaults to
+        # ISO-8859-1 and mangles multibyte UTF-8 (box-drawing chars, accents)
+        # in .text. Pin UTF-8 so file contents round-trip intact.
+        resp2.encoding = "utf-8"
         text = resp2.text
 
         if "data:" in text:
