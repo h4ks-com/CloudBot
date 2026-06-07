@@ -109,6 +109,10 @@
             "api_url": "",
             "api_key": ""
         },
+        "aimedia": {
+            "api_url": "",
+            "api_key": ""
+        },
         "strudel": {
             "api_url": "",
             "api_key": ""

@@ -1,5 +1,4 @@
 import base64
-import logging
 import tempfile
 from typing import Deque
 
@@ -14,12 +13,12 @@ from cloudbot.util.ai_common import (
     truncate_or_paste,
     upload_history,
 )
+from cloudbot.util import aimedia
 from cloudbot.util.web import get_session
 from plugins.huggingface import FileIrcResponseWrapper
 from plugins.ratelimit import Limit, check, record
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
-GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
 GEMINI_TEXT_MODEL = "gemini-2.5-flash"
 
 # Image model — Free tier ~15 RPM / ~500 RPD on flash-image (Mar 2026).
@@ -31,6 +30,13 @@ IMG_LIMITS = [
     Limit(60, IMG_MAX_RPM, "Rate limited. Try again in a minute."),
     Limit(3600, IMG_MAX_RPH, "Hourly limit reached. Try again later."),
     Limit(86400, IMG_MAX_RPD, "Daily Gemini-image cap reached. Resets in 24h."),
+]
+
+# Video — slow and tightly capped.
+VID_BUCKET = "aimedia-video"
+VID_LIMITS = [
+    Limit(60, 1, "One video at a time — wait a minute."),
+    Limit(86400, 12, "Daily video cap reached. Resets in 24h."),
 ]
 
 # Text model — Free tier 10 RPM / 250 RPD on gemini-2.5-flash.
@@ -58,84 +64,12 @@ def _get_api_key():
     return api_key, None
 
 
-def _call_gemini_image(api_key, parts, chan, nick, db):
-    session = get_session()
-    try:
-        response = session.post(
-            GEMINI_BASE + GEMINI_IMAGE_MODEL + ":generateContent",
-            params={"key": api_key},
-            json={
-                "contents": [{"parts": parts}],
-                "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
-            },
-        )
-        response.raise_for_status()
-    except HTTPError as e:
-        return f"Gemini API error: {e.response.status_code} {e.response.reason}"
-    except RequestException as e:
-        return f"Request failed: {e}"
-
-    record(db, IMG_BUCKET)
-    data = response.json()
-    logger = logging.getLogger("cloudbot")
-    candidates = data.get("candidates", [])
-
-    if not candidates:
-        logger.warning("[gemini] No candidates in response: %s", data)
-        if "promptFeedback" in data:
-            feedback = data["promptFeedback"]
-            if feedback.get("blockReason"):
-                return f"Gemini blocked: {feedback['blockReason']}"
-        return "Gemini returned no results. Check logs for details."
-
-    candidate = candidates[0]
-    logger.info(
-        "[gemini] Candidate: %s",
-        {k: v for k, v in candidate.items() if k != "content"},
-    )
-
-    if "finishReason" in candidate:
-        reason = candidate["finishReason"]
-        if reason != "STOP":
-            logger.warning("[gemini] Unusual finish reason: %s", reason)
-            if "finishMessage" in candidate:
-                msg = (
-                    candidate["finishMessage"]
-                    .replace("[send feedback]", "")
-                    .replace(
-                        "(https://ai.google.dev/gemini-api/docs/troubleshooting)",
-                        "",
-                    )
-                    .strip()
-                )
-                return msg
-            if reason in ("SAFETY", "RECITATION", "PROHIBITED_CONTENT"):
-                return f"Gemini refused to generate: {reason}"
-
-    parts = candidate.get("content", {}).get("parts", [])
-    text_parts = []
-
-    for part in parts:
-        if "inlineData" in part:
-            image_bytes = base64.b64decode(part["inlineData"]["data"])
-            mime = part["inlineData"].get("mimeType", "image/png")
-            ext = mime.split("/")[-1]
-            with tempfile.NamedTemporaryFile(suffix=f".{ext}") as f:
-                f.write(image_bytes)
-                f.flush()
-                return FileIrcResponseWrapper.upload_file(f.name, chan or nick)
-        if "text" in part:
-            text_parts.append(part["text"])
-
-    logger.warning(
-        "[gemini] No image in response. Parts: %s",
-        [list(p.keys()) for p in parts],
-    )
-    if text_parts:
-        text = " ".join(text_parts)[:150]
-        return f"Gemini returned text only: {text}..."
-
-    return "Gemini returned no image. Try a different prompt."
+def _upload_image(image_bytes, target):
+    """Write the image to a temp file and upload it to the channel."""
+    with tempfile.NamedTemporaryFile(suffix=".png") as f:
+        f.write(image_bytes)
+        f.flush()
+        return FileIrcResponseWrapper.upload_file(f.name, target)
 
 
 def _fetch_image(url):
@@ -192,57 +126,99 @@ def _call_gemini_text(api_key, history):
 
 @hook.command("gemimg")
 def gemimg_command(text, chan, nick, db):
-    """<prompt> - Generate an image using Google Gemini."""
-    api_key, err = _get_api_key()
-    if err:
-        return err
-
+    """<prompt> - Generate an image with Gemini."""
     prompt = text.strip()
     if not prompt:
         return "Usage: .gemimg <prompt>"
+    try:
+        api_url, key = aimedia.config_from_bot(bot)
+    except aimedia.MediaGenNotConfigured as e:
+        return str(e)
 
     limit_msg = check(db, IMG_BUCKET, IMG_LIMITS)
     if limit_msg:
         return limit_msg
 
-    return _call_gemini_image(api_key, [{"text": prompt}], chan, nick, db)
+    try:
+        images = aimedia.generate_image(api_url, key, prompt)
+    except aimedia.MediaGenError as e:
+        return f"media error: {e}"
+    if not images:
+        return "Gemini returned no image. Try a different prompt."
+    record(db, IMG_BUCKET)
+    return _upload_image(images[0], chan or nick)
 
 
 @hook.command("gemedit")
 def gemedit_command(text, chan, nick, db):
-    """<url> <prompt> - Edit an image using Google Gemini."""
-    api_key, err = _get_api_key()
-    if err:
-        return err
-
+    """<url> <prompt> - Edit an image with Gemini."""
     parts_text = text.strip().split(None, 1)
     if len(parts_text) < 2:
         return "Usage: .gemedit <image_url> <prompt>"
-
-    url, prompt = parts_text
-
-    if not url.startswith(("http://", "https://")):
+    img_url, prompt = parts_text
+    if not img_url.startswith(("http://", "https://")):
         return "First argument must be a URL."
+    try:
+        api_url, key = aimedia.config_from_bot(bot)
+    except aimedia.MediaGenNotConfigured as e:
+        return str(e)
 
     limit_msg = check(db, IMG_BUCKET, IMG_LIMITS)
     if limit_msg:
         return limit_msg
 
-    image_data, mime, err = _fetch_image(url)
+    image_data, _, err = _fetch_image(img_url)
     if err:
         return err
 
-    b64 = base64.b64encode(image_data).decode()
-    return _call_gemini_image(
-        api_key,
-        [
-            {"text": prompt},
-            {"inlineData": {"mimeType": mime, "data": b64}},
-        ],
-        chan,
-        nick,
-        db,
+    try:
+        images = aimedia.edit_image(
+            api_url, key, prompt, base64.b64encode(image_data).decode()
+        )
+    except aimedia.MediaGenError as e:
+        return f"media error: {e}"
+    if not images:
+        return "Gemini returned no image. Try a different prompt."
+    record(db, IMG_BUCKET)
+    return _upload_image(images[0], chan or nick)
+
+
+@hook.command("video")
+def video_command(text, chan, nick, conn, db):
+    """<prompt> - Generate a video from a text prompt."""
+    prompt = text.strip()
+    if not prompt:
+        return "Usage: .video <prompt>"
+    try:
+        api_url, key = aimedia.config_from_bot(bot)
+    except aimedia.MediaGenNotConfigured as e:
+        return str(e)
+
+    limit_msg = check(db, VID_BUCKET, VID_LIMITS)
+    if limit_msg:
+        return limit_msg
+
+    try:
+        job_id = aimedia.submit_video(api_url, key, prompt)
+    except aimedia.MediaGenError as e:
+        return f"media error: {e}"
+    record(db, VID_BUCKET)
+    aimedia.watch_video(
+        api_url, key, job_id, network=conn.name, chan=chan, nick=nick
     )
+    return f"⏳ rendering video (job {job_id}) — I'll post the link here when it's ready (~3 min)."
+
+
+@hook.periodic(15, initial_interval=15)
+def video_watch_tick(bot):
+    """Post finished video links for any submit that has rendered."""
+
+    def post(network, chan, message):
+        conn = bot.connections.get(network)
+        if conn and conn.ready:
+            conn.message(chan, message)
+
+    aimedia.poll_watches(post)
 
 
 @hook.command("gemt", "gai", "gae")
