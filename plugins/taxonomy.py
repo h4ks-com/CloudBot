@@ -302,13 +302,11 @@ def taxonomy(text: str, reply) -> None:
             taxonomy_data = get_taxonomy_from_gbif(species_name)
 
         if not taxonomy_data:
-            reply(f"No taxonomic data found for '{species_name}'")
-            return
+            return [f"No taxonomic data found for '{species_name}'"]
 
-        for line in build_taxonomy_tree(
+        return build_taxonomy_tree(
             taxonomy_data, show_relatives=not simple_mode
-        ):
-            reply(line)
+        )
 
     except Exception:
-        reply(f"Error retrieving taxonomy data for '{species_name}'")
+        return [f"Error retrieving taxonomy data for '{species_name}'"]
