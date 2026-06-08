@@ -294,20 +294,18 @@ def get_taxonomy_from_gbif(species_name: str) -> dict[str, str | None] | None:
 
 
 @hook.command("taxonomy", "tax")
-def taxonomy(text: str, reply) -> None:
+def taxonomy(text: str):
     """<species> [-s|--simple] - retrieves taxonomic classification tree for <species>"""
 
     if not text or not text.strip():
-        reply("Please provide a species name")
-        return
+        return ["Please provide a species name"]
 
     parts = text.strip().split()
     simple_mode = "--simple" in parts or "-s" in parts
     species_name = " ".join(p for p in parts if p not in ["--simple", "-s"])
 
     if not species_name:
-        reply("Please provide a species name")
-        return
+        return ["Please provide a species name"]
 
     try:
         taxonomy_data = None
@@ -322,13 +320,11 @@ def taxonomy(text: str, reply) -> None:
             taxonomy_data = get_taxonomy_from_gbif(species_name)
 
         if not taxonomy_data:
-            reply(f"No taxonomic data found for '{species_name}'")
-            return
+            return [f"No taxonomic data found for '{species_name}'"]
 
-        for line in build_taxonomy_tree(
+        return build_taxonomy_tree(
             taxonomy_data, show_relatives=not simple_mode
-        ):
-            reply(line)
+        )
 
     except Exception:
-        reply(f"Error retrieving taxonomy data for '{species_name}'")
+        return [f"Error retrieving taxonomy data for '{species_name}'"]
