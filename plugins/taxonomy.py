@@ -278,16 +278,14 @@ def taxonomy(text: str):
     """<species> [-s|--simple] - retrieves taxonomic classification tree for <species>"""
 
     if not text or not text.strip():
-        reply("Please provide a species name")
-        return
+        return ["Please provide a species name"]
 
     parts = text.strip().split()
     simple_mode = "--simple" in parts or "-s" in parts
     species_name = " ".join(p for p in parts if p not in ["--simple", "-s"])
 
     if not species_name:
-        reply("Please provide a species name")
-        return
+        return ["Please provide a species name"]
 
     try:
         taxonomy_data = None
