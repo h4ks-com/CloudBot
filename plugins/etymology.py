@@ -22,7 +22,10 @@ from cloudbot.util.web import get_session
 @hook.command("etree")
 def etymology_tree(text):
     """<word> - retrieves etymolocial tree of <word>"""
-    return str(ety.tree(text.strip())).split("\n")
+    tree = ety.tree(text.strip())
+    if not tree:
+        return [f"No etymology tree found for {text} :("]
+    return tree.split("\n")
 
 
 @hook.command("e", "etymology")
