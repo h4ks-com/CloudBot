@@ -117,6 +117,10 @@
             "api_url": "",
             "api_key": ""
         },
+        "hyperframes": {
+            "api_url": "",
+            "api_key": ""
+        },
         "radio": {
             "api_url": "http://localhost:8383",
             "api_token": "",
@@ -244,6 +248,10 @@
         "strudel_agent": {
             "max_turns": 24,
             "timeout_s": 420
+        },
+        "hyperframes_agent": {
+            "max_turns": 40,
+            "timeout_s": 600
         }
     },
     "browserless": {

@@ -6,6 +6,7 @@ from cloudbot.agent.tools import (  # noqa: F401  (side effect: tool registratio
     context7,
     github,
     history,
+    hyperframes,
     memory,
     sketchfab,
     strudel,
