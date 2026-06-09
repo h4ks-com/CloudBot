@@ -9,6 +9,7 @@ The sub-agent module is imported lazily inside the tool body: it imports
 would create a cycle.
 """
 
+from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
 from cloudbot.util import hyperframes
 
@@ -48,3 +49,38 @@ async def create_video(ctx, data):
         return "(error: video creation not configured)"
     except (hyperframes.HyperframesError, SubagentError) as e:
         return f"(error: {e})"
+
+
+@tool(
+    name="video_get_info",
+    description=(
+        "Inspect a YouTube (or other yt-dlp-supported) video without downloading it: "
+        "returns its metadata plus the engagement HEATMAP — the most-replayed moments "
+        "(heatmap_peaks, in seconds). Use to answer whether a video has a heatmap and "
+        "where its peaks are, or to pick the best moment before making a clip. Read-only."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "YouTube URL or 11-character video id.",
+            }
+        },
+        "required": ["url"],
+    },
+)
+async def video_get_info(ctx, data):
+    url = str(data.get("url") or "").strip()
+    if not url:
+        return "(error: url required)"
+    try:
+        api_url, key = hyperframes.config_from_bot(ctx.context.bot)
+    except hyperframes.HyperframesNotConfigured:
+        return "(error: video tools not configured)"
+    text, is_error = await run_in_executor(
+        hyperframes.call_tool, api_url, key, "video_get_info", {"url": url}
+    )
+    if is_error:
+        return f"(error: {text})"
+    return text or "(no info returned)"
