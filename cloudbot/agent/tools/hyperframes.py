@@ -9,9 +9,45 @@ The sub-agent module is imported lazily inside the tool body: it imports
 would create a cycle.
 """
 
+import json
+import re
+import time
+
 from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
 from cloudbot.util import hyperframes
+
+_ANALYZE_ACTIVE = {"queued", "running", "pending", "in_progress", "processing"}
+
+
+def _run_analysis(
+    api_url: str, key: str, args: dict[str, object]
+) -> tuple[str, bool]:
+    """Submit video_analyze_static and block until the async job (download + opencv
+    pass) finishes, returning the final ``(text, is_error)``."""
+    sub, err = hyperframes.call_tool(api_url, key, "video_analyze_static", args)
+    if err:
+        return sub, True
+    match = re.search(r'"job_id"\s*:\s*"([A-Za-z0-9_-]+)"', sub)
+    if not match:
+        return sub, False
+    job_id = match.group(1)
+    deadline = time.monotonic() + 300
+    text = sub
+    while time.monotonic() < deadline:
+        text, err = hyperframes.call_tool(
+            api_url, key, "video_render_status", {"job_id": job_id}
+        )
+        if err:
+            return text, True
+        try:
+            state = str(json.loads(text).get("state", "")).lower()
+        except (ValueError, TypeError):
+            state = ""
+        if state and state not in _ANALYZE_ACTIVE:
+            return text, False
+        time.sleep(3)
+    return text, False
 
 
 @tool(
@@ -84,3 +120,51 @@ async def video_get_info(ctx, data):
     if is_error:
         return f"(error: {text})"
     return text or "(no info returned)"
+
+
+@tool(
+    name="video_analyze_static",
+    description=(
+        "Profile a video for STATIC, structured regions — baked-in subtitles/text, "
+        "watermarks, channel logos — so you know which areas are safe to overlay and which "
+        "to avoid. Returns avoid-region boxes plus a per-cell avoid/clutter grid in the "
+        "source's pixel coordinates. Use to find clear zones for captions/overlays, or to "
+        "answer where a video has on-screen text. Read-only; downloads the video, so it can "
+        "take up to a few minutes."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "Video URL (any yt-dlp source or direct media link).",
+            },
+            "fps": {
+                "type": "number",
+                "description": "Frames sampled per second (default 2).",
+            },
+            "grid": {
+                "type": "integer",
+                "description": "Grid resolution NxN (default 4).",
+            },
+        },
+        "required": ["url"],
+    },
+)
+async def video_analyze_static(ctx, data):
+    url = str(data.get("url") or "").strip()
+    if not url:
+        return "(error: url required)"
+    try:
+        api_url, key = hyperframes.config_from_bot(ctx.context.bot)
+    except hyperframes.HyperframesNotConfigured:
+        return "(error: video tools not configured)"
+    args: dict[str, object] = {"url": url}
+    if data.get("fps") is not None:
+        args["fps"] = data["fps"]
+    if data.get("grid") is not None:
+        args["grid"] = data["grid"]
+    text, is_error = await run_in_executor(_run_analysis, api_url, key, args)
+    if is_error:
+        return f"(error: {text})"
+    return text or "(no analysis returned)"

@@ -16,7 +16,9 @@ output and never taken from the model's prose.
 
 from __future__ import annotations
 
+import json
 import re
+import time
 from datetime import datetime
 from typing import Any
 
@@ -36,19 +38,26 @@ _MP4_RE = re.compile(r"(https?://\S+?\.mp4)")
 _MD_RE = re.compile(r"[*`#]+")
 
 PREAMBLE = (
-    "You are CloudBot's video-creation sub-agent. Produce ONE finished video for "
-    "the user's brief using the video tools, then stop. Renders are asynchronous: "
-    "after calling a render tool you get a job_id — poll video_render_status with "
-    "it until state is done, then report the final MP4 url. Never invent or retype "
-    "a URL; report only the url that came back from a tool. Keep it to a single "
-    "video and avoid needless polling.\n\n"
-    "Templates (terminal/chart/tierlist) and catalog blocks need no HTML. Before "
-    "authoring custom HTML with video_render/video_render_timeline, consult "
-    "video_skill (no arg lists docs; pass a doc path to read one) so the "
-    "composition follows the HyperFrames rules.\n\n"
-    "Final answer: ONE short plain-text caption (a single line, no markdown, no "
-    "emoji, no URLs) describing the video — the bot appends the link itself.\n\n"
+    "You are CloudBot's video-creation sub-agent. Produce ONE finished video for the "
+    "user's brief, then stop.\n\n"
+    "Pick the simplest tool that fits:\n"
+    "- Prefer the ready templates — video_render_terminal, video_render_chart, "
+    "video_render_tierlist — and catalog blocks (video_catalog then video_render_block). "
+    "They need no HTML and are reliable.\n"
+    "- Author raw HTML with video_render / video_render_timeline ONLY when no template "
+    "fits. First read the relevant video_skill docs, then video_lint your HTML and FIX "
+    "every reported error until lint passes — never render HTML that fails lint.\n\n"
+    "Rendering: a render tool returns a job_id. Call video_render_status ONCE with that "
+    "job_id — it blocks until the render finishes and returns the final MP4 url. Do NOT "
+    "poll in a loop. Report only a url that came back from a tool; never invent one.\n\n"
+    "Final answer: ONE short plain-text caption (a single line, no markdown, no emoji, "
+    "no URLs) describing the video — the bot appends the link itself.\n\n"
 )
+
+_STATUS_TOOL = "video_render_status"
+_ACTIVE_STATES = {"queued", "running", "pending", "in_progress", "processing"}
+_STATUS_CAP_S = 540.0
+_STATUS_INTERVAL_S = 4.0
 
 
 def _clean_schema(schema: Any) -> dict[str, Any]:
@@ -71,6 +80,31 @@ def _capture_urls(ctx: dict[str, str], text: str) -> None:
         ctx["video_url"] = mp4.group(1)
 
 
+def _wait_for_job(url: str, key: str, job_id: str) -> tuple[str, bool]:
+    """Poll video_render_status until the job leaves an active state (or the cap is
+    hit), so one agent call covers a whole async render — no per-turn poll loop that
+    burns the agent's turn/time budget while the render takes minutes. Runs in an
+    executor thread; returns the final ``(text, is_error)``."""
+    deadline = time.monotonic() + _STATUS_CAP_S
+    text, is_error = hyperframes.call_tool(
+        url, key, _STATUS_TOOL, {"job_id": job_id}
+    )
+    while time.monotonic() < deadline:
+        if is_error or _MP4_RE.search(text or ""):
+            return text, is_error
+        try:
+            state = str(json.loads(text).get("state", "")).lower()
+        except (ValueError, TypeError):
+            state = ""
+        if state and state not in _ACTIVE_STATES:
+            return text, is_error
+        time.sleep(_STATUS_INTERVAL_S)
+        text, is_error = hyperframes.call_tool(
+            url, key, _STATUS_TOOL, {"job_id": job_id}
+        )
+    return text, is_error
+
+
 def _build_tools(
     url: str, key: str, specs: list[dict[str, Any]]
 ) -> list[FunctionTool]:
@@ -88,9 +122,14 @@ def _build_tools(
             ctx: RunContextWrapper, args_json: str, _name: str = name
         ) -> str:
             args = parse_args(args_json)
-            text, is_error = await run_in_executor(
-                hyperframes.call_tool, url, key, _name, args
-            )
+            if _name == _STATUS_TOOL:
+                text, is_error = await run_in_executor(
+                    _wait_for_job, url, key, str(args.get("job_id") or "")
+                )
+            else:
+                text, is_error = await run_in_executor(
+                    hyperframes.call_tool, url, key, _name, args
+                )
             if not is_error and isinstance(ctx.context, dict):
                 _capture_urls(ctx.context, text)
             return text or "(no result)"
@@ -178,6 +217,8 @@ async def run_hyperframes(bot: Any, prompt: str) -> str:
     url, key = hyperframes.config_from_bot(bot)
     agent = await _get_agent(url, key)
     max_turns, timeout_s = _run_limits(bot)
+    cfg = (bot.config.get("plugins") or {}).get("hyperframes_agent") or {}
+    model = cfg.get("model") or None
     ts = datetime.now().strftime("%H:%M:%S")
     enriched = f"[time: {ts}]\n{prompt}"
     captured: dict[str, str] = {}
@@ -188,6 +229,7 @@ async def run_hyperframes(bot: Any, prompt: str) -> str:
         max_turns=max_turns,
         timeout_s=timeout_s,
         context=captured,
+        model=model,
     )
     return _build_reply(text, captured)
 

@@ -51,6 +51,7 @@ async def run_subagent(
     max_turns: int,
     timeout_s: float,
     context: Any = None,
+    model: str | None = None,
 ) -> str:
     """Run ``agent`` on ``prompt`` and return its final text output.
 
@@ -71,9 +72,16 @@ async def run_subagent(
         try:
             run_cfg = _make_run_config(agent_cfg, bot, backend)
         except (ValueError, KeyError) as e:
-            logger.warning("subagent: cannot build run config for %s: %s", backend, e)
+            logger.warning(
+                "subagent: cannot build run config for %s: %s", backend, e
+            )
             last_err = e
             continue
+        # A sub-agent can pin a different model than .agi (e.g. a strong coding
+        # model for authoring composition HTML). Only the OpenAIProvider backends
+        # resolve the model by name, which is what every non-ollama backend uses.
+        if model:
+            run_cfg.model = model
         try:
             result = await asyncio.wait_for(
                 Runner.run(
@@ -86,10 +94,14 @@ async def run_subagent(
                 timeout=timeout_s,
             )
         except asyncio.TimeoutError as e:
-            logger.warning("subagent: %s timed out after %ss", backend, timeout_s)
+            logger.warning(
+                "subagent: %s timed out after %ss", backend, timeout_s
+            )
             last_err = e
             continue
-        except Exception as e:  # noqa: BLE001 — backend failure must fall through to the next
+        except (
+            Exception
+        ) as e:  # noqa: BLE001 — backend failure must fall through to the next
             logger.warning(
                 "subagent: %s failed: %s: %s", backend, type(e).__name__, e
             )
