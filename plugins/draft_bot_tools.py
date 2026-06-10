@@ -37,6 +37,7 @@ Value encoding: compact JSON -> standard base64 with `=` padding.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -291,10 +292,20 @@ def _send_command_list(conn, to_nick: str, cmds_obj: dict):
     full = json.dumps(cmds_obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     full_b64 = base64.b64encode(full).decode("ascii")
     step = 1500
-    for i in range(0, len(full_b64), step):
-        _send_tagmsg(conn, to_nick,
-                     {"batch": batch_ref, "+draft/bot-cmds": full_b64[i:i+step]})
-    conn.cmd("BATCH", "-" + batch_ref)
+    asyncio.get_event_loop().call_soon(_drain_fragments, conn, to_nick,
+                                       batch_ref, full_b64, step)
+
+
+def _drain_fragments(conn, to_nick: str, batch_ref: str, full_b64: str, step: int,
+                     offset: int = 0):
+    if offset >= len(full_b64):
+        conn.cmd("BATCH", "-" + batch_ref)
+        return
+    _send_tagmsg(conn, to_nick,
+                 {"batch": batch_ref, "+draft/bot-cmds": full_b64[offset:offset+step]})
+    asyncio.get_event_loop().call_later(0.1, _drain_fragments,
+                                        conn, to_nick, batch_ref, full_b64,
+                                        step, offset + step)
 
 
 def _send_cmd_error(conn, to_nick: str, code: str, text: str,
