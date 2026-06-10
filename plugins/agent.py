@@ -1164,8 +1164,7 @@ async def _run_agent(event, prompt: str) -> None:
             name="agent", trigger=trigger_msgid,
             features=["reasoning"],
         )
-        if trigger_msgid:
-            _bt.mark_workflow(event.conn, trigger_msgid, workflow_id)
+        marked = bool(trigger_msgid and _bt.mark_workflow(event.conn, trigger_msgid, workflow_id))
     except Exception:
         logger.exception("agent: failed to start bot-tools workflow")
 
@@ -1191,11 +1190,13 @@ async def _run_agent(event, prompt: str) -> None:
             event.reply("Agent failed: no backends tried")
     finally:
         await stop_typing_for_command(event.conn, target, typing_id)
-        # Close the bot-tools workflow. When triggered via +draft/bot-cmd,
-        # the +draft/bot-tools terminal rides on the reply tags (set up
-        # by mark_workflow above), so this standalone TAGMSG would be
-        # redundant; only emit it for plain text invocations.
-        if workflow_id and not trigger_msgid:
+        # Close the bot-tools workflow. The +draft/bot-tools terminal
+        # rides on the reply's out-tags only when mark_workflow opted in
+        # a pending +draft/bot-cmd invocation. For anything else
+        # (text-typed .agi, or a +draft/bot-cmd that arrived without us
+        # capturing a pending) emit a standalone close TAGMSG so the
+        # workflow widget actually terminates.
+        if workflow_id and not marked:
             try:
                 from plugins import draft_bot_tools as _bt
                 state = "failed" if last_err else "complete"
