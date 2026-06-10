@@ -18,8 +18,11 @@ import asyncio
 import logging
 from typing import Any
 
-from agents import Agent, Runner
+from agents import Agent, RunConfig, Runner
+from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
+from openai import AsyncOpenAI
 
+from cloudbot.agent.common import resolve_config_path
 from plugins.agent import _make_run_config
 
 logger = logging.getLogger("cloudbot")
@@ -43,6 +46,29 @@ def _backends_to_try(agent_cfg: dict[str, Any]) -> list[str]:
     return order
 
 
+def _thinking_off_config(
+    agent_cfg: dict[str, Any], bot: Any, backend: str, model: str
+) -> RunConfig:
+    """RunConfig whose client sends ``thinking={"type": "disabled"}``. The GLM models
+    reason on every call by default, which burns the agent's per-turn budget for no
+    gain on routine tool-driven work. Bearer-auth (OpenAI-compatible) backends only."""
+    b = agent_cfg["backends"][backend]
+    api_key = resolve_config_path(bot, b.get("api_key_config_path", ""))
+    if not api_key:
+        raise ValueError(f"agent backend '{backend}' missing api key")
+    client = AsyncOpenAI(base_url=b["base_url"], api_key=api_key)
+    original = client.chat.completions.create
+
+    async def _create(*args: Any, **kwargs: Any) -> Any:
+        extra = dict(kwargs.get("extra_body") or {})
+        extra["thinking"] = {"type": "disabled"}
+        kwargs["extra_body"] = extra
+        return await original(*args, **kwargs)
+
+    client.chat.completions.create = _create
+    return RunConfig(model=OpenAIChatCompletionsModel(model=model, openai_client=client))
+
+
 async def run_subagent(
     bot: Any,
     *,
@@ -52,6 +78,7 @@ async def run_subagent(
     timeout_s: float,
     context: Any = None,
     model: str | None = None,
+    disable_thinking: bool = False,
 ) -> str:
     """Run ``agent`` on ``prompt`` and return its final text output.
 
@@ -69,19 +96,25 @@ async def run_subagent(
     run_context = context if context is not None else {}
     last_err: BaseException | None = None
     for backend in _backends_to_try(agent_cfg):
+        b = (agent_cfg.get("backends") or {}).get(backend) or {}
+        backend_model = model or b.get("model")
+        thinking_off = disable_thinking and b.get("auth_header") != "x-api-key"
         try:
-            run_cfg = _make_run_config(agent_cfg, bot, backend)
+            # A sub-agent can pin a different model than .agi and turn off the GLM
+            # per-turn reasoning. Both apply only to OpenAIProvider/Bearer backends,
+            # which resolve the model by name (every non-ollama backend).
+            if thinking_off and backend_model:
+                run_cfg = _thinking_off_config(agent_cfg, bot, backend, backend_model)
+            else:
+                run_cfg = _make_run_config(agent_cfg, bot, backend)
+                if model:
+                    run_cfg.model = model
         except (ValueError, KeyError) as e:
             logger.warning(
                 "subagent: cannot build run config for %s: %s", backend, e
             )
             last_err = e
             continue
-        # A sub-agent can pin a different model than .agi (e.g. a strong coding
-        # model for authoring composition HTML). Only the OpenAIProvider backends
-        # resolve the model by name, which is what every non-ollama backend uses.
-        if model:
-            run_cfg.model = model
         try:
             result = await asyncio.wait_for(
                 Runner.run(

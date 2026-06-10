@@ -38,26 +38,62 @@ _MP4_RE = re.compile(r"(https?://\S+?\.mp4)")
 _MD_RE = re.compile(r"[*`#]+")
 
 PREAMBLE = (
-    "You are CloudBot's video-creation sub-agent. Produce ONE finished video for the "
-    "user's brief, then stop.\n\n"
-    "Pick the simplest tool that fits:\n"
-    "- Prefer the ready templates — video_render_terminal, video_render_chart, "
-    "video_render_tierlist — and catalog blocks (video_catalog then video_render_block). "
-    "They need no HTML and are reliable.\n"
-    "- Author raw HTML with video_render / video_render_timeline ONLY when no template "
-    "fits. First read the relevant video_skill docs, then video_lint your HTML and FIX "
-    "every reported error until lint passes — never render HTML that fails lint.\n\n"
-    "Rendering: a render tool returns a job_id. Call video_render_status ONCE with that "
-    "job_id — it blocks until the render finishes and returns the final MP4 url. Do NOT "
-    "poll in a loop. Report only a url that came back from a tool; never invent one.\n\n"
-    "Final answer: ONE short plain-text caption (a single line, no markdown, no emoji, "
-    "no URLs) describing the video — the bot appends the link itself.\n\n"
+    "You are CloudBot's video-editor agent. You edit video with code: you can find "
+    "footage, cut it, loop it, stack clips, and composite text/graphics/animation over "
+    "video, then render one finished MP4. Deliver ONE finished video for the brief, then "
+    "stop.\n\n"
+    "Workflow:\n"
+    "1. Footage — when the brief names a source (a YouTube link, 'the part where he says "
+    "X'), use video_search / video_get_info / video_search_subtitles to find the exact "
+    "window, then download only that window. Skip this for purely generated videos.\n"
+    "2. Edit — chain operations by media_id: each edit returns a new media_id you feed to "
+    "the next step. video_loop repeats a clip; video_caption burns timed text onto a clip. "
+    "Build the clip first, then add text/overlays.\n"
+    "3. Text & composite — to put plain timed subtitles over a clip (e.g. loop a moment and "
+    "talk to the viewer with rotating lines), use video_caption: one fast ffmpeg pass, no "
+    "HTML. Use an HTML composition only for animated or graphic overlays: prefer a ready "
+    "template (video_render_terminal, video_render_chart, video_render_tierlist) or a "
+    "catalog block (video_catalog then video_render_block); author raw HTML with "
+    "video_render / video_render_timeline ONLY when no template fits — read the relevant "
+    "video_skill docs first, then video_lint and fix every ERROR (warnings are fine) until "
+    "lint passes. Never render HTML that fails lint.\n"
+    "4. Render — a render tool returns a job_id. Call video_render_status ONCE with it; it "
+    "blocks until done and returns the MP4 url. Do NOT poll in a loop.\n\n"
+    "Efficiency — you are judged on getting it right in the fewest steps:\n"
+    "- Author the composition ONCE. Do not rewrite it to 'improve' a video that already "
+    "rendered.\n"
+    "- Render ONCE. After you have an MP4 url, you are done — stop, do not re-render.\n"
+    "- This server IS the compositor: there is no external subtitle/caption service. Draw "
+    "text and graphics as HTML over the video yourself.\n"
+    "- Report only a url that a tool returned. NEVER invent or guess a url.\n\n"
+    "When a render tool takes a metadata title/description, write them like a real creator "
+    "posting the video — catchy and human, never a restatement of the brief and never "
+    "addressing the requester by name.\n\n"
+    "Final answer: ONE short, natural caption — a single line, no markdown, no emoji, no "
+    "URLs — the way a person would describe the clip they just made. Don't address the user "
+    "by name, don't say things like 'ready for you', don't sound like an announcer. The bot "
+    "appends the link itself.\n\n"
 )
 
 _STATUS_TOOL = "video_render_status"
 _ACTIVE_STATES = {"queued", "running", "pending", "in_progress", "processing"}
 _STATUS_CAP_S = 540.0
 _STATUS_INTERVAL_S = 4.0
+
+# Tools that submit a chrome render (return a job_id). One finished render answers
+# any brief, so the second one in a run is the model re-authoring/re-rendering to
+# "improve" an already-done video — minutes of wasted work. The guard below admits
+# the first and short-circuits the rest. video_loop is intentionally excluded: it is
+# a cheap ffmpeg edit returning a chainable media_id, not a final render.
+_FINAL_RENDER = {
+    "video_render",
+    "video_render_timeline",
+    "video_render_block",
+    "video_render_terminal",
+    "video_render_chart",
+    "video_render_tierlist",
+}
+_JOB_RE = re.compile(r'"job_id"\s*:\s*"([^"]+)"')
 
 
 def _clean_schema(schema: Any) -> dict[str, Any]:
@@ -122,6 +158,22 @@ def _build_tools(
             ctx: RunContextWrapper, args_json: str, _name: str = name
         ) -> str:
             args = parse_args(args_json)
+            ctxd = ctx.context if isinstance(ctx.context, dict) else None
+            if (
+                _name in _FINAL_RENDER
+                and ctxd is not None
+                and ctxd.get("final_render_submitted")
+            ):
+                done = ctxd.get("video_url")
+                if done:
+                    return (
+                        f"Already rendered: {done}\nSTOP — the video is finished. "
+                        "Do not render again; reply with your one-line caption now."
+                    )
+                return (
+                    "A render was already submitted this run. Call video_render_status "
+                    "with the existing job_id; do not submit another render."
+                )
             if _name == _STATUS_TOOL:
                 text, is_error = await run_in_executor(
                     _wait_for_job, url, key, str(args.get("job_id") or "")
@@ -130,8 +182,10 @@ def _build_tools(
                 text, is_error = await run_in_executor(
                     hyperframes.call_tool, url, key, _name, args
                 )
-            if not is_error and isinstance(ctx.context, dict):
-                _capture_urls(ctx.context, text)
+            if not is_error and ctxd is not None:
+                _capture_urls(ctxd, text)
+                if _name in _FINAL_RENDER and _JOB_RE.search(text or ""):
+                    ctxd["final_render_submitted"] = True
             return text or "(no result)"
 
         tools.append(
@@ -219,6 +273,7 @@ async def run_hyperframes(bot: Any, prompt: str) -> str:
     max_turns, timeout_s = _run_limits(bot)
     cfg = (bot.config.get("plugins") or {}).get("hyperframes_agent") or {}
     model = cfg.get("model") or None
+    disable_thinking = bool(cfg.get("disable_thinking", False))
     ts = datetime.now().strftime("%H:%M:%S")
     enriched = f"[time: {ts}]\n{prompt}"
     captured: dict[str, str] = {}
@@ -230,6 +285,7 @@ async def run_hyperframes(bot: Any, prompt: str) -> str:
         timeout_s=timeout_s,
         context=captured,
         model=model,
+        disable_thinking=disable_thinking,
     )
     return _build_reply(text, captured)
 

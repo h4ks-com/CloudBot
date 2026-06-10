@@ -252,7 +252,8 @@
         "hyperframes_agent": {
             "max_turns": 40,
             "timeout_s": 600,
-            "model": "glm-4.6"
+            "model": "glm-5-turbo",
+            "disable_thinking": false
         }
     },
     "browserless": {
