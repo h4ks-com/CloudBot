@@ -201,10 +201,17 @@ def _command_prefix(conn) -> str:
 
 @hook.irc_raw("001")
 def set_bot_mode(conn):
-    """Set umode +B so servers and clients know we're a bot."""
+    """Mark ourselves as a bot AND make sure we can receive discovery DMs.
+
+    The networks where the obbyircd / obby.world stack runs may set
+    +D (privdeaf) and/or +R (regonlymsg) on every new connection via
+    set::modes-on-connect, which would silently drop incoming
+    +draft/bot-cmds-query TAGMSGs from unauthenticated users. We need
+    those queries, so explicitly clear those modes alongside setting +B.
+    """
     botnick = conn.config.get("nick", "")
     if botnick:
-        conn.cmd("MODE", botnick, "+B")
+        conn.cmd("MODE", botnick, "+B-DR")
 
 
 @hook.irc_raw("JOIN")
