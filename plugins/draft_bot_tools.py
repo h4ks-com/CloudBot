@@ -560,7 +560,7 @@ def _handle_action(conn, event, msg_obj: dict):
 # --------------------------------------------------------------------------
 
 
-_REPLY_TAG = "+reply"
+_REPLY_TAG = "+draft/reply"
 _BOT_TOOLS_TAG = "+draft/bot-tools"
 _CTX_TAG = "+draft/channel-context"
 
