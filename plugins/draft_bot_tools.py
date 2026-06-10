@@ -283,12 +283,17 @@ def _send_command_list(conn, to_nick: str, cmds_obj: dict):
     `draft/bot-cmds` batch so the asker reassembles them in order.
     """
     chunks = _split_for_budget(cmds_obj)
-    # obbyircd rejects BATCH with arbitrary type strings (MULTILINE_INVALID),
-    # so send each chunk as its own TAGMSG. Clients reassemble by treating
-    # successive +draft/bot-cmds tags from the same sender as additive --
-    # which is what the spec implies for multi-message advertising anyway.
-    for chunk in chunks:
-        _send_tagmsg(conn, to_nick, {"+draft/bot-cmds": encode(chunk)})
+    if len(chunks) == 1:
+        _send_tagmsg(conn, to_nick, {"+draft/bot-cmds": encode(chunks[0])})
+        return
+    batch_ref = uuid.uuid4().hex[:8]
+    conn.cmd("BATCH", "+" + batch_ref, "draft/bot-cmds", to_nick)
+    full = json.dumps(cmds_obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    full_b64 = base64.b64encode(full).decode("ascii")
+    step = 3000
+    for i in range(0, len(full_b64), step):
+        _send_tagmsg(conn, to_nick, {"batch": batch_ref, "+draft/bot-cmds": full_b64[i:i+step]})
+    conn.cmd("BATCH", "-" + batch_ref)
 
 
 def _send_cmd_error(conn, to_nick: str, code: str, text: str,
