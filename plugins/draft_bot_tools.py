@@ -207,6 +207,29 @@ def set_bot_mode(conn):
         conn.cmd("MODE", botnick, "+B")
 
 
+@hook.irc_raw("JOIN")
+def advertise_on_join(conn, event):
+    """Nudge existing channel members to re-query our commands.
+
+    The spec's discovery flow is client-driven: on join, a client sends a
+    channel `+draft/bot-cmds-query`; bots reply privately. That works for
+    clients that join AFTER the bot, but pre-existing channel members
+    never know to re-query when a fresh bot arrives. Emitting
+    `+draft/bot-cmds-changed` to the channel as we join tells every
+    capable client to re-query us, surfacing the bot's commands without
+    a manual refresh.
+    """
+    paramlist = event.irc_paramlist or []
+    if not paramlist:
+        return
+    target = paramlist[0]
+    # Only fire for our own joins, not relayed JOINs from other users.
+    if not event.nick or event.nick.casefold() != conn.config.get("nick", "").casefold():
+        return
+    if _channel_target(target):
+        _send_tagmsg(conn, target, {"+draft/bot-cmds-changed": None})
+
+
 # --------------------------------------------------------------------------
 # TAGMSG dispatcher
 # --------------------------------------------------------------------------
