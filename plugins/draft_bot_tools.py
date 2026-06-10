@@ -325,6 +325,29 @@ def _set_pending_invocation(conn, msgid: str, info: dict):
     store[msgid] = info
 
 
+def _consume_pending_by_target(conn, channel_or_nick: str):
+    """Pop the most-recent pending invocation aimed at this target.
+
+    The out-sieve runs in a closure that doesn't have the live invoker
+    nick available (the captured event is the first event the sieve
+    fired for, frozen at that point), so matching on (target, invoker)
+    misses every subsequent invocation. There's never more than ~1
+    pending per target in practice, so matching on target alone -- and
+    taking the freshest entry -- is correct and robust.
+    """
+    store = conn.memory.get("bot_cmds_pending", {})
+    matches = sorted(
+        (msgid for msgid, info in store.items()
+         if info.get("target", "").casefold() == channel_or_nick.casefold()),
+        key=lambda m: store[m].get("ts", 0),
+        reverse=True,
+    )
+    if not matches:
+        return None
+    pending = store.pop(matches[0])
+    return pending
+
+
 def _consume_pending_invocation(conn, channel_or_nick: str, sender_nick: str):
     """Pop the most-recent matching invocation for a channel/nick + invoker.
 
@@ -349,24 +372,20 @@ def _consume_pending_invocation(conn, channel_or_nick: str, sender_nick: str):
 def _inject_legacy_invocation(conn, channel: str, invoker_mask: str,
                               prefix_text: str):
     """Replay a synthesised `:nick!user@host PRIVMSG <chan> :<prefix><cmd>...`
-    line through CloudBot so the normal command pipeline runs.
-
-    CloudBot's IrcClient.parse_line is the entry point that turns a raw
-    line into events and dispatches plugin hooks; reusing it means every
-    existing command works for free.
-    """
+    line through CloudBot so the normal command pipeline runs."""
     line = ":%s PRIVMSG %s :%s" % (invoker_mask, channel, prefix_text)
-    # The IrcClient instance exposes .parse_line on its protocol; the
-    # connection's `data_received`/`handle_message` is the public path
-    # used by core_hooks. Fall back gracefully if the API moves.
-    handle = getattr(conn, "handle_message", None) or getattr(conn, "_handle_line", None)
-    if callable(handle):
-        try:
-            handle(line)
-            return True
-        except Exception:
-            logger.exception("bot-tools: injecting line failed: %r", line)
-    return False
+    protocol = getattr(conn, "_protocol", None)
+    if protocol is None or not hasattr(protocol, "parse_line"):
+        return False
+    try:
+        event = protocol.parse_line(line)
+        import asyncio as _asyncio
+        loop = _asyncio.get_event_loop()
+        loop.create_task(conn.bot.process(event))
+        return True
+    except Exception:
+        logger.exception("bot-tools: injecting line failed: %r", line)
+        return False
 
 
 def _dispatch_invocation(conn, event, invocation: dict, msgid: str, raw_target: str = None):
@@ -603,8 +622,7 @@ async def attach_reply_tags(bot, event, plugin):
     def wrapped_cmd(command, *params, tags=None):
         if command.upper() in ("PRIVMSG", "NOTICE") and len(params) >= 1:
             target = params[0]
-            sender_nick = event.nick if event and event.nick else ""
-            pending = _consume_pending_invocation(conn, target, sender_nick)
+            pending = _consume_pending_by_target(conn, target)
             if pending:
                 merged = dict(tags) if tags else {}
                 for k, v in _reply_tags_for_pending(pending).items():
