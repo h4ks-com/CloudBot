@@ -37,7 +37,6 @@ Value encoding: compact JSON -> standard base64 with `=` padding.
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import logging
@@ -292,20 +291,10 @@ def _send_command_list(conn, to_nick: str, cmds_obj: dict):
     full = json.dumps(cmds_obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     full_b64 = base64.b64encode(full).decode("ascii")
     step = 1500
-    asyncio.get_event_loop().call_soon(_drain_fragments, conn, to_nick,
-                                       batch_ref, full_b64, step)
-
-
-def _drain_fragments(conn, to_nick: str, batch_ref: str, full_b64: str, step: int,
-                     offset: int = 0):
-    if offset >= len(full_b64):
-        conn.cmd("BATCH", "-" + batch_ref)
-        return
-    _send_tagmsg(conn, to_nick,
-                 {"batch": batch_ref, "+draft/bot-cmds": full_b64[offset:offset+step]})
-    asyncio.get_event_loop().call_later(0.25, _drain_fragments,
-                                        conn, to_nick, batch_ref, full_b64,
-                                        step, offset + step)
+    for i in range(0, len(full_b64), step):
+        _send_tagmsg(conn, to_nick,
+                     {"batch": batch_ref, "+draft/bot-cmds": full_b64[i:i+step]})
+    conn.cmd("BATCH", "-" + batch_ref)
 
 
 def _send_cmd_error(conn, to_nick: str, code: str, text: str,
@@ -369,7 +358,7 @@ def _inject_legacy_invocation(conn, channel: str, invoker_mask: str,
     return False
 
 
-def _dispatch_invocation(conn, event, invocation: dict, msgid: str):
+def _dispatch_invocation(conn, event, invocation: dict, msgid: str, raw_target: str = None):
     """Run a +draft/bot-cmd by synthesising a legacy command line.
 
     Then emit the workflow start + remember the invocation so the
@@ -402,7 +391,8 @@ def _dispatch_invocation(conn, event, invocation: dict, msgid: str):
     # (TAGMSG to botnick) and the payload names a channel, that's the
     # `private` context -> reply gets channel-context. If no channel,
     # `pm` context. Otherwise (TAGMSG to a channel) `public`.
-    raw_target = event.target if hasattr(event, "target") else None
+    if raw_target is None:
+        raw_target = getattr(event, "target", None) or getattr(event, "chan", None)
     if raw_target and _is_to_us(conn, raw_target):
         if channel_in_payload:
             context = "private"
@@ -507,7 +497,7 @@ async def handle_tagmsg(conn, event):
                             "+draft/bot-cmd payload is not a JSON object.",
                             invocation_msgid=msgid)
             return
-        _dispatch_invocation(conn, event, invocation, msgid)
+        _dispatch_invocation(conn, event, invocation, msgid, raw_target=target)
 
     # Workflow control: +draft/bot-tools with msg=action targeted at us.
     if "+draft/bot-tools" in tags and _is_to_us(conn, target):
