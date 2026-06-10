@@ -463,6 +463,8 @@ def _dispatch_invocation(conn, event, invocation: dict, msgid: str, raw_target: 
         "msgid": msgid,
         "context": context,
         "channel_context": channel_in_payload if context == "private" else None,
+        "cmd_name": cmd_name,
+        "options": options if isinstance(options, dict) else {},
         # Filled in by mark_workflow() if a plugin opts in to streaming
         # workflow tags on its reply. Otherwise the reply only carries
         # +reply (+ channel-context) and no +draft/bot-tools terminal.
@@ -580,6 +582,13 @@ def _reply_tags_for_pending(pending: dict) -> dict:
         terminal = {"msg": "workflow", "id": pending["workflow_id"],
                     "state": "complete"}
         tags[_BOT_TOOLS_TAG] = encode(terminal)
+    if pending.get("context") == "public" and pending.get("cmd_name"):
+        attribution = {
+            "nick": pending["invoker"],
+            "name": pending["cmd_name"],
+            "options": pending.get("options") or {},
+        }
+        tags["+draft/invoked-by"] = encode(attribution)
     return tags
 
 
