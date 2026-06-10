@@ -449,9 +449,18 @@ def _dispatch_invocation(conn, event, invocation: dict, msgid: str):
 
 @hook.irc_raw("TAGMSG")
 async def handle_tagmsg(conn, event):
-    """Route incoming TAGMSGs to the bot-cmds + bot-tools handlers."""
+    """Route incoming TAGMSGs to the bot-cmds + bot-tools handlers.
+
+    Skip TAGMSGs that arrive as part of a `batch` -- they are chathistory
+    replay (server delivering channel history on join). Without this we
+    would treat every historical +draft/bot-cmds-query in the replay as
+    a live query, fire one reply per query, and drown the connection in
+    a burst that trips even the +B-bumped recvq budget.
+    """
     tags = event.irc_tags or {}
     if not tags:
+        return
+    if "batch" in tags:
         return
 
     paramlist = event.irc_paramlist or []
