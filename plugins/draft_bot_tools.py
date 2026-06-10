@@ -66,7 +66,9 @@ CAPS = [
 
 # Per-spec: ~3000 bytes of JSON keeps the base64-encoded value under the
 # 4094-byte client-tag limit.
-JSON_BUDGET = 3000
+JSON_BUDGET = 2400  # base64 expands ~4/3, so chunk wire size ~ 3200 + tag overhead.
+                    # Stays under both BUFSIZE (512) -- handled by message-tags --
+                    # and the obbyircd pushbot tag-value cap of 4096 chars.
 
 # IRC option types supported. CloudBot commands historically take free
 # text; we expose one `text` string option for every command, capturing
@@ -281,15 +283,12 @@ def _send_command_list(conn, to_nick: str, cmds_obj: dict):
     `draft/bot-cmds` batch so the asker reassembles them in order.
     """
     chunks = _split_for_budget(cmds_obj)
-    if len(chunks) == 1:
-        _send_tagmsg(conn, to_nick, {"+draft/bot-cmds": encode(chunks[0])})
-        return
-    # Batch path
-    batch_ref = uuid.uuid4().hex[:8]
-    conn.cmd("BATCH", "+" + batch_ref, "draft/bot-cmds")
+    # obbyircd rejects BATCH with arbitrary type strings (MULTILINE_INVALID),
+    # so send each chunk as its own TAGMSG. Clients reassemble by treating
+    # successive +draft/bot-cmds tags from the same sender as additive --
+    # which is what the spec implies for multi-message advertising anyway.
     for chunk in chunks:
-        _send_tagmsg(conn, to_nick, {"batch": batch_ref, "+draft/bot-cmds": encode(chunk)})
-    conn.cmd("BATCH", "-" + batch_ref)
+        _send_tagmsg(conn, to_nick, {"+draft/bot-cmds": encode(chunk)})
 
 
 def _send_cmd_error(conn, to_nick: str, code: str, text: str,
