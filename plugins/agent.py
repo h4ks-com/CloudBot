@@ -282,6 +282,45 @@ def _make_run_config(cfg: dict, bot, backend: str) -> RunConfig:
     )
 
 
+def _byte_truncate(text: str, max_bytes: int, suffix: str = "...") -> str:
+    """Truncate *text* so the UTF-8 encoding fits within *max_bytes* bytes.
+
+    The old implementation did raw byte-chopping which could:
+      1. Split multi-byte UTF-8 characters → mojibake / replacement chars
+      2. Cut mid-word → ugly broken fragments like "synergycross-platform interoper"
+
+    This version walks backwards from the byte limit to find the nearest
+    word boundary (space) while also ensuring we never split a UTF-8
+    sequence.  Falls back to hard byte limit only when no space exists
+    (e.g. a single enormous token with no whitespace).
+    """
+    encoded = text.encode("utf-8", "replace")
+    if len(encoded) <= max_bytes:
+        return text
+
+    suffix_bytes = suffix.encode("utf-8")
+    budget = max_bytes - len(suffix_bytes)
+    if budget < 1:
+        # Not even room for the suffix — return just the suffix truncated.
+        return suffix[: max_bytes]
+
+    # Strategy: try to find a word boundary (space) within the budget.
+    # Scan backwards from budget to find last space before the cutoff.
+    cut_at = budget
+    for i in range(budget, max(0, budget - 200), -1):
+        if encoded[i - 1] == 0x20:  # space byte in UTF-8
+            cut_at = i - 1
+            break
+
+    # Now ensure cut_at doesn't land inside a multi-byte UTF-8 sequence.
+    # UTF-8 continuation bytes have the pattern 10xxxxxx (0x80–0xBF).
+    while cut_at > 0 and (encoded[cut_at] & 0xC0) == 0x80:
+        cut_at -= 1
+
+    result = encoded[:cut_at].decode("utf-8", "ignore").rstrip()
+    return result + suffix
+
+
 def _format_answer(text: str, cfg: dict) -> list[str]:
     """Collapse multiline answer into one IRC line. Paste only if it doesn't fit."""
     max_chars = int(cfg.get("reply_max_chars", 420))
