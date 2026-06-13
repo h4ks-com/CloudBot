@@ -25,7 +25,11 @@ def _normalize_url(url: str) -> str:
         "Render a URL in a real headless Chrome and upload a PNG screenshot. "
         "Returns the screenshot URL. Use to see what a page actually looks like — "
         "for visual debugging of web apps you build, checking layout, or inspecting "
-        "rendered third-party content."
+        "rendered third-party content. **Also use as a visual source for create_video**: "
+        "before creating a video about a person/repo/site, screenshot their profile page, "
+        "their best repo's GitHub view, their landing page, etc., and pass those URLs as "
+        "slideshow background sources so the result actually shows real content instead of "
+        "generic stock footage."
     ),
     schema={
         "type": "object",

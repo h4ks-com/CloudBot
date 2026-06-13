@@ -421,10 +421,18 @@ class CloudBot(AbstractBot):
                     base_event=event,
                     cmd_prefix=prefix,
                 )
-                if command in self.plugin_manager.commands:
-                    command_hook = self.plugin_manager.commands[command]
+
+                def dispatch_command(command_hook):
                     command_event = cmd_event(hook=command_hook)
+                    if not command_hook.allow_private and command_event.is_private:
+                        command_event.notice(
+                            "That command works in public channels only, not in private messages."
+                        )
+                        return
                     add_hook(command_hook, command_event)
+
+                if command in self.plugin_manager.commands:
+                    dispatch_command(self.plugin_manager.commands[command])
                     matched_command = True
                 else:
                     potential_matches = []
@@ -438,9 +446,7 @@ class CloudBot(AbstractBot):
                     if potential_matches:
                         matched_command = True
                         if len(potential_matches) == 1:
-                            command_hook = potential_matches[0][1]
-                            command_event = cmd_event(hook=command_hook)
-                            add_hook(command_hook, command_event)
+                            dispatch_command(potential_matches[0][1])
                         else:
                             commands = sorted(
                                 command for command, plugin in potential_matches

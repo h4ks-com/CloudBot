@@ -82,10 +82,13 @@ class Hook:
 class CommandHook(Hook):
     def __init__(self, plugin, cmd_hook):
         auto_help = cmd_hook.kwargs.pop("autohelp", True)
+        allow_private = cmd_hook.kwargs.pop("allow_private", True)
 
         super().__init__("command", plugin, cmd_hook)
 
         self.auto_help = auto_help
+        # When False, the command is rejected in PMs by central dispatch in bot.py.
+        self.allow_private = allow_private
 
         self.name = cmd_hook.main_alias.lower()
         # turn the set into a list

@@ -25,7 +25,7 @@ last_gse_url: dict[tuple[str, str], str] = {}
 SEARCHXNG_URL = "https://searx.h4ks.com"
 
 
-def searx_search(query: str, category: str = "general"):
+def searx_search(query: str, category: str = "general", limit: int = 1):
     base_url = bot.config.get_api_key("searxng_url") or SEARCHXNG_URL
 
     if not base_url:
@@ -37,6 +37,8 @@ def searx_search(query: str, category: str = "general"):
         "q": query,
         "format": "json",
         "categories": category,
+        # Without language=en Bing geo-localizes by the server IP.
+        "language": "en",
     }
 
     try:
@@ -50,33 +52,30 @@ def searx_search(query: str, category: str = "general"):
     if not results:
         return None, "No results found."
 
-    return results[0], None
+    return results[:limit] if limit > 1 else results[0], None
+
+
+def _format_one(result: dict) -> str:
+    url = result.get("url") or ""
+    title = formatting.truncate_str(result.get("title", "No title"), 60)
+    content = (result.get("content") or "").replace("\n", "")
+    content = formatting.truncate_str(content, 120) if content else ""
+    return f'{url} -- \x02{title}\x02: "{content}"' if content else f"{url} -- \x02{title}\x02"
 
 
 @hook.command("gse")
 def gse(text: str, nick: str, chan: str) -> str:
-    """<query> - Returns first search result using SearXNG."""
+    """<query> - Returns the top 3 search results using SearXNG."""
 
-    result, error = searx_search(text, category="general")
+    results, error = searx_search(text, category="general", limit=3)
     if error:
         return error
 
-    url = result.get("url")
-    title = formatting.truncate_str(result.get("title", "No title"), 60)
-    content = result.get("content", "No description available.")
-
-    if content:
-        content = formatting.truncate_str(content.replace("\n", ""), 150)
-    else:
-        content = "No description available."
-
-    if not url:
-        return "No results found."
-
-    # YouTube duration support
-    video_id = get_video_id(url)
+    first = results[0] if isinstance(results, list) else results
+    first_url = first.get("url") or ""
+    video_id = get_video_id(first_url)
     if video_id:
-        last_gse_url[(chan, nick)] = url
+        last_gse_url[(chan, nick)] = first_url
         try:
             client = get_client()
             video_info = get_video_info(client, video_id=video_id)
@@ -85,12 +84,17 @@ def gse(text: str, nick: str, chan: str) -> str:
                 int(duration.total_seconds()), simple=True
             )
             return '{} -- \x02{}\x02: "{}" [YouTube: {}]'.format(
-                url, title, content, length_text
+                first_url,
+                formatting.truncate_str(first.get("title", "No title"), 60),
+                formatting.truncate_str((first.get("content") or "").replace("\n", ""), 120),
+                length_text,
             )
         except Exception:
             pass
 
-    return f'{url} -- \x02{title}\x02: "{content}"'
+    if isinstance(results, list):
+        return " | ".join(_format_one(r) for r in results)
+    return _format_one(results)
 
 
 @hook.command("gseis", "image")

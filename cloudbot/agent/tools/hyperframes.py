@@ -54,10 +54,22 @@ def _run_analysis(
     name="create_video",
     description=(
         "Create a finished video from a natural-language brief using the Hyperframes "
-        "renderer (searches/downloads source clips as needed, composes, renders to MP4). "
-        "Returns a public MP4 URL. Use for any 'make/create a video' request — tier-list "
-        "countdowns, terminal demos, animated charts, or fully custom compositions. "
-        "Renders take a few minutes."
+        "renderer (searches/downloads source clips, composes, renders to MP4). Use for any "
+        "'make/create a video' request — presentations/explainers/slideshows, documentaries, "
+        "montages, tier-list countdowns, terminal demos, animated charts, or fully custom "
+        "compositions. Pass the brief as a clear shape: the most common (text + bg clips + "
+        "music) is a SLIDESHOW, not custom HTML — say so in the prompt with concrete segments "
+        "(e.g. 'slideshow of 15 scenes ~10s each: scene 1 text \"...\", scene 2 text \"...\", "
+        "bg clips from nature/landscape YouTube, soundtrack URL <...>'). When you've gathered "
+        "actual content (real repo names, real facts), write the segment texts INLINE in the "
+        "prompt — don't tell the subagent to 're-fetch' or 'discover' the same data. **For "
+        "real-world visuals (avatar, profile screenshot, repo readme, page rendering), call "
+        "`browser_screenshot` on the relevant URL FIRST, then include the screenshot URL in "
+        "the prompt (e.g. 'use https://.../shot.png as bg for the intro').** The slideshow "
+        "tool accepts images as backgrounds. Renders "
+        "run in the BACKGROUND like Suno: this returns immediately and the finished MP4 (or a "
+        "failure) is posted to the channel automatically when ready. Do NOT wait, do NOT "
+        "invent a URL, and NEVER build a webpage or other substitute — a webpage is not a video."
     ),
     schema={
         "type": "object",
@@ -76,15 +88,21 @@ async def create_video(ctx, data):
         return "(error: prompt required)"
     # Lazy import: plugins.hyperframes → plugins.agent → cloudbot.agent, which
     # eagerly imports this tools package; importing at module load cycles.
-    from cloudbot.agent.subagent import SubagentError
-    from plugins.hyperframes import run_hyperframes
+    from plugins.hyperframes import spawn_video
 
-    try:
-        return await run_hyperframes(ctx.context.bot, prompt)
-    except hyperframes.HyperframesNotConfigured:
-        return "(error: video creation not configured)"
-    except (hyperframes.HyperframesError, SubagentError) as e:
-        return f"(error: {e})"
+    event = ctx.context
+    target = getattr(event, "chan", None) or getattr(event, "nick", None)
+    conn = getattr(event, "conn", None)
+    bot = getattr(event, "bot", None)
+    if not (bot and conn and target):
+        return "(error: no channel context available to post the video)"
+    spawn_video(bot, conn, target, prompt)
+    return (
+        "Video render STARTED in the background — the finished MP4 will be posted to the "
+        "channel automatically in a few minutes (or a failure message if it can't render). "
+        "Tell the user it's rendering and the link will appear here shortly. Do NOT wait, do "
+        "NOT invent a URL, and NEVER build a webpage or any other substitute for the video."
+    )
 
 
 @tool(

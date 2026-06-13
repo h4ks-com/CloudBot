@@ -19,7 +19,9 @@ import requests
 
 from cloudbot.util.web import get_session
 
-TIMEOUT = 120
+# Aligns with the server's Kong upstream timeout: yt-dlp downloads block until
+# done, so a short client timeout would clip an in-progress fetch.
+TIMEOUT = 1800
 
 
 class HyperframesError(Exception):
@@ -45,9 +47,8 @@ def config_from_bot(bot: Any) -> tuple[str, str]:
     return url, key
 
 
-# ── MCP transport ────────────────────────────────────────────────────────────
-# video-mcp's MCP server is stateless, so each call is a single JSON-RPC POST —
-# no initialize handshake or session id. Responses arrive as SSE
+# The MCP server is stateless: each call is a one-shot JSON-RPC POST with no
+# initialize handshake or session id. Responses arrive as SSE
 # ("event: message\ndata: {json}") or plain JSON.
 
 

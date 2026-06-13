@@ -152,7 +152,7 @@ async def run_strudel(bot: Any, prompt: str) -> str:
     return _build_reply(text, captured)
 
 
-@hook.command("strudel", autohelp=False)
+@hook.command("strudel", autohelp=False, allow_private=False)
 async def strudel_command(text, event):
     """<description> - compose and render a short song with Strudel; returns links."""
     if not text:

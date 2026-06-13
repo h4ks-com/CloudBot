@@ -124,7 +124,7 @@ def _call_gemini_text(api_key, history):
     return text, None
 
 
-@hook.command("gemimg")
+@hook.command("gemimg", allow_private=False)
 def gemimg_command(text, chan, nick, db):
     """<prompt> - Generate an image with Gemini."""
     prompt = text.strip()
@@ -149,7 +149,7 @@ def gemimg_command(text, chan, nick, db):
     return _upload_image(images[0], chan or nick)
 
 
-@hook.command("gemedit")
+@hook.command("gemedit", allow_private=False)
 def gemedit_command(text, chan, nick, db):
     """<url> <prompt> - Edit an image with Gemini."""
     parts_text = text.strip().split(None, 1)
@@ -222,7 +222,7 @@ def gemedit_command(text, chan, nick, db):
 #     aimedia.poll_watches(post)
 
 
-@hook.command("gemt", "gai", "gae")
+@hook.command("gemt", "gai", "gae", allow_private=False)
 def gemt_command(text, nick, chan, db):
     """<text> - Chat with Google Gemini's free Flash text model."""
     api_key, err = _get_api_key()

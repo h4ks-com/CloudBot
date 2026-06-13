@@ -16,22 +16,23 @@ output and never taken from the model's prose.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 import time
 from datetime import datetime
 from typing import Any
 
+import requests
 from agents import Agent, FunctionTool, RunContextWrapper
 
 from cloudbot import hook
 from cloudbot.agent.common import parse_args, run_in_executor
 from cloudbot.agent.subagent import SubagentError, run_subagent
 from cloudbot.util import hyperframes
-from cloudbot.util.typing import (
-    start_typing_for_command,
-    stop_typing_for_command,
-)
+
+logger = logging.getLogger("cloudbot")
 
 _URL_RE = re.compile(r"https?://\S+")
 _MP4_RE = re.compile(r"(https?://\S+?\.mp4)")
@@ -59,13 +60,19 @@ PREAMBLE = (
     "lint passes. Never render HTML that fails lint.\n"
     "4. Render — a render tool returns a job_id. Call video_render_status ONCE with it; it "
     "blocks until done and returns the MP4 url. Do NOT poll in a loop.\n\n"
-    "Efficiency — you are judged on getting it right in the fewest steps:\n"
-    "- Author the composition ONCE. Do not rewrite it to 'improve' a video that already "
-    "rendered.\n"
-    "- Render ONCE. After you have an MP4 url, you are done — stop, do not re-render.\n"
-    "- This server IS the compositor: there is no external subtitle/caption service. Draw "
-    "text and graphics as HTML over the video yourself.\n"
-    "- Report only a url that a tool returned. NEVER invent or guess a url.\n\n"
+    "Multi-clip videos — a documentary, montage, compilation, 'put clips together' — are ONE "
+    "video_render_timeline call with several DIFFERENT downloaded clips as segments. Size the "
+    "segments so their count x length roughly hits the requested duration (a ~2-min doc is "
+    "~12-20 segments, NOT one clip), and put narration/music in the timeline's audio array — "
+    "fetch the audio to a media_id with video_download_media first (the audio array takes "
+    "media_ids, not base64). Never answer a multi-clip brief with a single clip or one text "
+    "card.\n\n"
+    "Efficiency & honesty — you are judged on getting it right in the fewest steps:\n"
+    "- Fix a composition BEFORE rendering (video_lint); don't re-render the SAME thing to "
+    "'improve' it afterward.\n"
+    "- video_render_status blocks until done — don't poll in a loop.\n"
+    "- Report only a url a tool returned; NEVER invent a url. And NEVER claim a length, clips, "
+    "or narration you did not actually produce — your final caption must match the real file.\n\n"
     "When a render tool takes a metadata title/description, write them like a real creator "
     "posting the video — catchy and human, never a restatement of the brief and never "
     "addressing the requester by name.\n\n"
@@ -79,21 +86,6 @@ _STATUS_TOOL = "video_render_status"
 _ACTIVE_STATES = {"queued", "running", "pending", "in_progress", "processing"}
 _STATUS_CAP_S = 540.0
 _STATUS_INTERVAL_S = 4.0
-
-# Tools that submit a chrome render (return a job_id). One finished render answers
-# any brief, so the second one in a run is the model re-authoring/re-rendering to
-# "improve" an already-done video — minutes of wasted work. The guard below admits
-# the first and short-circuits the rest. video_loop is intentionally excluded: it is
-# a cheap ffmpeg edit returning a chainable media_id, not a final render.
-_FINAL_RENDER = {
-    "video_render",
-    "video_render_timeline",
-    "video_render_block",
-    "video_render_terminal",
-    "video_render_chart",
-    "video_render_tierlist",
-}
-_JOB_RE = re.compile(r'"job_id"\s*:\s*"([^"]+)"')
 
 
 def _clean_schema(schema: Any) -> dict[str, Any]:
@@ -109,18 +101,16 @@ def _clean_schema(schema: Any) -> dict[str, Any]:
 
 
 def _capture_urls(ctx: dict[str, str], text: str) -> None:
-    """Record the latest MP4 URL seen in a tool result, so the reply uses the
-    exact link the renderer produced instead of the model's retype."""
+    """Capture the latest MP4 URL from a tool result for deterministic reply assembly."""
     mp4 = _MP4_RE.search(text or "")
     if mp4:
         ctx["video_url"] = mp4.group(1)
 
 
 def _wait_for_job(url: str, key: str, job_id: str) -> tuple[str, bool]:
-    """Poll video_render_status until the job leaves an active state (or the cap is
-    hit), so one agent call covers a whole async render — no per-turn poll loop that
-    burns the agent's turn/time budget while the render takes minutes. Runs in an
-    executor thread; returns the final ``(text, is_error)``."""
+    """Block on video_render_status until the job leaves an active state or the cap
+    is hit, so one agent turn covers the whole async render. Runs in an executor
+    thread; returns the final ``(text, is_error)``."""
     deadline = time.monotonic() + _STATUS_CAP_S
     text, is_error = hyperframes.call_tool(
         url, key, _STATUS_TOOL, {"job_id": job_id}
@@ -158,34 +148,21 @@ def _build_tools(
             ctx: RunContextWrapper, args_json: str, _name: str = name
         ) -> str:
             args = parse_args(args_json)
-            ctxd = ctx.context if isinstance(ctx.context, dict) else None
-            if (
-                _name in _FINAL_RENDER
-                and ctxd is not None
-                and ctxd.get("final_render_submitted")
-            ):
-                done = ctxd.get("video_url")
-                if done:
-                    return (
-                        f"Already rendered: {done}\nSTOP — the video is finished. "
-                        "Do not render again; reply with your one-line caption now."
+            # A single tool error must not abort the whole sub-agent run; return the
+            # error as plain text so the model can read it and route around.
+            try:
+                if _name == _STATUS_TOOL:
+                    text, is_error = await run_in_executor(
+                        _wait_for_job, url, key, str(args.get("job_id") or "")
                     )
-                return (
-                    "A render was already submitted this run. Call video_render_status "
-                    "with the existing job_id; do not submit another render."
-                )
-            if _name == _STATUS_TOOL:
-                text, is_error = await run_in_executor(
-                    _wait_for_job, url, key, str(args.get("job_id") or "")
-                )
-            else:
-                text, is_error = await run_in_executor(
-                    hyperframes.call_tool, url, key, _name, args
-                )
-            if not is_error and ctxd is not None:
-                _capture_urls(ctxd, text)
-                if _name in _FINAL_RENDER and _JOB_RE.search(text or ""):
-                    ctxd["final_render_submitted"] = True
+                else:
+                    text, is_error = await run_in_executor(
+                        hyperframes.call_tool, url, key, _name, args
+                    )
+            except hyperframes.HyperframesError as e:
+                return f"(tool error: {e})"
+            if not is_error and isinstance(ctx.context, dict):
+                _capture_urls(ctx.context, text)
             return text or "(no result)"
 
         tools.append(
@@ -240,18 +217,13 @@ async def _get_agent(url: str, key: str) -> Agent:
 
 
 def _run_limits(bot: Any) -> tuple[int, float]:
-    # A video run is search → download → compose → render → poll, so it needs
-    # more turns and a longer ceiling than the audio agents; renders alone take
-    # minutes. Cap so a looping model can't run forever.
     cfg = (bot.config.get("plugins") or {}).get("hyperframes_agent") or {}
     return int(cfg.get("max_turns", 40)), float(cfg.get("timeout_s", 600))
 
 
 def _build_reply(text: str, captured: dict[str, str]) -> str:
-    """One clean IRC line: the model's caption plus the exact MP4 URL the tool
-    produced. Any link the model wrote itself is stripped (models retype URLs and
-    corrupt them); markdown and newlines are flattened so it reads as one line.
-    """
+    """One IRC line: caption plus the captured MP4 URL. Strips any link the model
+    typed itself (only the tool-produced URL is trusted) and flattens markdown."""
     video = captured.get("video_url")
     if not video:
         return text or "(no result)"
@@ -290,24 +262,43 @@ async def run_hyperframes(bot: Any, prompt: str) -> str:
     return _build_reply(text, captured)
 
 
-@hook.command("video", autohelp=False)
+_bg_tasks: set[asyncio.Task[None]] = set()
+
+_RENDER_TIMEOUT_S = 2700.0
+
+
+def _spawn(coro: Any) -> None:
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+async def _post_video(bot: Any, conn: Any, target: str, prompt: str) -> None:
+    try:
+        answer = await asyncio.wait_for(run_hyperframes(bot, prompt), timeout=_RENDER_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        answer = "Video failed: render timed out."
+    except hyperframes.HyperframesNotConfigured:
+        answer = "Video creation not configured."
+    except (hyperframes.HyperframesError, SubagentError) as e:
+        answer = f"Video failed: {e}"
+    except requests.RequestException as e:
+        answer = f"Video failed: video-mcp unreachable ({e.__class__.__name__})"
+    except Exception:
+        logger.exception("hyperframes: unexpected error in _post_video")
+        answer = "Video failed: unexpected error (see bot logs)"
+    conn.message(target, answer)
+
+
+def spawn_video(bot: Any, conn: Any, target: str, prompt: str) -> None:
+    _spawn(_post_video(bot, conn, target, prompt))
+
+
+@hook.command("video", autohelp=False, allow_private=False)
 async def video_command(text, event):
-    """<brief> - create a video for the brief via the Hyperframes renderer; returns an MP4 link."""
+    """<brief> - create a video; renders in the background and posts the MP4 link here when ready."""
     if not text:
         event.reply("usage: .video <what the video should be>")
         return
-    event.reply("Creating video — this can take a few minutes...")
-    typing_id = id(event)
-    target = event.chan or event.nick
-    await start_typing_for_command(event.conn, target, typing_id)
-    try:
-        answer = await run_hyperframes(event.bot, text)
-    except hyperframes.HyperframesNotConfigured:
-        event.reply("Video creation not configured.")
-        return
-    except (hyperframes.HyperframesError, SubagentError) as e:
-        event.reply(f"Video agent failed: {e}")
-        return
-    finally:
-        await stop_typing_for_command(event.conn, target, typing_id)
-    event.reply(answer)
+    event.reply("🎬 Working on your video — I'll post it here when it's ready (a few minutes).")
+    spawn_video(event.bot, event.conn, event.chan, text)

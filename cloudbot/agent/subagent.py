@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
-from agents import Agent, RunConfig, Runner
+from agents import Agent, RunConfig, RunHooks, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 
@@ -37,6 +38,39 @@ def agent_config(bot: Any) -> dict[str, Any]:
     return (bot.config.get("plugins") or {}).get("agent") or {}
 
 
+class _SubagentProfiler(RunHooks):
+    def __init__(self, backend: str, agent_name: str):
+        self.backend = backend
+        self.agent_name = agent_name
+        self.t0 = time.monotonic()
+        self.last_event = self.t0
+        self.tool_count = 0
+
+    def _emit(self, kind: str, name: str, extra: str) -> None:
+        now = time.monotonic()
+        elapsed = now - self.t0
+        since_last = now - self.last_event
+        self.last_event = now
+        logger.info(
+            "[SUBAGENT_PROF] backend=%s agent=%s t+%6.1fs (+%.1fs) %s tool=%s %s",
+            self.backend,
+            self.agent_name,
+            elapsed,
+            since_last,
+            kind,
+            name,
+            extra,
+        )
+
+    async def on_tool_start(self, ctx, agent, tool):
+        self.tool_count += 1
+        self._emit("START", tool.name, f"#{self.tool_count}")
+
+    async def on_tool_end(self, ctx, agent, tool, result):
+        size = len(str(result)) if result is not None else 0
+        self._emit("END", tool.name, f"result={size}B")
+
+
 def _backends_to_try(agent_cfg: dict[str, Any]) -> list[str]:
     backend = agent_cfg.get("backend", "z_ai")
     fallback = agent_cfg.get("fallback_backend")
@@ -46,26 +80,34 @@ def _backends_to_try(agent_cfg: dict[str, Any]) -> list[str]:
     return order
 
 
-def _thinking_off_config(
-    agent_cfg: dict[str, Any], bot: Any, backend: str, model: str
+def _bound_model_config(
+    agent_cfg: dict[str, Any],
+    bot: Any,
+    backend: str,
+    model: str,
+    *,
+    thinking_off: bool,
 ) -> RunConfig:
-    """RunConfig whose client sends ``thinking={"type": "disabled"}``. The GLM models
-    reason on every call by default, which burns the agent's per-turn budget for no
-    gain on routine tool-driven work. Bearer-auth (OpenAI-compatible) backends only."""
+    """Bind ``model`` to the backend's own OpenAI-compatible client so a sub-agent's
+    model override reaches that backend (a bare ``RunConfig.model`` string routes to the
+    SDK's default OpenAI endpoint instead). When ``thinking_off`` is set the client also
+    sends ``thinking={"type": "disabled"}`` to skip GLM's per-turn reasoning.
+    Bearer-auth (OpenAI-compatible) backends only."""
     b = agent_cfg["backends"][backend]
     api_key = resolve_config_path(bot, b.get("api_key_config_path", ""))
     if not api_key:
         raise ValueError(f"agent backend '{backend}' missing api key")
     client = AsyncOpenAI(base_url=b["base_url"], api_key=api_key)
-    original = client.chat.completions.create
+    if thinking_off:
+        original = client.chat.completions.create
 
-    async def _create(*args: Any, **kwargs: Any) -> Any:
-        extra = dict(kwargs.get("extra_body") or {})
-        extra["thinking"] = {"type": "disabled"}
-        kwargs["extra_body"] = extra
-        return await original(*args, **kwargs)
+        async def _create(*args: Any, **kwargs: Any) -> Any:
+            extra = dict(kwargs.get("extra_body") or {})
+            extra["thinking"] = {"type": "disabled"}
+            kwargs["extra_body"] = extra
+            return await original(*args, **kwargs)
 
-    client.chat.completions.create = _create
+        client.chat.completions.create = _create  # type: ignore[method-assign]
     return RunConfig(model=OpenAIChatCompletionsModel(model=model, openai_client=client))
 
 
@@ -95,26 +137,30 @@ async def run_subagent(
 
     run_context = context if context is not None else {}
     last_err: BaseException | None = None
-    for backend in _backends_to_try(agent_cfg):
+    for index, backend in enumerate(_backends_to_try(agent_cfg)):
         b = (agent_cfg.get("backends") or {}).get(backend) or {}
-        backend_model = model or b.get("model")
-        thinking_off = disable_thinking and b.get("auth_header") != "x-api-key"
+        # Model override applies only to the primary backend's provider; a different-provider
+        # fallback resolves its own configured model.
+        override = model if index == 0 else None
+        backend_model = override or b.get("model")
+        bearer = b.get("auth_header") != "x-api-key"
+        thinking_off = disable_thinking and bearer
         try:
-            # A sub-agent can pin a different model than .agi and turn off the GLM
-            # per-turn reasoning. Both apply only to OpenAIProvider/Bearer backends,
-            # which resolve the model by name (every non-ollama backend).
-            if thinking_off and backend_model:
-                run_cfg = _thinking_off_config(agent_cfg, bot, backend, backend_model)
+            # Bearer backends with an override or thinking-off need a bound client;
+            # x-api-key backends (ollama) keep their configured model via _make_run_config.
+            if bearer and backend_model and (thinking_off or override):
+                run_cfg = _bound_model_config(
+                    agent_cfg, bot, backend, backend_model, thinking_off=thinking_off
+                )
             else:
                 run_cfg = _make_run_config(agent_cfg, bot, backend)
-                if model:
-                    run_cfg.model = model
         except (ValueError, KeyError) as e:
             logger.warning(
                 "subagent: cannot build run config for %s: %s", backend, e
             )
             last_err = e
             continue
+        profiler = _SubagentProfiler(backend, agent.name)
         try:
             result = await asyncio.wait_for(
                 Runner.run(
@@ -123,6 +169,7 @@ async def run_subagent(
                     context=run_context,
                     run_config=run_cfg,
                     max_turns=max_turns,
+                    hooks=profiler,
                 ),
                 timeout=timeout_s,
             )
