@@ -1,5 +1,6 @@
 """Web fetching, HTML app deployment, and markdown paste rendering tools."""
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -150,3 +151,74 @@ async def paste_markdown(ctx, data):
         return url
     except (requests.RequestException, OSError, ValueError, RuntimeError) as e:
         return f"(error uploading: {e})"
+
+
+def _fetch_excerpt(url: str, limit: int) -> tuple[str, str]:
+    """MarkItDown extracts text from a URL; returns (text, error). Runs in a thread."""
+    try:
+        result = _md.convert(url)
+        text = (result.text_content or "").strip()
+    except (requests.RequestException, OSError, ValueError, RuntimeError) as e:
+        return "", f"(fetch failed: {e})"
+    if not text:
+        return "", "(no text extracted)"
+    return text[:limit], ""
+
+
+@tool(
+    name="web_research",
+    description=(
+        "Parallel web research: ONE call runs a SearXNG search, fetches the top results "
+        "concurrently, and returns their excerpts with source URLs — far cheaper than "
+        "chaining .g + multiple web_fetch calls. Use whenever you need to gather info on a "
+        "topic (people, projects, events, concepts) before building anything. Returns "
+        "markdown with one section per source."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query."},
+            "depth": {
+                "type": "integer",
+                "description": "Number of pages to read in parallel (1-6, default 3).",
+            },
+            "excerpt_chars": {
+                "type": "integer",
+                "description": "Max characters extracted per source (default 1500).",
+            },
+        },
+        "required": ["query"],
+    },
+)
+async def web_research(ctx, data):  # noqa: ARG001
+    query = str(data.get("query") or "").strip()
+    if not query:
+        return "(error: query required)"
+    depth = max(1, min(6, int(data.get("depth") or 3)))
+    limit = max(200, min(4000, int(data.get("excerpt_chars") or 1500)))
+
+    # Lazy import: the plugin module has @hook.command side effects on import; deferring it
+    # keeps this tool module load-order-independent.
+    from plugins.google_search_plugin import searx_search
+
+    results = await run_in_executor(searx_search, query)
+    if not results:
+        return f"(no search results for: {query})"
+
+    targets = results[:depth]
+    fetches = [run_in_executor(_fetch_excerpt, r["url"], limit) for r in targets]
+    excerpts = await asyncio.gather(*fetches, return_exceptions=False)
+
+    sections = []
+    for r, (text, err) in zip(targets, excerpts, strict=False):
+        title = r.get("title") or r["url"]
+        body = text or err or "(empty)"
+        sections.append(f"## {title}\n{r['url']}\n\n{body}")
+
+    more = results[depth:depth + 5]
+    if more:
+        sections.append(
+            "## See also\n"
+            + "\n".join(f"- {r.get('title') or r['url']}: {r['url']}" for r in more)
+        )
+    return "\n\n".join(sections)

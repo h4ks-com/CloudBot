@@ -373,6 +373,10 @@ DEFAULT_INCLUDE = frozenset(
         "skt",
         "zombs",
     }
+) | frozenset(
+    # Media-generation commands the agent composes into videos: narration audio (.tts returns
+    # a WAV url), transcription (.stt), and image generation/editing (gemimg/gemedit/gemt).
+    {"tts", "stt", "gemimg", "gemedit", "gemt"}
 )
 
 
@@ -1371,18 +1375,10 @@ def _init_agent_memory(bot):
         logger.exception("agent: memory init failed")
 
 
-@hook.command("ask", "agent", "agi", autohelp=False)
+@hook.command("ask", "agent", "agi", autohelp=False, allow_private=False)
 async def agent_command(text, event):
     """<prompt> - ask the bot in natural language; uses any available tool."""
     if not text:
         event.reply("usage: .ask <natural language prompt>")
-        return
-    # Public channels only — IRC channels start with #/&/+/!. Private queries
-    # have event.chan equal to the user's nick.
-    chan = getattr(event, "chan", "") or ""
-    if not chan.startswith(("#", "&", "+", "!")) or chan == event.nick:
-        event.reply(
-            "Agent only available in public channels, not private messages."
-        )
         return
     await _run_agent(event, text)

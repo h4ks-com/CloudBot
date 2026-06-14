@@ -14,8 +14,11 @@ from plugins.ddg import search as ddg_search_impl
 SEARX_URL = "https://searx.h4ks.com"
 
 
-def searx_search(query):
-    params = urlencode({"q": query, "format": "json", "categories": "general"})
+def searx_search(query, language="en"):
+    # Without language=en Bing geo-localizes by the server IP.
+    params = urlencode(
+        {"q": query, "format": "json", "categories": "general", "language": language}
+    )
     request = Request(
         f"{SEARX_URL}/search?{params}", headers={"User-Agent": "Mozilla/5.0"}
     )
@@ -32,8 +35,9 @@ def searx_search(query):
         url = result.get("url")
         if not url:
             continue
-        text = result.get("content") or result.get("title") or url
-        results.append({"text": text, "url": url})
+        title = result.get("title") or url
+        content = result.get("content") or ""
+        results.append({"title": title, "content": content, "url": url, "text": content or title})
 
     return results
 
@@ -97,17 +101,17 @@ last_results: list[dict[str, str]] = []
 
 @hook.command("g")
 def g_search(text):
-    """<query> - returns the first web search result for <query> via SearXNG"""
+    """<query> - returns the top web search results for <query> via SearXNG"""
     results = searx_search(text)
     if not results:
         return "No results found."
     last_results.clear()
     last_results.extend(results)
-    result = last_results.pop(0)
-    return f"{ result['text'] }   ---   \x02{result['url']}\x02"
+    top = [last_results.pop(0) for _ in range(min(3, len(last_results)))]
+    return " | ".join(f"{r['text'][:120]} \x02{r['url']}\x02" for r in top)
 
 
-@hook.command("gn", "ddg_next")
+@hook.command("gn", "ddg_next", autohelp=False)
 def g_next(text):
     """returns the next result from the last .g search"""
     if not last_results:

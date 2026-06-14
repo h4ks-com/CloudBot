@@ -124,6 +124,15 @@ class Event(Mapping[str, Any]):
             self.irc_paramlist = irc_paramlist
             self.irc_ctcp_text = irc_ctcp_text
 
+    @property
+    def is_private(self) -> bool:
+        """True when this event is a private message rather than a public channel.
+        In a PM the target is the bot, so ``chan`` is either unset or not channel-prefixed."""
+        return (
+            not self.chan
+            or not self.chan.startswith(("#", "&", "+", "!", "$", "^"))
+        )
+
     def __len__(self) -> int:
         return len(self.__dict__)
 

@@ -12,7 +12,9 @@ import ast
 import json
 import logging
 
-from cloudbot.agent.common import fetch_github_username, split_repo
+import requests
+
+from cloudbot.agent.common import fetch_github_username, run_in_executor, split_repo
 from cloudbot.agent.github_client import (
     STALE_SHA_PATTERN,
     bump_budget,
@@ -911,3 +913,60 @@ async def create_github_issue(ctx, data):
     if isinstance(assignees, list) and assignees:
         args["assignees"] = [str(x) for x in assignees]
     return await mcp_call(ctx.context, "issue_write", args)
+
+
+def _fetch_user_repos(username: str, count: int) -> str:
+    # Public REST API: unauthenticated, faster than MCP/web-search.
+    # Sorted by recent push so abandoned forks rank last.
+    url = f"https://api.github.com/users/{username}/repos"
+    response = requests.get(
+        url,
+        params={"per_page": min(count, 30), "sort": "pushed"},
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "CloudBot"},
+        timeout=15,
+    )
+    if response.status_code == 404:
+        return f"(user '{username}' not found)"
+    if response.status_code != 200:
+        return f"(github error {response.status_code}: {response.text[:200]})"
+    repos = response.json()
+    if not repos:
+        return f"(user '{username}' has no public repos)"
+    lines = [f"# {username} — {len(repos)} public repos (sorted by recent activity)\n"]
+    for r in repos:
+        desc = (r.get("description") or "").strip()
+        lang = r.get("language") or "—"
+        stars = r.get("stargazers_count", 0)
+        lines.append(
+            f"- **{r['name']}** ({lang}, ⭐{stars}) — {desc}\n  {r['html_url']}"
+        )
+    return "\n".join(lines)
+
+
+@tool(
+    name="list_github_user_repos",
+    description=(
+        "List a GitHub user's public repos (name, language, stars, description, URL), "
+        "sorted by most recent push. Use whenever the user names a GitHub handle or asks "
+        "'what does X work on / X's projects' — far faster and cleaner than a web search."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "username": {"type": "string", "description": "GitHub username/handle."},
+            "count": {
+                "type": "integer",
+                "description": "How many repos to list (1-30, default 15).",
+            },
+        },
+        "required": ["username"],
+    },
+    is_github=True,
+    wrap_errors=True,
+)
+async def list_github_user_repos(ctx, data):  # noqa: ARG001
+    username = str(data.get("username") or "").strip().lstrip("@")
+    if not username:
+        return "(error: username required)"
+    count = max(1, min(30, int(data.get("count") or 15)))
+    return await run_in_executor(_fetch_user_repos, username, count)
