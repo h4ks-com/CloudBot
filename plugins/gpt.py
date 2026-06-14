@@ -469,7 +469,8 @@ def gpredict_command(
     except requests.HTTPError as e:
         return f"Error: {e}"
 
-    return f"<{target_nick}> {formatting.truncate_str(response, 350)}"
+    lines = [f"<{target_nick}> {line}" for line in response.split("\n")]
+    return lines
 
 
 def edit_wiki(
