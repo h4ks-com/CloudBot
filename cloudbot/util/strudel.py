@@ -74,7 +74,12 @@ def mcp_request(
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         },
-        json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}},
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params or {},
+        },
         timeout=TIMEOUT,
     )
     resp.raise_for_status()
@@ -92,11 +97,19 @@ def list_tools(url: str, key: str) -> list[dict[str, Any]]:
     return mcp_request(url, key, "tools/list").get("tools", [])
 
 
-def call_tool(url: str, key: str, name: str, arguments: dict[str, Any]) -> tuple[str, bool]:
+def call_tool(
+    url: str, key: str, name: str, arguments: dict[str, Any]
+) -> tuple[str, bool]:
     """Call an MCP tool; return ``(text, is_error)`` — the concatenated text
     content blocks of the result."""
-    res = mcp_request(url, key, "tools/call", {"name": name, "arguments": arguments})
-    parts = [c.get("text", "") for c in res.get("content", []) if c.get("type") == "text"]
+    res = mcp_request(
+        url, key, "tools/call", {"name": name, "arguments": arguments}
+    )
+    parts = [
+        c.get("text", "")
+        for c in res.get("content", [])
+        if c.get("type") == "text"
+    ]
     return "\n".join(p for p in parts if p), bool(res.get("isError"))
 
 

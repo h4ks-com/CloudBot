@@ -59,7 +59,7 @@ def _run_analysis(
         "montages, tier-list countdowns, terminal demos, animated charts, or fully custom "
         "compositions. Pass the brief as a clear shape: the most common (text + bg clips + "
         "music) is a SLIDESHOW, not custom HTML — say so in the prompt with concrete segments "
-        "(e.g. 'slideshow of 15 scenes ~10s each: scene 1 text \"...\", scene 2 text \"...\", "
+        '(e.g. \'slideshow of 15 scenes ~10s each: scene 1 text "...", scene 2 text "...", '
         "bg clips from nature/landscape YouTube, soundtrack URL <...>'). When you've gathered "
         "actual content (real repo names, real facts), write the segment texts INLINE in the "
         "prompt — don't tell the subagent to 're-fetch' or 'discover' the same data. **For "

@@ -102,7 +102,11 @@ def test_build_command_list_filters_truncates_and_falls_back():
     result = bot_cmds.build_command_list(bot, ".")
 
     assert result["prefix"] == "."
-    assert [c["name"] for c in result["commands"]] == ["weather", "long", "nodoc"]
+    assert [c["name"] for c in result["commands"]] == [
+        "weather",
+        "long",
+        "nodoc",
+    ]
     by_name = {c["name"]: c for c in result["commands"]}
     assert by_name["long"]["description"].endswith("...")
     assert len(by_name["long"]["description"]) <= 100
@@ -131,7 +135,12 @@ def test_consume_pending_takes_freshest_then_pops():
 
 def test_reply_tags_public_carry_invoked_by():
     tags = bot_cmds._reply_tags_for_pending(
-        pending(context="public", invoker="alice", cmd_name="weather", options={"text": "NY"})
+        pending(
+            context="public",
+            invoker="alice",
+            cmd_name="weather",
+            options={"text": "NY"},
+        )
     )
     assert tags["+draft/reply"] == "mid"
     assert "+draft/channel-context" not in tags
@@ -213,7 +222,13 @@ def test_emit_workflow_encodes_payload():
 def test_emit_step_truncates_oversized_content_to_fit_budget():
     conn = MagicMock()
     bot_cmds.emit_step(
-        conn, "#chan", "wf1", "s1", "tool-result", "complete", content="x" * 5000
+        conn,
+        "#chan",
+        "wf1",
+        "s1",
+        "tool-result",
+        "complete",
+        content="x" * 5000,
     )
     _, tags = conn.tagmsg.call_args.args
     step = bot_cmds.decode(tags["+draft/bot-tools"])

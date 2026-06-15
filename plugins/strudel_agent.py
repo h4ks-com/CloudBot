@@ -27,7 +27,10 @@ from cloudbot import hook
 from cloudbot.agent.common import parse_args, run_in_executor
 from cloudbot.agent.subagent import SubagentError, run_subagent
 from cloudbot.util import strudel, web
-from cloudbot.util.typing import start_typing_for_command, stop_typing_for_command
+from cloudbot.util.typing import (
+    start_typing_for_command,
+    stop_typing_for_command,
+)
 
 _URL_RE = re.compile(r"https?://\S+")
 _AUDIO_RE = re.compile(r"audio_url:\s*(\S+)")
@@ -35,7 +38,8 @@ _AUDIO_RE = re.compile(r"audio_url:\s*(\S+)")
 
 def _clean_schema(schema: Any) -> dict[str, Any]:
     """An MCP inputSchema as a FunctionTool params schema — drop the $schema key
-    the JSON-Schema generator adds, which the SDK's tool schema doesn't expect."""
+    the JSON-Schema generator adds, which the SDK's tool schema doesn't expect.
+    """
     if not isinstance(schema, dict):
         return {"type": "object", "properties": {}}
     return {k: v for k, v in schema.items() if k != "$schema"} or {
@@ -44,7 +48,9 @@ def _clean_schema(schema: Any) -> dict[str, Any]:
     }
 
 
-def _build_tools(url: str, key: str, specs: list[dict[str, Any]]) -> list[FunctionTool]:
+def _build_tools(
+    url: str, key: str, specs: list[dict[str, Any]]
+) -> list[FunctionTool]:
     """Bridge each tool rendel's MCP server exposes to a FunctionTool. Generic, so
     new rendel tools appear automatically — except strudel_render, whose exact
     audio URL is captured from the result (the model is never trusted to repeat
@@ -55,10 +61,18 @@ def _build_tools(url: str, key: str, specs: list[dict[str, Any]]) -> list[Functi
         if not name:
             continue
 
-        async def on_invoke(ctx: RunContextWrapper, args_json: str, _name: str = name) -> str:
+        async def on_invoke(
+            ctx: RunContextWrapper, args_json: str, _name: str = name
+        ) -> str:
             args = parse_args(args_json)
-            text, is_error = await run_in_executor(strudel.call_tool, url, key, _name, args)
-            if _name == "strudel_render" and not is_error and isinstance(ctx.context, dict):
+            text, is_error = await run_in_executor(
+                strudel.call_tool, url, key, _name, args
+            )
+            if (
+                _name == "strudel_render"
+                and not is_error
+                and isinstance(ctx.context, dict)
+            ):
                 ctx.context["code"] = args.get("code")
                 match = _AUDIO_RE.search(text)
                 if match:
@@ -87,11 +101,17 @@ async def _get_agent(url: str, key: str) -> Agent:
     nor the tool definitions are duplicated here — rendel owns them."""
     if _AgentState.agent is not None and _AgentState.api == (url, key):
         return _AgentState.agent
-    instructions = await run_in_executor(strudel.get_prompt_text, url, key, "compose_strudel")
+    instructions = await run_in_executor(
+        strudel.get_prompt_text, url, key, "compose_strudel"
+    )
     if not instructions:
         raise strudel.StrudelError("rendel compose_strudel prompt is empty")
     specs = await run_in_executor(strudel.list_tools, url, key)
-    agent = Agent(name="StrudelComposer", instructions=instructions, tools=_build_tools(url, key, specs))
+    agent = Agent(
+        name="StrudelComposer",
+        instructions=instructions,
+        tools=_build_tools(url, key, specs),
+    )
     _AgentState.agent = agent
     _AgentState.api = (url, key)
     return agent
@@ -146,7 +166,9 @@ async def run_strudel(bot: Any, prompt: str) -> str:
     code = captured.get("code")
     if code:
         try:
-            captured["share_url"] = await run_in_executor(strudel.share_short_url, code)
+            captured["share_url"] = await run_in_executor(
+                strudel.share_short_url, code
+            )
         except web.ServiceError:
             captured["share_url"] = strudel.share_url(code)
     return _build_reply(text, captured)

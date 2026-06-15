@@ -424,7 +424,10 @@ class CloudBot(AbstractBot):
 
                 def dispatch_command(command_hook):
                     command_event = cmd_event(hook=command_hook)
-                    if not command_hook.allow_private and command_event.is_private:
+                    if (
+                        not command_hook.allow_private
+                        and command_event.is_private
+                    ):
                         command_event.notice(
                             "That command works in public channels only, not in private messages."
                         )

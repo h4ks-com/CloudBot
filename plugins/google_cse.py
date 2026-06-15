@@ -60,7 +60,11 @@ def _format_one(result: dict) -> str:
     title = formatting.truncate_str(result.get("title", "No title"), 60)
     content = (result.get("content") or "").replace("\n", "")
     content = formatting.truncate_str(content, 120) if content else ""
-    return f'{url} -- \x02{title}\x02: "{content}"' if content else f"{url} -- \x02{title}\x02"
+    return (
+        f'{url} -- \x02{title}\x02: "{content}"'
+        if content
+        else f"{url} -- \x02{title}\x02"
+    )
 
 
 @hook.command("gse")
@@ -86,7 +90,9 @@ def gse(text: str, nick: str, chan: str) -> str:
             return '{} -- \x02{}\x02: "{}" [YouTube: {}]'.format(
                 first_url,
                 formatting.truncate_str(first.get("title", "No title"), 60),
-                formatting.truncate_str((first.get("content") or "").replace("\n", ""), 120),
+                formatting.truncate_str(
+                    (first.get("content") or "").replace("\n", ""), 120
+                ),
                 length_text,
             )
         except Exception:

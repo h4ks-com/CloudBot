@@ -14,7 +14,11 @@ import logging
 
 import requests
 
-from cloudbot.agent.common import fetch_github_username, run_in_executor, split_repo
+from cloudbot.agent.common import (
+    fetch_github_username,
+    run_in_executor,
+    split_repo,
+)
 from cloudbot.agent.github_client import (
     STALE_SHA_PATTERN,
     bump_budget,
@@ -922,7 +926,10 @@ def _fetch_user_repos(username: str, count: int) -> str:
     response = requests.get(
         url,
         params={"per_page": min(count, 30), "sort": "pushed"},
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "CloudBot"},
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "CloudBot",
+        },
         timeout=15,
     )
     if response.status_code == 404:
@@ -932,7 +939,9 @@ def _fetch_user_repos(username: str, count: int) -> str:
     repos = response.json()
     if not repos:
         return f"(user '{username}' has no public repos)"
-    lines = [f"# {username} — {len(repos)} public repos (sorted by recent activity)\n"]
+    lines = [
+        f"# {username} — {len(repos)} public repos (sorted by recent activity)\n"
+    ]
     for r in repos:
         desc = (r.get("description") or "").strip()
         lang = r.get("language") or "—"
@@ -953,7 +962,10 @@ def _fetch_user_repos(username: str, count: int) -> str:
     schema={
         "type": "object",
         "properties": {
-            "username": {"type": "string", "description": "GitHub username/handle."},
+            "username": {
+                "type": "string",
+                "description": "GitHub username/handle.",
+            },
             "count": {
                 "type": "integer",
                 "description": "How many repos to list (1-30, default 15).",

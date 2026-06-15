@@ -89,7 +89,13 @@ def suno_job(text, bot):
     return suno.format_generation(resp, url, key)
 
 
-@hook.command("sunoballance", "sunocredits", "sunostatus", autohelp=False, allow_private=False)
+@hook.command(
+    "sunoballance",
+    "sunocredits",
+    "sunostatus",
+    autohelp=False,
+    allow_private=False,
+)
 def suno_credits(bot):
     """- show remaining Suno credits across all accounts."""
     cfg = _client(bot)

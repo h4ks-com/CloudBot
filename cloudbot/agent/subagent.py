@@ -108,7 +108,9 @@ def _bound_model_config(
             return await original(*args, **kwargs)
 
         client.chat.completions.create = _create  # type: ignore[method-assign]
-    return RunConfig(model=OpenAIChatCompletionsModel(model=model, openai_client=client))
+    return RunConfig(
+        model=OpenAIChatCompletionsModel(model=model, openai_client=client)
+    )
 
 
 async def run_subagent(
@@ -150,7 +152,11 @@ async def run_subagent(
             # x-api-key backends (ollama) keep their configured model via _make_run_config.
             if bearer and backend_model and (thinking_off or override):
                 run_cfg = _bound_model_config(
-                    agent_cfg, bot, backend, backend_model, thinking_off=thinking_off
+                    agent_cfg,
+                    bot,
+                    backend,
+                    backend_model,
+                    thinking_off=thinking_off,
                 )
             else:
                 run_cfg = _make_run_config(agent_cfg, bot, backend)

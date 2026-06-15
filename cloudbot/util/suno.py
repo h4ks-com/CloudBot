@@ -13,8 +13,9 @@ there is no built-in default — if either is unset the client fails::
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import requests
 
@@ -177,7 +178,8 @@ def clip_stream_url(clip_id: str) -> str:
 def final_url(url: str, key: str, clip_id: str) -> str:
     """Public bucket URL for a finished clip. The API's /download mirrors the
     clip to the bucket on first hit and 302s there, so this both stores it and
-    returns the stable link; falls back to Suno's CDN if the API is unreachable."""
+    returns the stable link; falls back to Suno's CDN if the API is unreachable.
+    """
     try:
         resp = get_session().get(
             f"{url}/download/{clip_id}",
@@ -325,7 +327,9 @@ def _tick(watch: _Watch) -> tuple[str | None, bool]:
     timed_out = time.time() > watch.deadline
     if watch.kind == "text":
         if all(clip_ready(i) for i in watch.clip_ids):
-            links = " | ".join(final_url(watch.url, watch.key, i) for i in watch.clip_ids)
+            links = " | ".join(
+                final_url(watch.url, watch.key, i) for i in watch.clip_ids
+            )
             return f"{watch.nick}: {_b('✅ song ready')} → {links}", True
         if timed_out:
             cdn = " | ".join(clip_cdn_url(i) for i in watch.clip_ids)
@@ -342,7 +346,9 @@ def _tick(watch: _Watch) -> tuple[str | None, bool]:
         return None, False
     status = resp.get("status")
     if status == "complete":
-        links = " | ".join(final_url(watch.url, watch.key, i) for i in extract_clip_ids(resp))
+        links = " | ".join(
+            final_url(watch.url, watch.key, i) for i in extract_clip_ids(resp)
+        )
         return f"{watch.nick}: {_b('✅ cover ready')} → {links}", True
     if status == "failed":
         err = resp.get("error") or "unknown error"
