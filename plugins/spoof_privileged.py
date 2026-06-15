@@ -14,27 +14,29 @@ that:
 
 from cloudbot import hook
 
+_BROKEN = "if you see this in the picker, the client is broken"
+
 
 @hook.command("oper", autohelp=False)
-def spoof_oper(text, nick):
-    return f"({nick}) cloudia received /oper {text!r} — if you see this in the picker, the client is broken"
+def spoof_oper(text, nick, conn):
+    return f"({nick}) {conn.nick} received /oper {text!r} — {_BROKEN}"
 
 
 @hook.command("identify", autohelp=False)
-def spoof_identify(text, nick):
-    return f"({nick}) cloudia received /identify {text!r} — if you see this in the picker, the client is broken"
+def spoof_identify(text, nick, conn):
+    return f"({nick}) {conn.nick} received /identify {text!r} — {_BROKEN}"
 
 
 @hook.command("ns", autohelp=False)
-def spoof_ns(text, nick):
-    return f"({nick}) cloudia received /ns {text!r} — if you see this in the picker, the client is broken"
+def spoof_ns(text, nick, conn):
+    return f"({nick}) {conn.nick} received /ns {text!r} — {_BROKEN}"
 
 
 @hook.command("pass", autohelp=False)
-def spoof_pass(text, nick):
-    return f"({nick}) cloudia received /pass {text!r} — if you see this in the picker, the client is broken"
+def spoof_pass(text, nick, conn):
+    return f"({nick}) {conn.nick} received /pass {text!r} — {_BROKEN}"
 
 
 @hook.command("kill", autohelp=False)
-def spoof_kill(text, nick):
-    return f"({nick}) cloudia received /kill {text!r} — if you see this in the picker, the client is broken"
+def spoof_kill(text, nick, conn):
+    return f"({nick}) {conn.nick} received /kill {text!r} — {_BROKEN}"

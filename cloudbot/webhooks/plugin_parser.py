@@ -2,9 +2,12 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
+# @hook.command can decorate both sync and async functions.
+_FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
 
 @dataclass
-class CommandInfo:
+class CatalogCommand:
     name: str
     aliases: list[str]
     function_name: str
@@ -19,7 +22,7 @@ class CommandInfo:
 class PluginInfo:
     name: str
     file_path: str
-    commands: list[CommandInfo]
+    commands: list[CatalogCommand]
     status: str = "functional"
 
 
@@ -50,14 +53,15 @@ class PluginParser:
         """Extract command names and aliases from @hook.command decorators."""
         commands = []
 
-        if isinstance(node, ast.FunctionDef):
+        if isinstance(node, _FUNC_NODES):
             for decorator in node.decorator_list:
                 if self._is_hook_command_decorator(decorator):
                     cmd_names = self._parse_command_decorator(decorator)
-                    if cmd_names:
-                        primary_name = cmd_names[0]
-                        aliases = cmd_names[1:] if len(cmd_names) > 1 else []
-                        commands.append((primary_name, aliases))
+                    # Bare @hook.command / @hook.command() take the command name
+                    # from the function itself.
+                    primary_name = cmd_names[0] if cmd_names else node.name
+                    aliases = cmd_names[1:]
+                    commands.append((primary_name, aliases))
 
         return commands
 
@@ -89,7 +93,9 @@ class PluginParser:
 
         return names
 
-    def _get_function_docstring(self, node: ast.FunctionDef) -> str | None:
+    def _get_function_docstring(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> str | None:
         """Extract docstring from function definition."""
         if (
             node.body
@@ -125,7 +131,7 @@ class PluginParser:
             commands = []
 
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):
+                if isinstance(node, _FUNC_NODES):
                     hook_commands = self._extract_hook_commands(node)
 
                     for primary_name, aliases in hook_commands:
@@ -141,7 +147,7 @@ class PluginParser:
                                 else "functional"
                             )
 
-                            command_info = CommandInfo(
+                            command_info = CatalogCommand(
                                 name=primary_name,
                                 aliases=aliases,
                                 function_name=node.name,

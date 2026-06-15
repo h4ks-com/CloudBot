@@ -127,10 +127,10 @@ class Event(Mapping[str, Any]):
     @property
     def is_private(self) -> bool:
         """True when this event is a private message rather than a public channel.
-        In a PM the target is the bot, so ``chan`` is either unset or not channel-prefixed."""
-        return (
-            not self.chan
-            or not self.chan.startswith(("#", "&", "+", "!", "$", "^"))
+        In a PM the target is the bot, so ``chan`` is either unset or not channel-prefixed.
+        """
+        return not self.chan or not self.chan.startswith(
+            ("#", "&", "+", "!", "$", "^")
         )
 
     def __len__(self) -> int:
@@ -231,16 +231,22 @@ class Event(Mapping[str, Any]):
     def logger(self):
         return logger
 
+    def tag_value(self, name: str) -> str | None:
+        """Value of an inbound IRCv3 message tag, or None if absent/valueless."""
+        tag = (self.irc_tags or {}).get(name)
+        value: str | None = tag.value if tag is not None else None
+        return value
+
     def _get_reply_tags(self) -> dict | None:
         if not self.irc_tags:
             return None
         server_caps = self.conn.memory.get("server_caps", {})
         if not server_caps.get("message-tags"):
             return None
-        msgid_tag = self.irc_tags.get("msgid")
-        if not msgid_tag or not msgid_tag.value:
+        msgid = self.tag_value("msgid")
+        if not msgid:
             return None
-        return {"+draft/reply": msgid_tag.value}
+        return {"+draft/reply": msgid}
 
     def message(self, message, target=None):
         """sends a message to a specific or current channel/user"""

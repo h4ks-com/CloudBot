@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import logging
+from dataclasses import dataclass
 
 from cloudbot.hook import Action, Priority
 
@@ -79,6 +80,17 @@ class Hook:
         return ", ".join(f"{k}: {v}" for k, v in parts)
 
 
+@dataclass
+class CommandInfo:
+    """Public, serialisable description of a command — the shared shape behind the
+    help listing, the +draft/bot-cmds schema and the agent's tool list."""
+
+    name: str
+    description: str
+    aliases: list[str]
+    permissions: list[str]
+
+
 class CommandHook(Hook):
     def __init__(self, plugin, cmd_hook):
         auto_help = cmd_hook.kwargs.pop("autohelp", True)
@@ -106,6 +118,14 @@ class CommandHook(Hook):
     def __str__(self):
         return "command {} from {}".format(
             "/".join(self.aliases), self.plugin.file_name
+        )
+
+    def info(self) -> CommandInfo:
+        return CommandInfo(
+            name=self.name,
+            description=(self.doc or "").strip(),
+            aliases=self.aliases[1:],
+            permissions=list(self.permissions),
         )
 
 

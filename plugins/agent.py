@@ -42,6 +42,7 @@ from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
 )
+from plugins.core import bot_cmds
 
 logger = logging.getLogger("cloudbot")
 
@@ -494,10 +495,7 @@ class _RunTracker(RunHooks):
         self._pr_urls: list[str] = []
         self._results: list[tuple[str, str]] = []
         self._tool_urls: set[str] = set()
-        # IRCv3 draft/bot-tools workflow streaming. _run_agent fills
-        # these in before passing the tracker to Runner.run; when set,
-        # on_tool_start / on_tool_end fan out a "step" TAGMSG so other
-        # clients can render the agent's tool sequence live.
+        # Populated by _run_agent before the run; when set, tool start/end fan out draft/bot-tools steps.
         self._wf_conn = None
         self._wf_target: str = ""
         self._wf_id: str = ""
@@ -514,16 +512,22 @@ class _RunTracker(RunHooks):
         self._calls.append((tool.name, time.monotonic() - self._start))
         if self._wf_conn and self._wf_id:
             try:
-                from plugins import draft_bot_tools as _bt
                 self._step_seq += 1
                 sid = "s%d" % self._step_seq
                 self._step_ids[len(self._calls) - 1] = sid
-                _bt.emit_step(
-                    self._wf_conn, self._wf_target, self._wf_id, sid,
-                    "tool-call", "start", tool=tool.name,
+                bot_cmds.emit_step(
+                    self._wf_conn,
+                    self._wf_target,
+                    self._wf_id,
+                    sid,
+                    "tool-call",
+                    "start",
+                    tool=tool.name,
                 )
-            except Exception:
-                logger.exception("agent: bot-tools step emit failed")
+            except ValueError:
+                logger.debug(
+                    "agent: bot-tools step emit skipped (connection closed)"
+                )
 
     async def on_tool_end(self, context, agent, tool, result) -> None:
         result_str = str(result or "")
@@ -545,32 +549,35 @@ class _RunTracker(RunHooks):
                 m = _PR_URL_RE.search(result_str)
                 if m:
                     self._pr_urls.append(m.group(0))
-        # Mirror the result onto the workflow stream as a `tool-result`
-        # step (or the same step transitioning to failed).
         if self._wf_conn and self._wf_id:
             try:
-                from plugins import draft_bot_tools as _bt
                 idx = len(self._calls) - 1
                 paired_sid = self._step_ids.get(idx) or ("s%d" % (idx + 1))
-                # Close the original tool-call step.
-                _bt.emit_step(
-                    self._wf_conn, self._wf_target, self._wf_id, paired_sid,
-                    "tool-call", "failed" if failed else "complete",
+                bot_cmds.emit_step(
+                    self._wf_conn,
+                    self._wf_target,
+                    self._wf_id,
+                    paired_sid,
+                    "tool-call",
+                    "failed" if failed else "complete",
                     tool=tool.name,
                 )
-                # Emit a tool-result step so clients can render the
-                # result. Snippet only -- preserves the
-                # tracker's "never paste full outputs" policy.
+                # Snippet only: never put full tool output on the wire.
                 snippet = result_str[:200]
                 self._step_seq += 1
-                _bt.emit_step(
-                    self._wf_conn, self._wf_target, self._wf_id,
-                    "s%d" % self._step_seq, "tool-result",
+                bot_cmds.emit_step(
+                    self._wf_conn,
+                    self._wf_target,
+                    self._wf_id,
+                    "s%d" % self._step_seq,
+                    "tool-result",
                     "failed" if failed else "complete",
                     content=snippet,
                 )
-            except Exception:
-                logger.exception("agent: bot-tools step emit failed")
+            except ValueError:
+                logger.debug(
+                    "agent: bot-tools step emit skipped (connection closed)"
+                )
 
     def failure_summary(self, err: BaseException) -> str:
         err_type = type(err).__name__
@@ -900,16 +907,15 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
     exclude = set(cfg.get("exclude") or [])
 
     tools: list[FunctionTool] = []
-    seen: set[str] = set()
-    for name, cmd_hook in bot.plugin_manager.commands.items():
-        if name in seen or name in exclude:
+    for cmd_hook in bot.plugin_manager.unique_commands():
+        names = set(cmd_hook.aliases)
+        if names & exclude:
             continue
-        if include and name not in include:
+        if include and not (names & include):
             continue
         if cmd_hook.permissions:
             continue
-        seen.add(name)
-        tools.append(_build_tool(name, cmd_hook))
+        tools.append(_build_tool(cmd_hook.name, cmd_hook))
 
     custom = build_custom_tools()
     tools.extend(custom)
@@ -1146,31 +1152,32 @@ async def _run_agent(event, prompt: str) -> None:
     )
     tracker = _RunTracker()
 
-    # IRCv3 draft/bot-tools: workflow start. Each .agi run is one
-    # workflow whose steps are the tool calls. If the run was triggered
-    # via +draft/bot-cmd, mark_workflow() opts that pending invocation
-    # in to a +draft/bot-tools terminal `complete` riding on the reply
-    # tags; otherwise (a plain `.agi` text invocation) the workflow
-    # close is sent as a standalone TAGMSG after the reply.
+    # Each .agi run is one draft/bot-tools workflow; its steps are the tool calls.
     workflow_id = None
     trigger_msgid = ""
+    marked = False
     last_err: BaseException | None = None
     try:
-        from plugins import draft_bot_tools as _bt
         workflow_id = uuid.uuid4().hex[:12]
-        irc_tags = getattr(event, "irc_tags", None) or {}
-        if "msgid" in irc_tags:
-            v = irc_tags["msgid"]
-            trigger_msgid = getattr(v, "value", v) or ""
+        trigger_msgid = event.tag_value("msgid") or ""
         tracker.attach_workflow(event.conn, target, workflow_id)
-        _bt.emit_workflow(
-            event.conn, target, workflow_id, "start",
-            name="agent", trigger=trigger_msgid,
+        bot_cmds.emit_workflow(
+            event.conn,
+            target,
+            workflow_id,
+            "start",
+            name="agent",
+            trigger=trigger_msgid,
             features=["reasoning"],
         )
-        marked = bool(trigger_msgid and _bt.mark_workflow(event.conn, trigger_msgid, workflow_id))
-    except Exception:
-        logger.exception("agent: failed to start bot-tools workflow")
+        marked = bool(
+            trigger_msgid
+            and bot_cmds.mark_workflow(event.conn, trigger_msgid, workflow_id)
+        )
+    except ValueError:
+        logger.debug(
+            "agent: bot-tools workflow start skipped (connection closed)"
+        )
 
     backends_tried: list[str] = []
     try:
@@ -1194,19 +1201,16 @@ async def _run_agent(event, prompt: str) -> None:
             event.reply("Agent failed: no backends tried")
     finally:
         await stop_typing_for_command(event.conn, target, typing_id)
-        # Close the bot-tools workflow. The +draft/bot-tools terminal
-        # rides on the reply's out-tags only when mark_workflow opted in
-        # a pending +draft/bot-cmd invocation. For anything else
-        # (text-typed .agi, or a +draft/bot-cmd that arrived without us
-        # capturing a pending) emit a standalone close TAGMSG so the
-        # workflow widget actually terminates.
+        # When mark_workflow opted a pending invocation in, the terminal rides the reply tags;
+        # otherwise close the workflow with a standalone TAGMSG.
         if workflow_id and not marked:
             try:
-                from plugins import draft_bot_tools as _bt
                 state = "failed" if last_err else "complete"
-                _bt.emit_workflow(event.conn, target, workflow_id, state)
-            except Exception:
-                logger.exception("agent: failed to close bot-tools workflow")
+                bot_cmds.emit_workflow(event.conn, target, workflow_id, state)
+            except ValueError:
+                logger.debug(
+                    "agent: bot-tools workflow close skipped (connection closed)"
+                )
 
 
 async def _try_backends(
