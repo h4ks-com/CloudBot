@@ -59,7 +59,7 @@ def dogpileimage(text):
     return image.find("a", {"class": "link"})["href"]
 
 
-@hook.command("dp", "g", "dogpile")
+@hook.command("dp", "dogpile")
 def dogpile(text):
     """<query> - Uses the dogpile search engine to find shit on the web."""
     soup = query("web", text)

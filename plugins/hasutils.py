@@ -8,8 +8,6 @@ from base64 import (
     b16encode,
     b32decode,
     b32encode,
-    b64decode,
-    b64encode,
     b85decode,
     b85encode,
 )
@@ -116,36 +114,6 @@ def blake2bsum(text):
 def blake2ssum(text):
     """<text> - Computes the BLAKE2s hash of <text>."""
     return "BLAKE2s: " + compute_hash(text, blake2s)
-
-
-@hook.command(
-    "b64",
-    "base64",
-    "base64encode",
-    "base64encodes",
-    "base64encodes",
-    "base64encodes",
-    "base64encodes",
-    "base64encodes",
-)
-def base64encode(text):
-    """<text> - Encodes <text> in base64."""
-    return "Base64: " + base_encode(text, b64encode)
-
-
-@hook.command(
-    "b64decode",
-    "base64decode",
-    "base64decodes",
-    "base64decodes",
-    "base64decodes",
-    "base64decodes",
-    "base64decodes",
-    "base64decodes",
-)
-def base64decode(text):
-    """<text> - Decodes <text> from base64."""
-    return "Base64: " + base_encode(text, b64decode)
 
 
 @hook.command(
