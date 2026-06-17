@@ -57,6 +57,16 @@ REPLACEMENT_COMMANDS = {
         ],
         "flags": re.MULTILINE | re.IGNORECASE,
     },
+    "doesnm": {
+        "pattern": r"\s+",
+        "replacements": [
+            " \x02ollama is just a wrapper over llama.cpp\x02 ",
+            "\x02, but in Podolsk and\x02 ",
+            " \x02and Delta Chat and\x02 ",
+            " \x02but also containers though\x02 ",
+        ],
+        "flags": re.MULTILINE | re.IGNORECASE,
+    },
 }
 
 
