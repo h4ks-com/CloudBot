@@ -361,6 +361,9 @@ class IrcClient(Client):
     def notice(self, target, text, tags: dict[str, str | None] | None = None):
         self.cmd("NOTICE", target, text, tags=tags)
 
+    def tagmsg(self, target, tags: dict[str, str | None] | None = None):
+        self.cmd("TAGMSG", target, tags=tags)
+
     def set_nick(self, nick):
         self.cmd("NICK", nick)
 

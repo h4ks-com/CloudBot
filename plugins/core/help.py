@@ -1,5 +1,3 @@
-from operator import attrgetter
-
 from cloudbot import hook
 from cloudbot.util import formatting, web
 
@@ -16,27 +14,12 @@ def get_potential_commands(bot, cmd_name):
 
 def help_flood(bot, chan, notice, message, has_permission, triggered_prefix):
     commands = []
-    for plugin in sorted(
-        set(bot.plugin_manager.commands.values()), key=attrgetter("name")
-    ):
-        # use set to remove duplicate commands (from multiple aliases), and sorted to sort by name
-
-        if plugin.permissions:
-            # check permissions
-            allowed = False
-            for perm in plugin.permissions:
-                if has_permission(perm, notice=False):
-                    allowed = True
-                    break
-
-            if not allowed:
-                # skip adding this command
-                continue
-
-        # add the command to lines sent
-        command = plugin.name
-
-        commands.append(command)
+    for command in bot.plugin_manager.command_infos():
+        if command.permissions and not any(
+            has_permission(perm, notice=False) for perm in command.permissions
+        ):
+            continue
+        commands.append(command.name)
 
     # list of lines to send to the user
     lines = formatting.chunk_str(
@@ -138,23 +121,9 @@ def generatehelp(conn, bot):
     """- Dumps a list of commands with their help text to the docs directory formatted using markdown."""
     message = f"{conn.nick} Command list\n"
     message += "------\n"
-    for plugin in sorted(
-        set(bot.plugin_manager.commands.values()), key=attrgetter("name")
-    ):
-        # use set to remove duplicate commands (from multiple aliases), and sorted to sort by name
-        command = plugin.name
-        aliases = ""
-        doc = bot.plugin_manager.commands[command].doc
-        permission = ""
-        for perm in plugin.permissions:
-            permission += perm + ", "
-        permission = permission[:-2]
-        for alias in plugin.aliases:
-            if alias == command:
-                pass
-            else:
-                aliases += alias + ", "
-        aliases = aliases[:-2]
+    for command in bot.plugin_manager.command_infos():
+        aliases = ", ".join(command.aliases)
+        doc = command.description
         if doc:
             doc = (
                 doc.replace("<", "&lt;")
@@ -163,16 +132,12 @@ def generatehelp(conn, bot):
                 .replace("]", "&gt;")
             )
             if aliases:
-                message += f"**{command} ({aliases}):** {doc}\n\n"
+                message += f"**{command.name} ({aliases}):** {doc}\n\n"
             else:
-                # No aliases so just print the commands
-                message += f"**{command}**: {doc}\n\n"
+                message += f"**{command.name}**: {doc}\n\n"
         else:
-            message += "**{}**: Command has no documentation.\n\n".format(
-                command
-            )
-        if permission:
+            message += f"**{command.name}**: Command has no documentation.\n\n"
+        if command.permissions:
             message = message[:-2]
-            message += f" ( *Permission required:* {permission})\n\n"
-    # toss the markdown text into a paste
+            message += f" ( *Permission required:* {', '.join(command.permissions)})\n\n"
     return web.paste(message)

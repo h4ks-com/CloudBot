@@ -17,7 +17,12 @@ SEARX_URL = "https://searx.h4ks.com"
 def searx_search(query, language="en"):
     # Without language=en Bing geo-localizes by the server IP.
     params = urlencode(
-        {"q": query, "format": "json", "categories": "general", "language": language}
+        {
+            "q": query,
+            "format": "json",
+            "categories": "general",
+            "language": language,
+        }
     )
     request = Request(
         f"{SEARX_URL}/search?{params}", headers={"User-Agent": "Mozilla/5.0"}
@@ -37,7 +42,14 @@ def searx_search(query, language="en"):
             continue
         title = result.get("title") or url
         content = result.get("content") or ""
-        results.append({"title": title, "content": content, "url": url, "text": content or title})
+        results.append(
+            {
+                "title": title,
+                "content": content,
+                "url": url,
+                "text": content or title,
+            }
+        )
 
     return results
 

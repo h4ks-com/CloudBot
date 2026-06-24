@@ -8,6 +8,14 @@ import attr
 logger = logging.getLogger(__name__)
 
 
+def is_channel(conn, target: str) -> bool:
+    """True if target is a channel name, per the server's advertised CHANTYPES."""
+    if not target:
+        return False
+    isupport = conn.memory.get("server_info", {}).get("isupport_tokens", {})
+    return target[0] in (isupport.get("CHANTYPES") or "#&")
+
+
 class ModeType(Enum):
     A = "A"
     B = "B"

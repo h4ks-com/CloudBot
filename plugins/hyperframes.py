@@ -223,7 +223,8 @@ def _run_limits(bot: Any) -> tuple[int, float]:
 
 def _build_reply(text: str, captured: dict[str, str]) -> str:
     """One IRC line: caption plus the captured MP4 URL. Strips any link the model
-    typed itself (only the tool-produced URL is trusted) and flattens markdown."""
+    typed itself (only the tool-produced URL is trusted) and flattens markdown.
+    """
     video = captured.get("video_url")
     if not video:
         return text or "(no result)"
@@ -275,7 +276,9 @@ def _spawn(coro: Any) -> None:
 
 async def _post_video(bot: Any, conn: Any, target: str, prompt: str) -> None:
     try:
-        answer = await asyncio.wait_for(run_hyperframes(bot, prompt), timeout=_RENDER_TIMEOUT_S)
+        answer = await asyncio.wait_for(
+            run_hyperframes(bot, prompt), timeout=_RENDER_TIMEOUT_S
+        )
     except asyncio.TimeoutError:
         answer = "Video failed: render timed out."
     except hyperframes.HyperframesNotConfigured:
@@ -300,5 +303,7 @@ async def video_command(text, event):
     if not text:
         event.reply("usage: .video <what the video should be>")
         return
-    event.reply("🎬 Working on your video — I'll post it here when it's ready (a few minutes).")
+    event.reply(
+        "🎬 Working on your video — I'll post it here when it's ready (a few minutes)."
+    )
     spawn_video(event.bot, event.conn, event.chan, text)

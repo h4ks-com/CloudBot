@@ -61,7 +61,9 @@ def _rag_personas(bot) -> dict:
           }
         }
     """
-    return bot.config.get("plugins", {}).get("ollama", {}).get("rag_personas", {})
+    return (
+        bot.config.get("plugins", {}).get("ollama", {}).get("rag_personas", {})
+    )
 
 
 def _model_is_allowed(api_url: str, headers: dict, mid: str) -> bool:
@@ -206,7 +208,11 @@ def _rag_system_message(
             .post(
                 f"{base}/stores/find",
                 headers=headers,
-                json={"store": cfg["store"], "key": emb, "topk": cfg.get("k", 5)},
+                json={
+                    "store": cfg["store"],
+                    "key": emb,
+                    "topk": cfg.get("k", 5),
+                },
                 timeout=15,
             )
             .json()
@@ -221,8 +227,7 @@ def _rag_system_message(
         role="system",
         content=cfg["persona"]
         + "\n\nFor background, some things you have actually said before - draw on "
-        "them only if relevant, never quote them verbatim:\n"
-        + facts,
+        "them only if relevant, never quote them verbatim:\n" + facts,
     )
 
 
@@ -629,7 +634,9 @@ def transcribe_audio(bot, text: str) -> str:
     else:
         model, audio_url = stt_models[0], text
     audio_url = audio_url.strip()
-    if not (audio_url.startswith("http://") or audio_url.startswith("https://")):
+    if not (
+        audio_url.startswith("http://") or audio_url.startswith("https://")
+    ):
         return "Usage: [model] <audio_url>"
 
     try:
@@ -683,7 +690,11 @@ def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
             return f"Error listing audio models: {e}"
         except requests.Timeout:
             return "Error: Request timed out"
-        return f"Available TTS models: {', '.join(tts_models)}" if tts_models else "No TTS models detected."
+        return (
+            f"Available TTS models: {', '.join(tts_models)}"
+            if tts_models
+            else "No TTS models detected."
+        )
     return synthesize_speech(bot, text)
 
 
@@ -705,5 +716,9 @@ def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
             return f"Error listing STT models: {e}"
         except requests.Timeout:
             return "Error: Request timed out"
-        return f"Available STT models: {', '.join(stt_models)}" if stt_models else "No STT models detected."
+        return (
+            f"Available STT models: {', '.join(stt_models)}"
+            if stt_models
+            else "No STT models detected."
+        )
     return transcribe_audio(bot, text)

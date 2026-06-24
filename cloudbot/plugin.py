@@ -18,6 +18,7 @@ from cloudbot.event import Event, EventType, PostHookEvent
 from cloudbot.plugin_hooks import (
     CapHook,
     CommandHook,
+    CommandInfo,
     ConfigHook,
     EventHook,
     IrcOutHook,
@@ -134,6 +135,14 @@ class PluginManager:
         self.hook_hooks = defaultdict(list)
         self.perm_hooks = defaultdict(list)
         self.config_hooks: list[ConfigHook] = []
+
+    def unique_commands(self) -> list[CommandHook]:
+        """Every command hook once, deduplicated across aliases, sorted by name."""
+        return sorted(set(self.commands.values()), key=attrgetter("name"))
+
+    def command_infos(self) -> list[CommandInfo]:
+        """Public CommandInfo for every command, deduplicated and sorted by name."""
+        return [command.info() for command in self.unique_commands()]
 
     def _add_plugin(self, plugin: "Plugin"):
         self.plugins[plugin.file_path] = plugin

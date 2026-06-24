@@ -33,6 +33,17 @@ def strip_newlines(line, conn):
 @hook.irc_out(priority=Priority.HIGH)
 def truncate_line(line, conn):
     line_len = conn.config.get("max_line_length", 510)
+    # The IRCv3 message-tags section has its own (larger) budget and is not part
+    # of the 512-byte message limit, so the two are truncated separately. Limits
+    # are byte budgets, so slice on the UTF-8 encoding to avoid overflowing them
+    # (and decode back lossily rather than emit a split codepoint).
+    if line.startswith("@"):
+        tag_limit = conn.config.get("max_tags_length", 8191)
+        tags, sep, rest = line.partition(" ")
+        if sep:
+            tags = tags.encode("utf-8")[:tag_limit].decode("utf-8", "ignore")
+            rest = rest.encode("utf-8")[:line_len].decode("utf-8", "ignore")
+            return tags + " " + rest + "\r\n"
     return line[:line_len] + "\r\n"
 
 

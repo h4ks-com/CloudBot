@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from collections import deque
 from datetime import datetime
 
@@ -41,6 +42,7 @@ from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
 )
+from plugins.core import bot_cmds
 
 logger = logging.getLogger("cloudbot")
 
@@ -493,19 +495,49 @@ class _RunTracker(RunHooks):
         self._pr_urls: list[str] = []
         self._results: list[tuple[str, str]] = []
         self._tool_urls: set[str] = set()
+        # Populated by _run_agent before the run; when set, tool start/end fan out draft/bot-tools steps.
+        self._wf_conn = None
+        self._wf_target: str = ""
+        self._wf_id: str = ""
+        self._step_seq: int = 0
+        self._step_ids: dict[int, str] = {}
+
+    def attach_workflow(self, conn, target: str, workflow_id: str) -> None:
+        self._wf_conn = conn
+        self._wf_target = target
+        self._wf_id = workflow_id
 
     async def on_tool_start(self, context, agent, tool) -> None:
         logger.info("agent: tool invoked: %s", tool.name)
         self._calls.append((tool.name, time.monotonic() - self._start))
+        if self._wf_conn and self._wf_id:
+            try:
+                self._step_seq += 1
+                sid = "s%d" % self._step_seq
+                self._step_ids[len(self._calls) - 1] = sid
+                bot_cmds.emit_step(
+                    self._wf_conn,
+                    self._wf_target,
+                    self._wf_id,
+                    sid,
+                    "tool-call",
+                    "start",
+                    tool=tool.name,
+                )
+            except ValueError:
+                logger.debug(
+                    "agent: bot-tools step emit skipped (connection closed)"
+                )
 
     async def on_tool_end(self, context, agent, tool, result) -> None:
         result_str = str(result or "")
         prefix = result_str[:20]
-        if (
+        failed = (
             prefix.startswith("(error")
             or prefix.startswith("(mcp")
             or prefix.startswith("(tool error")
-        ):
+        )
+        if failed:
             for i in range(len(self._calls) - 1, -1, -1):
                 if self._calls[i][0] == tool.name and i not in self._errors:
                     self._errors.add(i)
@@ -517,6 +549,36 @@ class _RunTracker(RunHooks):
                 m = _PR_URL_RE.search(result_str)
                 if m:
                     self._pr_urls.append(m.group(0))
+        if self._wf_conn and self._wf_id:
+            try:
+                idx = len(self._calls) - 1
+                paired_sid = self._step_ids.get(idx) or ("s%d" % (idx + 1))
+                bot_cmds.emit_step(
+                    self._wf_conn,
+                    self._wf_target,
+                    self._wf_id,
+                    paired_sid,
+                    "tool-call",
+                    "failed" if failed else "complete",
+                    tool=tool.name,
+                )
+                # Snippet only: never put full tool output on the wire.
+                snippet = result_str[:200]
+                self._step_seq += 1
+                bot_cmds.emit_step(
+                    self._wf_conn,
+                    self._wf_target,
+                    self._wf_id,
+                    "s%d" % self._step_seq,
+                    "tool-result",
+                    "failed" if failed else "complete",
+                    tool=tool.name,
+                    content=snippet,
+                )
+            except ValueError:
+                logger.debug(
+                    "agent: bot-tools step emit skipped (connection closed)"
+                )
 
     def failure_summary(self, err: BaseException) -> str:
         err_type = type(err).__name__
@@ -846,16 +908,15 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
     exclude = set(cfg.get("exclude") or [])
 
     tools: list[FunctionTool] = []
-    seen: set[str] = set()
-    for name, cmd_hook in bot.plugin_manager.commands.items():
-        if name in seen or name in exclude:
+    for cmd_hook in bot.plugin_manager.unique_commands():
+        names = set(cmd_hook.aliases)
+        if names & exclude:
             continue
-        if include and name not in include:
+        if include and names.isdisjoint(include):
             continue
         if cmd_hook.permissions:
             continue
-        seen.add(name)
-        tools.append(_build_tool(name, cmd_hook))
+        tools.append(_build_tool(cmd_hook.name, cmd_hook))
 
     custom = build_custom_tools()
     tools.extend(custom)
@@ -1072,7 +1133,7 @@ async def _run_agent(event, prompt: str) -> None:
     agent = _get_or_build_agent(bot, cfg, tools)
 
     timeout = float(cfg.get("timeout_s", 120))
-    max_turns = int(cfg.get("max_turns", 8))
+    max_turns = int(cfg.get("max_turns", 20))
     backends_to_try = [cfg.get("backend", "z_ai")]
     fallback = cfg.get("fallback_backend")
     if fallback and fallback != backends_to_try[0]:
@@ -1091,9 +1152,40 @@ async def _run_agent(event, prompt: str) -> None:
         len(history),
     )
     tracker = _RunTracker()
-    backends_tried: list[str] = []
+
+    # Each .agi run is one draft/bot-tools workflow; its steps are the tool calls.
+    workflow_id = None
+    trigger_msgid = ""
+    marked = False
+    last_err: BaseException | None = None
     try:
-        last_err: BaseException | None = await _try_backends(
+        workflow_id = uuid.uuid4().hex[:12]
+        trigger_msgid = event.tag_value("msgid") or ""
+        tracker.attach_workflow(event.conn, target, workflow_id)
+        bot_cmds.emit_workflow(
+            event.conn,
+            target,
+            workflow_id,
+            "start",
+            name="agent",
+            trigger=trigger_msgid,
+            features=["reasoning", "interactive"],
+        )
+        marked = bool(
+            trigger_msgid
+            and bot_cmds.mark_workflow(event.conn, trigger_msgid, workflow_id)
+        )
+    except ValueError:
+        logger.debug(
+            "agent: bot-tools workflow start skipped (connection closed)"
+        )
+
+    backends_tried: list[str] = []
+    invoker = event.nick
+    cancel_requested = False
+    run_cancelled = False
+    run_task = asyncio.ensure_future(
+        _try_backends(
             agent,
             agent_input,
             event,
@@ -1107,12 +1199,66 @@ async def _run_agent(event, prompt: str) -> None:
             history,
             prompt,
         )
+    )
+
+    def on_action(action_event, msg):
+        nonlocal cancel_requested
+        # Only the invoker can cancel their own still-running job.
+        if (
+            msg.get("action") == "cancel"
+            and not run_task.done()
+            and action_event.nick.casefold() == invoker.casefold()
+        ):
+            cancel_requested = True
+            run_task.cancel()
+
+    if workflow_id:
+        event.conn.memory.setdefault("bot_tools_actions", {})[
+            workflow_id
+        ] = on_action
+
+    try:
+        last_err = await run_task
         if last_err:
             _report_failure(event, tracker, last_err, prompt, backends_tried)
         elif not backends_tried:
             event.reply("Agent failed: no backends tried")
+    except asyncio.CancelledError:
+        # A cancel that loses the race to natural completion never reaches here,
+        # so the run actually stopped: drop the pending so its reply can't stamp
+        # a stale "complete" terminal, then close the workflow as cancelled below.
+        if not cancel_requested:
+            raise
+        run_cancelled = True
+        if trigger_msgid:
+            bot_cmds.discard_pending(event.conn, trigger_msgid)
+        event.reply("cancelled")
     finally:
+        if workflow_id:
+            event.conn.memory.get("bot_tools_actions", {}).pop(
+                workflow_id, None
+            )
         await stop_typing_for_command(event.conn, target, typing_id)
+        # When mark_workflow opted a pending invocation in, the terminal rides the
+        # reply tags; otherwise (or on cancel) close it with a standalone TAGMSG.
+        if workflow_id and (run_cancelled or not marked):
+            try:
+                state = (
+                    "cancelled"
+                    if run_cancelled
+                    else "failed" if last_err else "complete"
+                )
+                bot_cmds.emit_workflow(
+                    event.conn,
+                    target,
+                    workflow_id,
+                    state,
+                    cancelled_by=invoker if run_cancelled else None,
+                )
+            except ValueError:
+                logger.debug(
+                    "agent: bot-tools workflow close skipped (connection closed)"
+                )
 
 
 async def _try_backends(
@@ -1281,10 +1427,10 @@ def _init_agent_memory(bot):
         logger.exception("agent: memory init failed")
 
 
-@hook.command("ask", "agent", "agi", autohelp=False, allow_private=False)
+@hook.command("agi", "agent", "ask", autohelp=False, allow_private=False)
 async def agent_command(text, event):
     """<prompt> - ask the bot in natural language; uses any available tool."""
     if not text:
-        event.reply("usage: .ask <natural language prompt>")
+        event.reply("usage: .agi <natural language prompt>")
         return
     await _run_agent(event, text)

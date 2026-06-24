@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from cloudbot.util.http import compare_urls
@@ -313,32 +311,14 @@ def test_hash_command(text, out):
     assert utility.hash_command(text) == out
 
 
-@pytest.fixture()
-def leet_data(mock_bot_factory):
-    mock_bot = mock_bot_factory(base_dir=Path().resolve())
-    utility.load_text(mock_bot)
-    yield
-    utility.leet_text.clear()
-
-
 @pytest.mark.parametrize(
     "text",
     [
         "foo bar baz!",
     ],
 )
-def test_munge(text, leet_data):
+def test_munge(text):
     assert utility.munge(text)
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "foo bar baz!",
-    ],
-)
-def test_leet(text, leet_data):
-    assert utility.leet(text)
 
 
 @pytest.mark.parametrize(

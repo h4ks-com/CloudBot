@@ -35,7 +35,9 @@ async def text_to_speech(ctx, data):
     voice = str(data.get("voice") or "").strip()
     from plugins.ollama import synthesize_speech
 
-    return await run_in_executor(synthesize_speech, ctx.context.bot, f"{voice} {text}" if voice else text)
+    return await run_in_executor(
+        synthesize_speech, ctx.context.bot, f"{voice} {text}" if voice else text
+    )
 
 
 @tool(
@@ -66,4 +68,8 @@ async def speech_to_text(ctx, data):
     model = str(data.get("model") or "").strip()
     from plugins.ollama import transcribe_audio
 
-    return await run_in_executor(transcribe_audio, ctx.context.bot, f"{model} {audio_url}" if model else audio_url)
+    return await run_in_executor(
+        transcribe_audio,
+        ctx.context.bot,
+        f"{model} {audio_url}" if model else audio_url,
+    )

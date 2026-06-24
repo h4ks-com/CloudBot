@@ -18,7 +18,6 @@ import binascii
 import codecs
 import collections
 import hashlib
-import json
 import random
 import re
 import shlex
@@ -43,8 +42,6 @@ COLORS = collections.OrderedDict(
     ]
 )
 
-leet_text: dict[str, list[str]] = {}
-
 # helper functions
 
 strip_re = re.compile(r"[\u0003\u0002\u001F\u000F](?:,?\d{1,2}(?:,\d{1,2})?)?")
@@ -58,16 +55,6 @@ def translate(text, dic):
     for i, j in dic.items():
         text = text.replace(i, j)
     return text
-
-
-# on_start
-
-
-@hook.on_start()
-def load_text(bot):
-    leet_text.clear()
-    with open((bot.data_path / "leet.json"), encoding="utf-8") as f:
-        leet_text.update(json.load(f))
 
 
 # misc
@@ -228,16 +215,6 @@ def hash_command(text):
 def munge(text):
     """<text> - Munges up <text>."""
     return formatting.munge(text)
-
-
-@hook.command()
-def leet(text):
-    """<text> - Makes <text> more 1337h4x0rz."""
-    output = "".join(
-        random.choice(leet_text[ch]) if ch.isalpha() else ch
-        for ch in text.lower()
-    )
-    return output
 
 
 # Based on plugin by FurCode - <https://github.com/FurCode/RoboCop2>

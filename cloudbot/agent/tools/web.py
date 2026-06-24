@@ -206,7 +206,9 @@ async def web_research(ctx, data):  # noqa: ARG001
         return f"(no search results for: {query})"
 
     targets = results[:depth]
-    fetches = [run_in_executor(_fetch_excerpt, r["url"], limit) for r in targets]
+    fetches = [
+        run_in_executor(_fetch_excerpt, r["url"], limit) for r in targets
+    ]
     excerpts = await asyncio.gather(*fetches, return_exceptions=False)
 
     sections = []
@@ -215,10 +217,12 @@ async def web_research(ctx, data):  # noqa: ARG001
         body = text or err or "(empty)"
         sections.append(f"## {title}\n{r['url']}\n\n{body}")
 
-    more = results[depth:depth + 5]
+    more = results[depth : depth + 5]
     if more:
         sections.append(
             "## See also\n"
-            + "\n".join(f"- {r.get('title') or r['url']}: {r['url']}" for r in more)
+            + "\n".join(
+                f"- {r.get('title') or r['url']}: {r['url']}" for r in more
+            )
         )
     return "\n\n".join(sections)

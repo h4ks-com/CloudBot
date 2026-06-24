@@ -294,7 +294,11 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
     await start_typing_for_command(event.conn, target, typing_id)
     try:
         answer = await run_subagent(
-            bot, agent=agent, prompt=enriched, max_turns=max_turns, timeout_s=timeout
+            bot,
+            agent=agent,
+            prompt=enriched,
+            max_turns=max_turns,
+            timeout_s=timeout,
         )
         event.reply(_format_answer(answer, agent_cfg))
     except SubagentError as e:

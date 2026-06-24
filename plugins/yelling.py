@@ -11,18 +11,12 @@ URL_RE = re.compile(
 
 
 @hook.event([EventType.message, EventType.action], clients=["irc"])
-def yell_check(conn, chan, content, bot, nick):
+def yell_check(conn, chan, content, nick):
     """THIS IS A CUSTOM PLUGIN FOR #YELLING TO MAKE SURE PEOPLE FOLLOW THE RULES."""
     if chan.casefold() not in OPT_IN:
         return
 
-    link_announcer = bot.plugin_manager.find_plugin("link_announcer")
-    if link_announcer:
-        url_re = link_announcer.code.url_re
-    else:
-        url_re = URL_RE
-
-    text = url_re.sub("", content)
+    text = URL_RE.sub("", content)
     text = YELL_RE.sub("", text)
     if not text:
         # Ignore empty strings
