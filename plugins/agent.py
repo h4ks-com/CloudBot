@@ -572,6 +572,7 @@ class _RunTracker(RunHooks):
                     "s%d" % self._step_seq,
                     "tool-result",
                     "failed" if failed else "complete",
+                    tool=tool.name,
                     content=snippet,
                 )
             except ValueError:
@@ -911,7 +912,7 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
         names = set(cmd_hook.aliases)
         if names & exclude:
             continue
-        if include and not (names & include):
+        if include and names.isdisjoint(include):
             continue
         if cmd_hook.permissions:
             continue
@@ -1132,7 +1133,7 @@ async def _run_agent(event, prompt: str) -> None:
     agent = _get_or_build_agent(bot, cfg, tools)
 
     timeout = float(cfg.get("timeout_s", 120))
-    max_turns = int(cfg.get("max_turns", 8))
+    max_turns = int(cfg.get("max_turns", 20))
     backends_to_try = [cfg.get("backend", "z_ai")]
     fallback = cfg.get("fallback_backend")
     if fallback and fallback != backends_to_try[0]:
@@ -1168,7 +1169,7 @@ async def _run_agent(event, prompt: str) -> None:
             "start",
             name="agent",
             trigger=trigger_msgid,
-            features=["reasoning"],
+            features=["reasoning", "interactive"],
         )
         marked = bool(
             trigger_msgid
@@ -1180,8 +1181,11 @@ async def _run_agent(event, prompt: str) -> None:
         )
 
     backends_tried: list[str] = []
-    try:
-        last_err = await _try_backends(
+    invoker = event.nick
+    cancel_requested = False
+    run_cancelled = False
+    run_task = asyncio.ensure_future(
+        _try_backends(
             agent,
             agent_input,
             event,
@@ -1195,18 +1199,62 @@ async def _run_agent(event, prompt: str) -> None:
             history,
             prompt,
         )
+    )
+
+    def on_action(action_event, msg):
+        nonlocal cancel_requested
+        # Only the invoker can cancel their own still-running job.
+        if (
+            msg.get("action") == "cancel"
+            and not run_task.done()
+            and action_event.nick.casefold() == invoker.casefold()
+        ):
+            cancel_requested = True
+            run_task.cancel()
+
+    if workflow_id:
+        event.conn.memory.setdefault("bot_tools_actions", {})[
+            workflow_id
+        ] = on_action
+
+    try:
+        last_err = await run_task
         if last_err:
             _report_failure(event, tracker, last_err, prompt, backends_tried)
         elif not backends_tried:
             event.reply("Agent failed: no backends tried")
+    except asyncio.CancelledError:
+        # A cancel that loses the race to natural completion never reaches here,
+        # so the run actually stopped: drop the pending so its reply can't stamp
+        # a stale "complete" terminal, then close the workflow as cancelled below.
+        if not cancel_requested:
+            raise
+        run_cancelled = True
+        if trigger_msgid:
+            bot_cmds.discard_pending(event.conn, trigger_msgid)
+        event.reply("cancelled")
     finally:
+        if workflow_id:
+            event.conn.memory.get("bot_tools_actions", {}).pop(
+                workflow_id, None
+            )
         await stop_typing_for_command(event.conn, target, typing_id)
-        # When mark_workflow opted a pending invocation in, the terminal rides the reply tags;
-        # otherwise close the workflow with a standalone TAGMSG.
-        if workflow_id and not marked:
+        # When mark_workflow opted a pending invocation in, the terminal rides the
+        # reply tags; otherwise (or on cancel) close it with a standalone TAGMSG.
+        if workflow_id and (run_cancelled or not marked):
             try:
-                state = "failed" if last_err else "complete"
-                bot_cmds.emit_workflow(event.conn, target, workflow_id, state)
+                state = (
+                    "cancelled"
+                    if run_cancelled
+                    else "failed" if last_err else "complete"
+                )
+                bot_cmds.emit_workflow(
+                    event.conn,
+                    target,
+                    workflow_id,
+                    state,
+                    cancelled_by=invoker if run_cancelled else None,
+                )
             except ValueError:
                 logger.debug(
                     "agent: bot-tools workflow close skipped (connection closed)"
@@ -1379,10 +1427,10 @@ def _init_agent_memory(bot):
         logger.exception("agent: memory init failed")
 
 
-@hook.command("ask", "agent", "agi", autohelp=False, allow_private=False)
+@hook.command("agi", "agent", "ask", autohelp=False, allow_private=False)
 async def agent_command(text, event):
     """<prompt> - ask the bot in natural language; uses any available tool."""
     if not text:
-        event.reply("usage: .ask <natural language prompt>")
+        event.reply("usage: .agi <natural language prompt>")
         return
     await _run_agent(event, text)

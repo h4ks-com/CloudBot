@@ -41,6 +41,9 @@ CAPS = [
     "account-tag",
     "labeled-response",
     "standard-replies",
+    # Manage our own backlog so servers don't auto-replay history as live messages.
+    "draft/chathistory",
+    "chathistory",
 ]
 
 _REPLY_TAG = "+draft/reply"
@@ -48,7 +51,11 @@ _CTX_TAG = "+draft/channel-context"
 _BOT_TOOLS_TAG = "+draft/bot-tools"
 _INVOKED_BY_TAG = "+draft/invoked-by"
 _PENDING_KEY = "bot_cmds_pending"
-_FRAGMENT_BYTES = 1500
+_SENDING_KEY = "bot_cmds_sending"
+
+# obbyircd caps the +draft/bot-cmds tag value at 4096 chars; keep fragments
+# under it so a big command list streams in a handful of messages, not a flood.
+_FRAGMENT_BYTES = 3500
 
 # obbyircd caps a +draft/bot-tools tag value at 4094 chars and base64 expands the
 # payload by ~4/3, so the compact JSON must stay under this to fit in one tag.
@@ -162,37 +169,27 @@ def set_bot_mode(conn):
         conn.cmd("MODE", botnick, "+B-DR")
 
 
-@hook.irc_raw("JOIN")
-def advertise_on_join(conn, event):
-    """Pre-existing channel members don't re-query when a fresh bot joins, so
-    nudge them with +draft/bot-cmds-changed on our own join."""
-    paramlist = event.irc_paramlist or []
-    if not paramlist:
-        return
-    if (
-        not event.nick
-        or event.nick.casefold() != conn.config.get("nick", "").casefold()
-    ):
-        return
-    if is_channel(conn, paramlist[0]):
-        conn.tagmsg(paramlist[0], {"+draft/bot-cmds-changed": None})
-
-
 # --------------------------------------------------------------------------
 # Discovery
 # --------------------------------------------------------------------------
 
 
 def _send_command_list(conn, to_nick: str, cmds_obj: dict[str, object]) -> None:
-    """Reply to a query. A small list fits one TAGMSG; a large one is sliced
-    across a draft/bot-cmds batch the asker concatenates then decodes."""
+    """Reply to a query. A small list fits one TAGMSG; a large one streams across
+    a draft/bot-cmds batch the asker concatenates then decodes. Only one stream
+    runs per asker at a time so a duplicate query doesn't double the burst."""
     if fits_under(cmds_obj):
         conn.tagmsg(to_nick, {"+draft/bot-cmds": encode(cmds_obj)})
         return
+    in_flight = conn.memory.setdefault(_SENDING_KEY, set())
+    if to_nick.casefold() in in_flight:
+        return
+    in_flight.add(to_nick.casefold())
     batch_ref = uuid.uuid4().hex[:8]
     conn.cmd("BATCH", "+" + batch_ref, "draft/bot-cmds", to_nick)
-    full_b64 = encode(cmds_obj)
-    conn.loop.call_soon(_drain_fragments, conn, to_nick, batch_ref, full_b64, 0)
+    conn.loop.call_soon(
+        _drain_fragments, conn, to_nick, batch_ref, encode(cmds_obj), 0
+    )
 
 
 def _drain_fragments(
@@ -200,14 +197,21 @@ def _drain_fragments(
 ) -> None:
     if offset >= len(full_b64):
         conn.cmd("BATCH", "-" + batch_ref)
+        conn.memory.get(_SENDING_KEY, set()).discard(to_nick.casefold())
         return
-    conn.tagmsg(
-        to_nick,
-        {
-            "batch": batch_ref,
-            "+draft/bot-cmds": full_b64[offset : offset + _FRAGMENT_BYTES],
-        },
-    )
+    try:
+        conn.tagmsg(
+            to_nick,
+            {
+                "batch": batch_ref,
+                "+draft/bot-cmds": full_b64[offset : offset + _FRAGMENT_BYTES],
+            },
+        )
+    except ValueError:
+        # Connection dropped mid-stream: free the in-flight slot so the next
+        # query from this nick isn't blocked forever by the dedup guard.
+        conn.memory.get(_SENDING_KEY, set()).discard(to_nick.casefold())
+        return
     conn.loop.call_later(
         0.1,
         _drain_fragments,
@@ -260,6 +264,11 @@ def _consume_pending_by_target(conn, target: str) -> PendingInvocation | None:
     if not matches:
         return None
     return store.pop(matches[0])
+
+
+def discard_pending(conn, msgid: str) -> None:
+    """Drop a pending invocation so no terminal reply-tag rides its next reply."""
+    conn.memory.get(_PENDING_KEY, {}).pop(msgid, None)
 
 
 def _inject_legacy_invocation(
@@ -547,10 +556,6 @@ def emit_workflow(
     if cancelled_by is not None:
         obj["cancelled-by"] = cancelled_by
     conn.tagmsg(target, {_BOT_TOOLS_TAG: encode(obj)})
-
-
-def emit_cmds_changed(conn, channel: str) -> None:
-    conn.tagmsg(channel, {"+draft/bot-cmds-changed": None})
 
 
 def _handle_action(conn, event, msg_obj: dict) -> None:

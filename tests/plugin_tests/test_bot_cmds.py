@@ -1,4 +1,5 @@
 import base64
+import dataclasses
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,6 +10,42 @@ from cloudbot.plugin import PluginManager
 from cloudbot.plugin_hooks import CommandHook, CommandInfo
 from cloudbot.util.irc import is_channel
 from plugins.core import bot_cmds
+
+
+class _RecordingConn:
+    """Records the raw IRC lines a send would put on the wire. The loop queues
+    callbacks; call run() to drain them (lets a test inspect in-flight state).
+    """
+
+    def __init__(self, max_line_length=510):
+        self.lines = []
+        self.nick = "TestBot"
+        self.config = {"max_line_length": max_line_length}
+        self.memory = {}
+        self._pending: list[tuple] = []
+        conn = self
+
+        class _Loop:
+            def call_soon(self, fn, *args):
+                conn._pending.append((fn, args))
+
+            def call_later(self, _delay, fn, *args):
+                conn._pending.append((fn, args))
+
+        self.loop = _Loop()
+
+    def run(self):
+        while self._pending:
+            fn, args = self._pending.pop(0)
+            fn(*args)
+
+    def cmd(self, command, *params, tags=None):
+        self.lines.append(
+            str(Message(tags, None, command, list(map(str, params))))
+        )
+
+    def tagmsg(self, target, tags=None):
+        self.cmd("TAGMSG", target, tags=tags)
 
 
 def make_command_hook(name, aliases=(), doc=None, permissions=()):
@@ -25,16 +62,15 @@ def make_command_hook(name, aliases=(), doc=None, permissions=()):
 
 
 def pending(**kwargs):
-    base = {
-        "target": "#chan",
-        "invoker": "alice",
-        "msgid": "mid",
-        "context": "public",
-        "cmd_name": "weather",
-        "options": {},
-    }
-    base.update(kwargs)
-    return bot_cmds.PendingInvocation(**base)
+    base = bot_cmds.PendingInvocation(
+        target="#chan",
+        invoker="alice",
+        msgid="mid",
+        context="public",
+        cmd_name="weather",
+        options={},
+    )
+    return dataclasses.replace(base, **kwargs)
 
 
 # --- tag value codec ---
@@ -81,11 +117,11 @@ def test_command_hook_info():
 
 def test_unique_commands_dedupes_aliases_and_sorts():
     pm = PluginManager(MagicMock())
-    foo = make_command_hook("foo", aliases=["f"])
-    bar = make_command_hook("bar")
-    pm.commands = {"foo": foo, "f": foo, "bar": bar}
-    assert pm.unique_commands() == [bar, foo]
-    assert [info.name for info in pm.command_infos()] == ["bar", "foo"]
+    weather = make_command_hook("weather", aliases=["w"])
+    archive = make_command_hook("archive")
+    pm.commands = {"weather": weather, "w": weather, "archive": archive}
+    assert pm.unique_commands() == [archive, weather]
+    assert [info.name for info in pm.command_infos()] == ["archive", "weather"]
 
 
 # --- bot-cmds discovery schema ---
@@ -100,14 +136,12 @@ def test_build_command_list_filters_truncates_and_falls_back():
         CommandInfo("nodoc", "", [], []),
     ]
     result = bot_cmds.build_command_list(bot, ".")
+    commands = result["commands"]
+    assert isinstance(commands, list)
 
     assert result["prefix"] == "."
-    assert [c["name"] for c in result["commands"]] == [
-        "weather",
-        "long",
-        "nodoc",
-    ]
-    by_name = {c["name"]: c for c in result["commands"]}
+    assert [c["name"] for c in commands] == ["weather", "long", "nodoc"]
+    by_name = {c["name"]: c for c in commands}
     assert by_name["long"]["description"].endswith("...")
     assert len(by_name["long"]["description"]) <= 100
     assert by_name["nodoc"]["description"] == "(no description)"
@@ -232,6 +266,7 @@ def test_emit_step_truncates_oversized_content_to_fit_budget():
     )
     _, tags = conn.tagmsg.call_args.args
     step = bot_cmds.decode(tags["+draft/bot-tools"])
+    assert isinstance(step, dict)
     assert step["truncated"] is True
     assert step["content"].endswith("...")
     assert bot_cmds.fits_under(step)
@@ -267,3 +302,87 @@ def test_is_channel_falls_back_without_isupport():
     conn.memory = {}
     assert is_channel(conn, "#chan")
     assert not is_channel(conn, "nick")
+
+
+# --- bot-cmds discovery transport ---
+
+
+def _big_command_list(n=400):
+    big: dict[str, object] = {
+        "prefix": ".",
+        "commands": [
+            {"name": f"cmd{i}", "description": "x" * 40, "aliases": ["a", "b"]}
+            for i in range(n)
+        ],
+    }
+    return big
+
+
+def test_command_list_batch_streams_within_tag_limits():
+    conn = _RecordingConn()
+    bot_cmds._send_command_list(conn, "somenick", _big_command_list())
+    conn.run()
+
+    fragments = [line for line in conn.lines if line.startswith("@batch=")]
+    # message-tags total budget, and obbyircd's +draft/bot-cmds value cap.
+    assert all(len(line) <= 8191 for line in conn.lines)
+    assert all(
+        len(frag) <= bot_cmds._FRAGMENT_BYTES + 200 for frag in fragments
+    )
+    # big fragments mean few messages, not a per-command flood.
+    assert len(fragments) < 30
+    assert any(line.startswith("BATCH +") for line in conn.lines)
+    assert any(line.startswith("BATCH -") for line in conn.lines)
+
+
+def test_command_list_skips_concurrent_duplicate_send():
+    conn = _RecordingConn()
+    bot_cmds._send_command_list(conn, "somenick", _big_command_list())
+    bot_cmds._send_command_list(
+        conn, "SomeNick", _big_command_list()
+    )  # in flight
+
+    assert sum(line.startswith("BATCH +") for line in conn.lines) == 1
+    conn.run()
+    assert "somenick" not in conn.memory[bot_cmds._SENDING_KEY]
+
+
+def test_small_command_list_sends_single_tagmsg():
+    conn = _RecordingConn()
+    bot_cmds._send_command_list(conn, "nick", {"prefix": ".", "commands": []})
+    assert len(conn.lines) == 1
+    assert conn.lines[0].startswith("@+draft/bot-cmds=")
+
+
+class _DroppingConn(_RecordingConn):
+    """Raises mid-stream like IrcClient.send does once the connection drops."""
+
+    def __init__(self, fail_on=2):
+        super().__init__()
+        self.fail_on = fail_on
+        self.sends = 0
+
+    def tagmsg(self, target, tags=None):
+        self.sends += 1
+        if self.sends == self.fail_on:
+            raise ValueError(
+                "Client must be connected to irc server to use send"
+            )
+        super().tagmsg(target, tags=tags)
+
+
+def test_command_list_frees_inflight_when_send_fails_midstream():
+    conn = _DroppingConn()
+    bot_cmds._send_command_list(conn, "somenick", _big_command_list())
+    conn.run()
+
+    assert "somenick" not in conn.memory[bot_cmds._SENDING_KEY]
+
+
+def test_discard_pending_removes_entry_and_tolerates_absent():
+    conn = MagicMock()
+    conn.memory = {}
+    bot_cmds._set_pending(conn, pending(msgid="m1"))
+    bot_cmds.discard_pending(conn, "m1")
+    assert bot_cmds._consume_pending_by_target(conn, "#chan") is None
+    bot_cmds.discard_pending(conn, "absent")
