@@ -205,24 +205,23 @@ class TestGuardPrHallucination:
 class TestFormatAnswer:
     cfg = {"reply_max_chars": 420, "reply_max_lines": 10}
 
-    def test_keeps_line_structure(self):
+    def test_multiline_keeps_structure_and_pings_own_line(self):
         text = "first line\nsecond line\nthird line"
-        assert _format_answer(text, self.cfg) == [
-            "first line",
-            "second line",
-            "third line",
-        ]
+        assert _format_answer(text, self.cfg) == (
+            ["first line", "second line", "third line"],
+            True,
+        )
 
-    def test_single_line_stays_single(self):
-        assert _format_answer("just one", self.cfg) == ["just one"]
+    def test_single_line_pings_inline(self):
+        assert _format_answer("just one", self.cfg) == (["just one"], False)
 
     @patch("plugins.agent.upload_markdown_paste", return_value="http://p/x")
-    def test_overflow_keeps_max_lines_and_appends_paste(self, _paste):
+    def test_overflow_leads_with_paste_link_inline(self, _paste):
         text = "\n".join(f"line {i}" for i in range(25))
-        result = _format_answer(text, self.cfg)
-        assert len(result) == 11
-        assert result[:10] == [f"line {i}" for i in range(10)]
-        assert result[-1] == "… full: http://p/x"
+        messages, ping_own_line = _format_answer(text, self.cfg)
+        assert ping_own_line is False
+        assert messages[0] == "full: http://p/x"
+        assert messages[1:] == [f"line {i}" for i in range(10)]
 
     def test_empty_text_returns_empty(self):
-        assert _format_answer("   ", self.cfg) == []
+        assert _format_answer("   ", self.cfg) == ([], False)

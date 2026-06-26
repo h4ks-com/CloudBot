@@ -118,6 +118,41 @@ def upload_history(nick: str, messages: list[Message], header: str) -> str:
     return url
 
 
+def wrap_reply_lines(
+    text: str,
+    *,
+    max_lines: int = 10,
+    max_line_bytes: int = 420,
+    paste: Callable[[], str] | None = None,
+) -> tuple[list[str], str | None]:
+    """Wrap an answer into up to max_lines IRC lines (each within max_line_bytes
+    bytes), preserving its line structure rather than collapsing it to one line.
+    Returns (lines, paste_url): on overflow the lines are capped and paste_url is
+    the link to the full text (via paste()), so the caller decides where to place
+    it. paste_url is None when the answer fit or pasting failed."""
+    text = (text or "").strip()
+    if not text:
+        return [], None
+    pieces: list[str] = []
+    for line in text.splitlines():
+        line = line.rstrip()
+        if line:
+            pieces.extend(split_long_line(line, max_line_bytes))
+    if not pieces:
+        return [], None
+    if len(pieces) <= max_lines:
+        return pieces, None
+
+    kept = pieces[:max_lines]
+    if paste is None:
+        return kept, None
+    try:
+        return kept, paste()
+    except (OSError, ValueError, RuntimeError):
+        logger.exception("reply paste upload failed")
+        return kept, None
+
+
 def format_reply_lines(
     text: str,
     *,
@@ -125,32 +160,18 @@ def format_reply_lines(
     max_line_bytes: int = 420,
     paste: Callable[[], str] | None = None,
 ) -> list[str]:
-    """Format an answer as up to max_lines IRC lines (each within max_line_bytes
-    bytes), preserving its line structure rather than collapsing it to one line.
-    On overflow, keep the first max_lines lines and append a paste link (via
-    paste()) so the full text stays reachable. The result is meant for
-    event.reply(*lines), which batches it via draft/multiline when the server
-    supports it or sends one PRIVMSG per line otherwise."""
-    text = (text or "").strip()
-    if not text:
-        return []
-    pieces: list[str] = []
-    for line in text.splitlines():
-        line = line.rstrip()
-        if line:
-            pieces.extend(split_long_line(line, max_line_bytes))
-    if not pieces:
-        return []
-    if len(pieces) <= max_lines:
-        return pieces
-
-    kept = pieces[:max_lines]
-    if paste is not None:
-        try:
-            kept.append(f"… full: {paste()}")
-        except (OSError, ValueError, RuntimeError):
-            logger.exception("reply paste upload failed")
-    return kept
+    """wrap_reply_lines as a flat line list for event.reply(*lines); on overflow
+    the paste link leads so it rides the first (nick-prefixed) line instead of
+    wasting a trailing one."""
+    lines, url = wrap_reply_lines(
+        text,
+        max_lines=max_lines,
+        max_line_bytes=max_line_bytes,
+        paste=paste,
+    )
+    if url:
+        return [f"full: {url}", *lines]
+    return lines
 
 
 def truncate_or_paste(

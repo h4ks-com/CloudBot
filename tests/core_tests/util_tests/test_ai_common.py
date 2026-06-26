@@ -8,6 +8,7 @@ from cloudbot.util.ai_common import (
     _safe_content,
     format_reply_lines,
     upload_history,
+    wrap_reply_lines,
 )
 
 # ---------------------------------------------------------------------------
@@ -301,13 +302,13 @@ class TestFormatReplyLines:
         assert all(len(piece.encode("utf-8")) <= 20 for piece in result)
         assert "".join(result) == line
 
-    def test_overflow_keeps_max_lines_and_appends_paste(self):
+    def test_overflow_leads_with_paste_link(self):
         text = "\n".join(f"line {i}" for i in range(20))
         result = format_reply_lines(
             text, max_lines=5, paste=lambda: "http://p/x"
         )
-        assert result[:5] == [f"line {i}" for i in range(5)]
-        assert result[-1] == "… full: http://p/x"
+        assert result[0] == "full: http://p/x"
+        assert result[1:] == [f"line {i}" for i in range(5)]
 
     def test_overflow_without_paste_just_truncates(self):
         text = "\n".join(f"line {i}" for i in range(20))
@@ -321,3 +322,19 @@ class TestFormatReplyLines:
         text = "\n".join(f"line {i}" for i in range(20))
         result = format_reply_lines(text, max_lines=3, paste=boom)
         assert result == ["line 0", "line 1", "line 2"]
+
+
+class TestWrapReplyLines:
+    def test_within_budget_no_url(self):
+        assert wrap_reply_lines("a\nb") == (["a", "b"], None)
+
+    def test_overflow_returns_lines_and_url(self):
+        text = "\n".join(f"line {i}" for i in range(20))
+        lines, url = wrap_reply_lines(
+            text, max_lines=4, paste=lambda: "http://p/x"
+        )
+        assert lines == [f"line {i}" for i in range(4)]
+        assert url == "http://p/x"
+
+    def test_empty(self):
+        assert wrap_reply_lines("  ") == ([], None)

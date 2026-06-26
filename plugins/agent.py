@@ -38,7 +38,7 @@ from cloudbot.agent import (
 )
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
-from cloudbot.util.ai_common import format_reply_lines
+from cloudbot.util.ai_common import wrap_reply_lines
 from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
@@ -1076,15 +1076,20 @@ def _make_run_config(cfg: dict, bot, backend: str) -> RunConfig:
     )
 
 
-def _format_answer(text: str, cfg: dict) -> list[str]:
-    """Up to reply_max_lines lines (each within reply_max_chars bytes), pasting
-    the full answer and appending a link when it overflows."""
-    return format_reply_lines(
+def _format_answer(text: str, cfg: dict) -> tuple[list[str], bool]:
+    """Return (reply messages, ping_own_line). On overflow the paste link leads
+    the first line so it rides the nick ping (``(nick) full: <url>``) with the
+    answer below; otherwise a multi-line answer puts the ping on its own line so
+    markdown headings/lists render."""
+    lines, url = wrap_reply_lines(
         text,
         max_lines=int(cfg.get("reply_max_lines", 10)),
         max_line_bytes=int(cfg.get("reply_max_chars", 420)),
         paste=lambda: upload_markdown_paste(text),
     )
+    if url:
+        return [f"full: {url}", *lines], False
+    return lines, len(lines) > 1
 
 
 async def _run_agent(event, prompt: str) -> None:
@@ -1383,7 +1388,8 @@ async def _try_backends(
             )
         else:
             history.append({"role": "assistant", "content": answer})
-        event.reply(*_format_answer(answer, cfg), ping_own_line=True)
+        reply_lines, ping_own_line = _format_answer(answer, cfg)
+        event.reply(*reply_lines, ping_own_line=ping_own_line)
         return None
     return last_err
 
