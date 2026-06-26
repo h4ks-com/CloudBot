@@ -2,7 +2,6 @@ import logging
 import re
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
-from re import Match
 from typing import Union
 from urllib.parse import parse_qs, urlparse
 
@@ -25,11 +24,6 @@ youtube_re = re.compile(
     r"(?:youtube.*?(?:v=|/v/)|youtu\.be/|yooouuutuuube.*?id=)([-_a-zA-Z0-9]+)",
     re.I,
 )
-ytpl_re = re.compile(
-    r"(.*:)//(www.youtube.com/playlist|youtube.com/playlist)(:[0-9]+)?(.*)",
-    re.I,
-)
-
 
 base_url = "https://www.googleapis.com/youtube/v3/"
 
@@ -270,12 +264,6 @@ def get_video(video_id: str, parts: Parts) -> requests.Response:
     return do_request("videos", parts, params={"maxResults": 1, "id": video_id})
 
 
-def get_playlist(playlist_id: str, parts: Parts) -> requests.Response:
-    return do_request(
-        "playlists", parts, params={"maxResults": 1, "id": playlist_id}
-    )
-
-
 def do_search(term: str, result_type: str = "video") -> requests.Response:
     return do_request(
         "search",
@@ -372,20 +360,6 @@ def get_video_id(url: str) -> str | None:
     return None  # Return None if no match is found
 
 
-@hook.regex(youtube_re)
-def youtube_url(match: Match[str]) -> str:
-    client = get_client()
-    result = get_video_info(client, video_id=match.group(1))
-    time = timeformat.format_time(
-        int(isodate.parse_duration(result["duration"]).total_seconds()),
-        simple=True,
-    )
-    return truncate(
-        f"\x02{result['title']}\x02, \x02duration:\x02 {time} - {result['transcript']}",
-        400,
-    )
-
-
 user_results: dict[str, list[str]] = {}
 last_youtube_url: dict[tuple[str, str], str] = {}
 
@@ -460,28 +434,3 @@ def youtime(text: str, reply) -> str:
             snippet["title"], length_text, views, total_text
         )
     )
-
-
-@hook.regex(ytpl_re)
-def ytplaylist_url(match: Match[str]) -> str:
-    location = match.group(4).split("=")[-1]
-    request = get_playlist(location, ["contentDetails", "snippet"])
-    raise_api_errors(request)
-
-    json = request.json()
-
-    data = json["items"]
-    if not data:
-        raise NoResultsError()
-
-    item = data[0]
-    snippet = item["snippet"]
-    content_details = item["contentDetails"]
-
-    title = snippet["title"]
-    author = snippet["channelTitle"]
-    num_videos = int(content_details["itemCount"])
-    count_videos = " - \x02{:,}\x02 video{}".format(
-        num_videos, "s"[num_videos == 1 :]
-    )
-    return f"\x02{title}\x02 {count_videos} - \x02{author}\x02"
