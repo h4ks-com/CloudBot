@@ -6,6 +6,7 @@ import httpx
 
 from plugins.agent import (
     _extract_urls,
+    _format_answer,
     _guard_pr_hallucination,
     _tool_manifest,
     _url_validation_feedback,
@@ -199,3 +200,29 @@ class TestGuardPrHallucination:
         )
         assert "failed to open PR" in answer
         assert "<no-pr>" in answer
+
+
+class TestFormatAnswer:
+    cfg = {"reply_max_chars": 420, "reply_max_lines": 10}
+
+    def test_keeps_line_structure(self):
+        text = "first line\nsecond line\nthird line"
+        assert _format_answer(text, self.cfg) == [
+            "first line",
+            "second line",
+            "third line",
+        ]
+
+    def test_single_line_stays_single(self):
+        assert _format_answer("just one", self.cfg) == ["just one"]
+
+    @patch("plugins.agent.upload_markdown_paste", return_value="http://p/x")
+    def test_overflow_keeps_max_lines_and_appends_paste(self, _paste):
+        text = "\n".join(f"line {i}" for i in range(25))
+        result = _format_answer(text, self.cfg)
+        assert len(result) == 11
+        assert result[:10] == [f"line {i}" for i in range(10)]
+        assert result[-1] == "… full: http://p/x"
+
+    def test_empty_text_returns_empty(self):
+        assert _format_answer("   ", self.cfg) == []

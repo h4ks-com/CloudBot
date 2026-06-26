@@ -386,3 +386,23 @@ def test_discard_pending_removes_entry_and_tolerates_absent():
     bot_cmds.discard_pending(conn, "m1")
     assert bot_cmds._consume_pending_by_target(conn, "#chan") is None
     bot_cmds.discard_pending(conn, "absent")
+
+
+@pytest.mark.asyncio()
+async def test_handle_tagmsg_ignores_own_echo(monkeypatch):
+    conn = MagicMock()
+    conn.nick = "TestBot"
+    sent = []
+    monkeypatch.setattr(
+        bot_cmds, "_send_command_list", lambda *a, **k: sent.append(a)
+    )
+    event = MagicMock()
+    event.nick = "testbot"
+    event.irc_tags = {
+        "+draft/bot-cmds-query": MessageTag("+draft/bot-cmds-query", None)
+    }
+    event.irc_paramlist = ["#chan"]
+
+    await bot_cmds.handle_tagmsg(conn, event)
+
+    assert sent == []

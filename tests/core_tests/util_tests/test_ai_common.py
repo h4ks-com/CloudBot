@@ -6,6 +6,7 @@ from cloudbot.util.ai_common import (
     Message,
     _js_safe_json,
     _safe_content,
+    format_reply_lines,
     upload_history,
 )
 
@@ -272,3 +273,51 @@ class TestUploadHistory:
         msgs = _extract_msgs(captured["data"].decode("utf-8"))
         bot_msg = next(m for m in msgs if m["role"] == "assistant")
         assert not bot_msg["content"].startswith("```html")
+
+
+# ---------------------------------------------------------------------------
+# format_reply_lines
+# ---------------------------------------------------------------------------
+
+
+class TestFormatReplyLines:
+    def test_keeps_lines_within_budget(self):
+        assert format_reply_lines("a\nb\nc") == ["a", "b", "c"]
+
+    def test_single_line(self):
+        assert format_reply_lines("just one line") == ["just one line"]
+
+    def test_empty(self):
+        assert format_reply_lines("   ") == []
+        assert format_reply_lines("") == []
+
+    def test_drops_blank_lines(self):
+        assert format_reply_lines("a\n\n  \nb") == ["a", "b"]
+
+    def test_long_line_split_into_byte_chunks(self):
+        line = "x" * 50
+        result = format_reply_lines(line, max_line_bytes=20)
+        assert len(result) == 3
+        assert all(len(piece.encode("utf-8")) <= 20 for piece in result)
+        assert "".join(result) == line
+
+    def test_overflow_keeps_max_lines_and_appends_paste(self):
+        text = "\n".join(f"line {i}" for i in range(20))
+        result = format_reply_lines(
+            text, max_lines=5, paste=lambda: "http://p/x"
+        )
+        assert result[:5] == [f"line {i}" for i in range(5)]
+        assert result[-1] == "… full: http://p/x"
+
+    def test_overflow_without_paste_just_truncates(self):
+        text = "\n".join(f"line {i}" for i in range(20))
+        result = format_reply_lines(text, max_lines=5)
+        assert result == [f"line {i}" for i in range(5)]
+
+    def test_paste_failure_falls_back_to_truncation(self):
+        def boom():
+            raise ValueError("paste down")
+
+        text = "\n".join(f"line {i}" for i in range(20))
+        result = format_reply_lines(text, max_lines=3, paste=boom)
+        assert result == ["line 0", "line 1", "line 2"]

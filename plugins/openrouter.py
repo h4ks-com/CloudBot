@@ -26,7 +26,8 @@ from sqlalchemy import (
 )
 
 from cloudbot import hook
-from cloudbot.util import database, formatting, web
+from cloudbot.util import database, web
+from cloudbot.util.ai_common import format_reply_lines
 from plugins.agent_tools import upload_markdown_paste
 
 logger = logging.getLogger("cloudbot.openrouter")
@@ -336,19 +337,21 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
                 db, conn.name, chan, nick, model, "assistant", content
             )
 
-            flat = " ".join(content.split())
-            truncated = formatting.truncate_str(flat, MAX_IRC_LINE_LENGTH)
-            if len(truncated) < len(flat) or flat != content.strip():
-                full_history = get_chat_history(db, conn.name, chan, nick)
+            def paste_history() -> str:
                 paste_text = format_history_for_paste(
-                    nick, full_history, f"{nick}'s conversation in {chan}"
+                    nick,
+                    get_chat_history(db, conn.name, chan, nick),
+                    f"{nick}'s conversation in {chan}",
                 )
-                paste_url = upload_markdown_paste(
+                return upload_markdown_paste(
                     paste_text, title=f"{nick}'s conversation in {chan}"
                 )
-                return f"{truncated} (full: {paste_url})"
 
-            return content
+            return format_reply_lines(
+                content,
+                max_line_bytes=MAX_IRC_LINE_LENGTH,
+                paste=paste_history,
+            )
 
     except (
         ChatError,

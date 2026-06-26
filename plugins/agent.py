@@ -38,6 +38,7 @@ from cloudbot.agent import (
 )
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
+from cloudbot.util.ai_common import format_reply_lines
 from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
@@ -796,7 +797,7 @@ class CaptureEvent(CommandEvent):
         else:
             self._captured.append(str(message))
 
-    def reply(self, *messages, target=None):
+    def reply(self, *messages, target=None, ping_own_line=False):
         for msg in messages:
             if isinstance(msg, (list, tuple)):
                 self._captured.extend(str(m) for m in msg)
@@ -1075,34 +1076,15 @@ def _make_run_config(cfg: dict, bot, backend: str) -> RunConfig:
     )
 
 
-def _byte_truncate(text: str, max_bytes: int, suffix: str = "...") -> str:
-    encoded = text.encode("utf-8", "replace")
-    if len(encoded) <= max_bytes:
-        return text
-    cut = text.encode("utf-8", "replace")[: max_bytes - len(suffix.encode())]
-    return cut.decode("utf-8", "ignore").rstrip() + suffix
-
-
 def _format_answer(text: str, cfg: dict) -> list[str]:
-    """One IRC line, paste only if it doesn't fit reply_max_chars."""
-    max_chars = int(cfg.get("reply_max_chars", 420))
-    text = text.strip()
-    lines = [ln for ln in text.splitlines() if ln.strip()]
-    collapsed = " - ".join(lines) if lines else text
-
-    if len(collapsed.encode("utf-8")) <= max_chars:
-        return [collapsed]
-
-    url = None
-    try:
-        url = upload_markdown_paste(text)
-    except (OSError, ValueError, RuntimeError):
-        logger.exception("agent: paste upload failed")
-
-    if url:
-        suffix = f" (full: {url})"
-        return [_byte_truncate(collapsed, max_chars, suffix)]
-    return [_byte_truncate(collapsed, max_chars)]
+    """Up to reply_max_lines lines (each within reply_max_chars bytes), pasting
+    the full answer and appending a link when it overflows."""
+    return format_reply_lines(
+        text,
+        max_lines=int(cfg.get("reply_max_lines", 10)),
+        max_line_bytes=int(cfg.get("reply_max_chars", 420)),
+        paste=lambda: upload_markdown_paste(text),
+    )
 
 
 async def _run_agent(event, prompt: str) -> None:
@@ -1401,7 +1383,7 @@ async def _try_backends(
             )
         else:
             history.append({"role": "assistant", "content": answer})
-        event.reply(*_format_answer(answer, cfg))
+        event.reply(*_format_answer(answer, cfg), ping_own_line=True)
         return None
     return last_err
 

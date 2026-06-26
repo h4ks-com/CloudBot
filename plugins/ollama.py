@@ -301,7 +301,7 @@ user_models: dict[tuple[str, str], str] = {}
 
 
 @hook.command("ai", "ollama")
-def ai_command(text: str, nick: str, chan: str, bot, notice) -> str:
+def ai_command(text: str, nick: str, chan: str, bot, notice) -> str | list[str]:
     """<text> - Get a response from Ollama LLM."""
     model = user_models.get((chan, nick))
 

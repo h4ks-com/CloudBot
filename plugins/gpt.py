@@ -22,6 +22,7 @@ from cloudbot.util.ai_common import (
     clear_history,
     copy_history,
     detect_code_blocks,
+    format_reply_lines,
     get_or_create_history,
     truncate_or_paste,
     upload_history,
@@ -130,7 +131,7 @@ gpt_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
 
 
 @hook.command("gpt")
-def gpt_command(text: str, nick: str, chan: str) -> str:
+def gpt_command(text: str, nick: str, chan: str) -> str | list[str]:
     """<text> - Get a response from text generating LLM."""
 
     history = get_or_create_history(
@@ -274,21 +275,14 @@ def summarize(
         return formatting.truncate(processed, 420)
     else:
         _SummaryState.last_summary = response
-        output = formatting.chunk_str(response.replace("\n", " - "))
-        if len(output) > 3:
-            paste_url = upload_history(
+        return format_reply_lines(
+            response,
+            paste=lambda: upload_history(
                 nick,
                 [Message(role="assistant", content=response)],
                 f"{nick}'s GPT summary in {chan}",
-            )
-            output[2] = (
-                formatting.truncate(output[2], 350)
-                + " (full response: "
-                + paste_url
-                + ")"
-            )
-            return output[:3]
-        return output
+            ),
+        )
 
 
 @hook.command("summarize", "summary", autohelp=False)

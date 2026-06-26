@@ -351,6 +351,18 @@ class CloudBot(AbstractBot):
         tasks = []
         halted = False
 
+        # With echo-message the server echoes our own PRIVMSG/NOTICE back; never
+        # let those drive command/regex/event hooks or the bot would react to
+        # (and loop on) its own output.
+        conn_nick = getattr(event.conn, "nick", None)
+        self_message = bool(
+            event.type
+            in (EventType.message, EventType.action, EventType.notice)
+            and event.nick
+            and conn_nick
+            and event.nick.casefold() == conn_nick.casefold()
+        )
+
         def add_hook(hook, _event, _run_before=False):
             nonlocal halted
             if halted:
@@ -395,7 +407,10 @@ class CloudBot(AbstractBot):
                     break
 
         # Event hooks
-        if event.type in self.plugin_manager.event_type_hooks:
+        if (
+            event.type in self.plugin_manager.event_type_hooks
+            and not self_message
+        ):
             for event_hook in self.plugin_manager.event_type_hooks[event.type]:
                 if not add_hook(
                     event_hook, Event(hook=event_hook, base_event=event)
@@ -405,7 +420,7 @@ class CloudBot(AbstractBot):
 
         matched_command = False
 
-        if event.type is EventType.message:
+        if event.type is EventType.message and not self_message:
             # Commands
             cmd_match = get_cmd_regex(event).match(event.content)
 
@@ -457,7 +472,10 @@ class CloudBot(AbstractBot):
                             txt_list = formatting.get_text_list(commands)
                             event.notice(f"Possible matches: {txt_list}")
 
-        if event.type in (EventType.message, EventType.action):
+        if (
+            event.type in (EventType.message, EventType.action)
+            and not self_message
+        ):
             # Regex hooks
             regex_matched = False
             for regex, regex_hook in self.plugin_manager.regex_hooks:

@@ -192,6 +192,28 @@ def test_reply(reply_ping, messages, chan, nick, target, calls):
     assert conn.mock_calls == calls
 
 
+def test_reply_ping_own_line_opt_in():
+    conn = MagicMock(config={"reply_ping": True})
+    event = Event(channel="#foo", conn=conn, nick="bar")
+
+    event.reply("# Heading", "- item one", ping_own_line=True)
+
+    assert conn.mock_calls == [
+        call.message("#foo", "(bar)", "# Heading", "- item one", tags=None)
+    ]
+
+
+def test_reply_multiline_default_keeps_ping_inline():
+    conn = MagicMock(config={"reply_ping": True})
+    event = Event(channel="#foo", conn=conn, nick="bar")
+
+    event.reply("first", "second")
+
+    assert conn.mock_calls == [
+        call.message("#foo", "(bar) first", "second", tags=None)
+    ]
+
+
 def test_event_message():
     conn = MagicMock()
     event = Event(channel="#foo", conn=conn)

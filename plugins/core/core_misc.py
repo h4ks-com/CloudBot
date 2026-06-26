@@ -179,3 +179,23 @@ async def on_invalid_nick(conn):
     conn.cmd("NICK", conn.nick)
     # Just in case, we make sure to wait at least 30 seconds between sending this
     await asyncio.sleep(30)
+
+
+@hook.irc_raw(["FAIL", "WARN", "NOTE"])
+def standard_reply(irc_paramlist, conn, event):
+    """Surface IRCv3 standard-replies (e.g. MULTILINE_* / BATCH FAILs) that the
+    bot requests but would otherwise drop silently."""
+    parts = list(irc_paramlist)
+    command = parts[0] if parts else "?"
+    code = parts[1] if len(parts) > 1 else "?"
+    detail = parts[-1] if len(parts) > 2 else ""
+    level = logging.INFO if event.irc_command == "NOTE" else logging.WARNING
+    logger.log(
+        level,
+        "[%s|standard-reply] %s %s %s: %s",
+        conn.name,
+        event.irc_command,
+        command,
+        code,
+        detail,
+    )

@@ -33,6 +33,7 @@ CAPS = [
     "message-ids",
     "draft/message-ids",
     "batch",
+    "draft/multiline",
     "bot-mode",
     "draft/bot-cmds",
     "draft/bot-tools",
@@ -388,6 +389,8 @@ async def handle_tagmsg(conn, event):
     """Route incoming TAGMSGs to the bot-cmds/bot-tools handlers. TAGMSGs inside
     a batch are chathistory replay and must not be re-answered as live queries.
     """
+    if event.nick and event.nick.casefold() == conn.nick.casefold():
+        return  # our own TAGMSG echoed back via echo-message
     tags = event.irc_tags or {}
     if not tags or "batch" in tags:
         return

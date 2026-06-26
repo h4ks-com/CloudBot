@@ -340,11 +340,17 @@ class IrcClient(Client):
         *messages: str,
         tags: dict[str, str | None] | None = None,
     ) -> None:
-        """Send one or more messages, using BATCH multiline if supported"""
-        if len(messages) > 1 and supports_multiline(self):
-            send_batch_multiline(self, target, list(messages), tags=tags)
+        """Send one or more messages, using BATCH multiline if supported.
+
+        Each message is split on embedded newlines so a single multi-line
+        string batches (or degrades to one PRIVMSG per line) instead of being
+        flattened by the newline-stripping out-sieve.
+        """
+        lines = [line for text in messages for line in str(text).split("\n")]
+        if len(lines) > 1 and supports_multiline(self):
+            send_batch_multiline(self, target, lines, tags=tags)
         else:
-            for i, text in enumerate(messages):
+            for i, text in enumerate(lines):
                 self.cmd("PRIVMSG", target, text, tags=tags if i == 0 else None)
 
     def admin_log(self, text: str, console: bool = True) -> None:
@@ -528,8 +534,8 @@ class _IrcProtocol(asyncio.Protocol):
 
         if not filtered:
             # No outgoing sieves loaded or one of the sieves errored, fall back to old behavior
-            line = old_line[:510] + "\r\n"
-            line = line.encode("utf-8", "replace")
+            truncated = old_line.encode("utf-8", "replace")[:510]
+            line = truncated.decode("utf-8", "ignore").encode("utf-8") + b"\r\n"
 
         if not isinstance(line, bytes):
             # the line must be encoded before we send it, one of the sieves didn't encode it, fall back to the default

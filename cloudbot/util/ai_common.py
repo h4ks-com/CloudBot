@@ -1,12 +1,17 @@
 import json
+import logging
 import re
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Deque, Literal
 
-from cloudbot.util import formatting, web
+from cloudbot.util import web
+from cloudbot.util.multiline import split_long_line
+
+logger = logging.getLogger("cloudbot")
 
 RoleType = Literal["user", "assistant"]
 
@@ -113,9 +118,39 @@ def upload_history(nick: str, messages: list[Message], header: str) -> str:
     return url
 
 
-def collapse_whitespace(text: str) -> str:
-    """Collapse all whitespace runs (newlines, tabs, multiple spaces) to single space."""
-    return " ".join(text.split())
+def format_reply_lines(
+    text: str,
+    *,
+    max_lines: int = 10,
+    max_line_bytes: int = 420,
+    paste: Callable[[], str] | None = None,
+) -> list[str]:
+    """Format an answer as up to max_lines IRC lines (each within max_line_bytes
+    bytes), preserving its line structure rather than collapsing it to one line.
+    On overflow, keep the first max_lines lines and append a paste link (via
+    paste()) so the full text stays reachable. The result is meant for
+    event.reply(*lines), which batches it via draft/multiline when the server
+    supports it or sends one PRIVMSG per line otherwise."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    pieces: list[str] = []
+    for line in text.splitlines():
+        line = line.rstrip()
+        if line:
+            pieces.extend(split_long_line(line, max_line_bytes))
+    if not pieces:
+        return []
+    if len(pieces) <= max_lines:
+        return pieces
+
+    kept = pieces[:max_lines]
+    if paste is not None:
+        try:
+            kept.append(f"… full: {paste()}")
+        except (OSError, ValueError, RuntimeError):
+            logger.exception("reply paste upload failed")
+    return kept
 
 
 def truncate_or_paste(
@@ -124,16 +159,23 @@ def truncate_or_paste(
     messages: list[Message],
     header: str,
     prefix: str = "",
-    max_len: int = 350,
-) -> str:
-    """Truncate for IRC. If truncated or multi-line, upload full conversation and append URL."""
-    flat = collapse_whitespace(response)
-    truncated = formatting.truncate_str(flat, max_len)
-    result = f"{prefix}{truncated}" if prefix else truncated
-    if len(truncated) < len(flat) or flat != response.strip():
-        paste_url = upload_history(nick, messages, header)
-        return f"{result} (full response: {paste_url})"
-    return result
+    max_lines: int = 10,
+    max_line_bytes: int = 420,
+) -> list[str]:
+    """Multi-line IRC reply for a chat completion. Keeps up to max_lines lines;
+    on overflow uploads the full conversation and appends a link."""
+    lines = format_reply_lines(
+        response,
+        max_lines=max_lines,
+        max_line_bytes=max_line_bytes,
+        paste=lambda: upload_history(nick, messages, header),
+    )
+    if not prefix:
+        return lines
+    if lines:
+        lines[0] = prefix + lines[0]
+        return lines
+    return [prefix.rstrip()]
 
 
 def upload_html_app(html_code: str, model_prefix: str = "") -> str:

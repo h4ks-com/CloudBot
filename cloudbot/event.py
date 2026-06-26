@@ -272,8 +272,14 @@ class Event(Mapping[str, Any]):
             if conn and conn.connected:
                 conn.admin_log(message, console=not broadcast)
 
-    def reply(self, *messages, target=None):
-        """sends a message to the current channel/user with a prefix"""
+    def reply(self, *messages, target=None, ping_own_line=False):
+        """sends a message to the current channel/user with a prefix
+
+        ping_own_line keeps the ``(nick)`` ping on its own leading line for
+        multi-line replies, so markdown (headings, lists) at the start of the
+        answer still renders. Opt-in — callers that want the ping inline (the
+        default for most commands) leave it off.
+        """
         reply_ping = self.conn.config.get("reply_ping", True)
         tags = self._get_reply_tags()
         if target is None:
@@ -289,6 +295,8 @@ class Event(Mapping[str, Any]):
 
         if target == self.nick or not reply_ping:
             self.conn.message(target, *messages, tags=tags)
+        elif ping_own_line and (len(messages) > 1 or "\n" in str(messages[0])):
+            self.conn.message(target, f"({self.nick})", *messages, tags=tags)
         else:
             self.conn.message(
                 target, f"({self.nick}) {messages[0]}", *messages[1:], tags=tags

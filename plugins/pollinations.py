@@ -464,7 +464,9 @@ def pltranscribe_command(text: str, bot, notice) -> str:
 
 
 @hook.command("pltext")
-def pltext_command(text: str, nick: str, chan: str, bot, notice) -> str:
+def pltext_command(
+    text: str, nick: str, chan: str, bot, notice
+) -> str | list[str]:
     """<text> - Generate text using Pollinations AI. Use '.plmodel' to change model."""
 
     api_key = get_pollinations_config(bot)
@@ -485,13 +487,13 @@ def pltext_command(text: str, nick: str, chan: str, bot, notice) -> str:
         response = client.generate_text(messages, model)
         response_text = response["choices"][0]["message"]["content"]
         history.append(Message(role="assistant", content=response_text))
-        formatted = truncate_or_paste(
+        return truncate_or_paste(
             response_text,
             nick,
             list(history),
             f"{nick}'s Pollinations conversation in {chan}",
+            prefix=f"[{model}] ",
         )
-        return f"[{model}] {formatted}"
     except requests.HTTPError as e:
         if e.response.status_code == 402:
             return "Error: Insufficient pollen balance"

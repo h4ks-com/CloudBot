@@ -234,6 +234,34 @@ class TestProcessing:
         )
 
     @pytest.mark.asyncio()
+    async def test_command_skipped_for_own_echo(
+        self, mock_bot_factory, event_loop
+    ) -> None:
+        bot = mock_bot_factory(loop=event_loop)
+        conn = MockConn(nick="bot")
+        event = Event(
+            irc_command="PRIVMSG",
+            event_type=EventType.message,
+            channel="#foo",
+            nick="Bot",
+            conn=conn,
+            content=".foo bar",
+        )
+
+        run_hooks = []
+
+        @hook.command("foo")
+        async def coro(hook):  # pragma: no cover
+            run_hooks.append(hook)
+
+        full_hook = CommandHook(MagicMock(), hook._get_hook(coro, "command"))
+        for cmd in full_hook.aliases:
+            bot.plugin_manager.commands[cmd] = full_hook
+
+        await CloudBot.process(bot, event)
+        assert run_hooks == []
+
+    @pytest.mark.asyncio()
     async def test_command_partial(self, mock_bot_factory, event_loop) -> None:
         bot = mock_bot_factory(loop=event_loop)
         conn = MockConn(nick="bot")
