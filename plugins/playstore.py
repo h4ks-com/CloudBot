@@ -44,11 +44,19 @@ results_queue: Queue = Queue()
 
 
 def pop3(results: list[App], reply) -> str | None:
+    lines = []
+    exhausted = True
     for _ in range(3):
         try:
-            reply(str(results.pop()))
+            lines.append(str(results.pop()))
         except IndexError:
-            return "No [more] results found."
+            exhausted = False
+            break
+    if not lines:
+        return "No [more] results found."
+    if exhausted:
+        lines.append("No [more] results found.")
+    reply(*lines)
     return None
 
 

@@ -215,6 +215,10 @@ def marstime(text: str) -> str:
 @hook.command("marslocations", "marslocs", autohelp=False)
 def mars_locations(reply) -> None:
     """List available Mars mission locations for marstime command."""
-    reply("Available Mars locations:")
-    for key, data in MARS_LOCATIONS.items():
-        reply(f"\x02{key}\x02: {data['name']} - {data['description']}")
+    reply(
+        "Available Mars locations:",
+        *[
+            f"\x02{key}\x02: {data['name']} - {data['description']}"
+            for key, data in MARS_LOCATIONS.items()
+        ],
+    )

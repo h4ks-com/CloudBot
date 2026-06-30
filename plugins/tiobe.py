@@ -139,8 +139,7 @@ def tiobe(reply, text):
     # If is digit return the ranking for the language
     if arg.isdigit():
         try:
-            for row in rows[int(arg) - 1 : int(arg) + 5]:
-                reply(str(row))
+            reply(*[str(row) for row in rows[int(arg) - 1 : int(arg) + 5]])
         except IndexError:
             reply("Invalid rank position")
 
@@ -154,5 +153,4 @@ def tiobe(reply, text):
         return
 
     else:
-        for row in rows[:5]:
-            reply(str(row))
+        reply(*[str(row) for row in rows[:5]])

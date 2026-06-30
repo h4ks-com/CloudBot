@@ -197,8 +197,7 @@ if __name__ != "__main__":
 
         matches = find_query(query, asciimap)
         value = max(matches, key=lambda x: list(x.keys())[0])
-        for line in choice(sublists(value)).split("\n"):
-            reply(line)
+        reply(*choice(sublists(value)).split("\n"))
 
 
 if __name__ == "__main__":

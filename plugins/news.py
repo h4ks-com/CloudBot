@@ -63,9 +63,10 @@ def pop_many(results, reply):
     for _ in range(1):
         try:
             r = results.pop()
-            reply(str(r))
+            lines = [str(r)]
             if r.body:
-                reply(r.body)
+                lines.append(r.body)
+            reply(*lines)
         except IndexError:
             return "No [more] results found."
     return None

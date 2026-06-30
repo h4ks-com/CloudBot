@@ -12,18 +12,22 @@ poped3 = Queue()
 
 def pop3(results, reply, chan, nick):
     songs = []
+    lines = []
     for i in range(3):
         try:
             song = results.pop()
             if isinstance(song, Strophe):
                 reply(str(song).replace("\n", " - "))
+                poped3[chan][nick] = songs
                 return
 
             songs.append(song)
-            reply(f"{i+1}) {song.artist} - {song.song} - {song.songUrl}")
+            lines.append(f"{i+1}) {song.artist} - {song.song} - {song.songUrl}")
         except IndexError:
-            reply("No [more] results found.")
+            lines.append("No [more] results found.")
             break
+    if lines:
+        reply(*lines)
     poped3[chan][nick] = songs
 
 

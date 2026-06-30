@@ -148,8 +148,6 @@ def devdocs(text, chan, nick, reply, notice):
         p = SLUGS[slug]
         return f"{p['name']} - {p.get('version', '')}: {', '.join(f'{k}: {v}' for k, v in p.get('links', {}).items())}"
 
-    # reply(f"Searching for '{query}' in slug: '{slug}'...")
     doc = search(slug, query)
-    reply(doc.url)
-    reply(truncate_str(doc.summary(), 400))
+    reply(doc.url, truncate_str(doc.summary(), 400))
     return None

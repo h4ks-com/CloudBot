@@ -408,11 +408,15 @@ def pkglist():
 
 
 def pop3(results, reply):
+    lines = []
     for _ in range(3):
         try:
-            reply(str(next(results)))
+            lines.append(str(next(results)))
         except StopIteration:
-            return "No [more] results found."
+            break
+    if not lines:
+        return "No [more] results found."
+    reply(*lines)
     return None
 
 

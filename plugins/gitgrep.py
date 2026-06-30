@@ -88,9 +88,9 @@ def gitnext(text, reply, chan, nick) -> str | None:
         return "No [more] results found."
 
     r = results.pop()
-    for line in [line for line in r.lines[:3] if line.strip()]:
-        reply(line)
-    reply(f"-->  {r.url}")
+    lines = [line for line in r.lines[:3] if line.strip()]
+    lines.append(f"-->  {r.url}")
+    reply(*lines)
     return None
 
 

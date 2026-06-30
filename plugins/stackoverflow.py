@@ -1118,22 +1118,22 @@ def sonext(reply, chan, nick, text) -> str:
     if len(results) == 0 or r is None:
         return "No [more] results found."
 
-    reply(
-        f"\x02{r.title}\x02 - \x02{r.votes}\x02 votes - \x02{r.answers}\x02 answers - {r.tags}"
-    )
-    reply(f"{r.url}")
+    lines = [
+        f"\x02{r.title}\x02 - \x02{r.votes}\x02 votes - \x02{r.answers}\x02 answers - {r.tags}",
+        f"{r.url}",
+    ]
 
     if answer is None:
+        reply(*lines)
         return None
 
-    lines = [line for line in answer.code.split("\n") if line.strip()]
-
-    for line in lines[:4]:
-        reply(line)
-    if len(lines) > 4:
-        reply(f"... {answer}")
+    code_lines = [line for line in answer.code.split("\n") if line.strip()]
+    lines.extend(code_lines[:4])
+    if len(code_lines) > 4:
+        lines.append(f"... {answer}")
     else:
-        reply(f"{answer}")
+        lines.append(f"{answer}")
+    reply(*lines)
     return None
 
 
