@@ -45,7 +45,9 @@ async def compose_strudel(ctx, data):
     from plugins.strudel_agent import run_strudel
 
     try:
-        return await run_strudel(ctx.context.bot, prompt)
+        return await run_strudel(
+            ctx.context.bot, prompt, channel=getattr(ctx.context, "chan", "")
+        )
     except strudel.StrudelNotConfigured:
         return "(error: Strudel not configured)"
     except (strudel.StrudelError, SubagentError) as e:

@@ -25,6 +25,7 @@ from agents import Agent, FunctionTool, RunContextWrapper
 
 from cloudbot import hook
 from cloudbot.agent.common import parse_args, run_in_executor
+from cloudbot.agent.runs import recent_runs, record_run
 from cloudbot.agent.subagent import SubagentError, run_subagent
 from cloudbot.util import strudel, web
 from cloudbot.util.typing import (
@@ -48,9 +49,7 @@ def _clean_schema(schema: Any) -> dict[str, Any]:
     }
 
 
-def _build_tools(
-    url: str, key: str, specs: list[dict[str, Any]]
-) -> list[FunctionTool]:
+def _build_tools(url: str, key: str, specs: list[dict[str, Any]]) -> list[FunctionTool]:
     """Bridge each tool rendel's MCP server exposes to a FunctionTool. Generic, so
     new rendel tools appear automatically — except strudel_render, whose exact
     audio URL is captured from the result (the model is never trusted to repeat
@@ -143,15 +142,33 @@ def _build_reply(text: str, captured: dict[str, str]) -> str:
     return "\n".join(lines)
 
 
-async def run_strudel(bot: Any, prompt: str) -> str:
+def _recent_songs_note(channel: str) -> str:
+    """Recent songs made in this channel; the newest one's code inline so a
+    follow-up like 'make it faster' edits it instead of composing from scratch."""
+    songs = recent_runs(channel, "song", n=3)
+    if not songs:
+        return ""
+    lines = ["Songs you recently made in this channel (newest first):"]
+    for index, song in enumerate(songs):
+        lines.append(f'- "{song.summary}" — {song.url}')
+        if index == 0 and song.detail:
+            lines.append(
+                "  Its Strudel code (edit THIS when the user asks to change "
+                "that song):\n```\n" + song.detail + "\n```"
+            )
+    return "\n".join(lines) + "\n\n"
+
+
+async def run_strudel(bot: Any, prompt: str, channel: str = "") -> str:
     """Compose+render a song via the rendel MCP server and return a short result
     with the URL(s). Shared by the ``.strudel`` command and the main agent's
-    ``compose_strudel`` tool. Raises on misconfiguration."""
+    ``compose_strudel`` tool. Recent songs in ``channel`` are surfaced so a
+    follow-up can iterate on them. Raises on misconfiguration."""
     url, key = strudel.config_from_bot(bot)
     agent = await _get_agent(url, key)
     max_turns, timeout_s = _run_limits(bot)
     ts = datetime.now().strftime("%H:%M:%S")
-    enriched = f"[time: {ts}]\n{prompt}"
+    enriched = f"{_recent_songs_note(channel)}[time: {ts}]\n{prompt}"
     captured: dict[str, str] = {}
     text = await run_subagent(
         bot,
@@ -166,12 +183,20 @@ async def run_strudel(bot: Any, prompt: str) -> str:
     code = captured.get("code")
     if code:
         try:
-            captured["share_url"] = await run_in_executor(
-                strudel.share_short_url, code
-            )
+            captured["share_url"] = await run_in_executor(strudel.share_short_url, code)
         except web.ServiceError:
             captured["share_url"] = strudel.share_url(code)
-    return _build_reply(text, captured)
+    reply = _build_reply(text, captured)
+    song_url = captured.get("share_url") or captured.get("audio_url")
+    if song_url:
+        record_run(
+            channel,
+            "song",
+            _URL_RE.sub("", reply).strip(),
+            song_url,
+            detail=code or "",
+        )
+    return reply
 
 
 @hook.command("strudel", autohelp=False, allow_private=False)
@@ -185,7 +210,7 @@ async def strudel_command(text, event):
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
     try:
-        answer = await run_strudel(event.bot, text)
+        answer = await run_strudel(event.bot, text, channel=target)
     except strudel.StrudelNotConfigured:
         event.reply("Strudel not configured.")
         return

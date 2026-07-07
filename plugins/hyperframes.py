@@ -29,6 +29,7 @@ from agents import Agent, FunctionTool, RunContextWrapper
 
 from cloudbot import hook
 from cloudbot.agent.common import parse_args, run_in_executor
+from cloudbot.agent.runs import recent_block, record_run
 from cloudbot.agent.subagent import SubagentError, run_subagent
 from cloudbot.util import hyperframes
 
@@ -39,47 +40,19 @@ _MP4_RE = re.compile(r"(https?://\S+?\.mp4)")
 _MD_RE = re.compile(r"[*`#]+")
 
 PREAMBLE = (
-    "You are CloudBot's video-editor agent. You edit video with code: you can find "
-    "footage, cut it, loop it, stack clips, and composite text/graphics/animation over "
-    "video, then render one finished MP4. Deliver ONE finished video for the brief, then "
-    "stop.\n\n"
-    "Workflow:\n"
-    "1. Footage — when the brief names a source (a YouTube link, 'the part where he says "
-    "X'), use video_search / video_get_info / video_search_subtitles to find the exact "
-    "window, then download only that window. Skip this for purely generated videos.\n"
-    "2. Edit — chain operations by media_id: each edit returns a new media_id you feed to "
-    "the next step. video_loop repeats a clip; video_caption burns timed text onto a clip. "
-    "Build the clip first, then add text/overlays.\n"
-    "3. Text & composite — to put plain timed subtitles over a clip (e.g. loop a moment and "
-    "talk to the viewer with rotating lines), use video_caption: one fast ffmpeg pass, no "
-    "HTML. Use an HTML composition only for animated or graphic overlays: prefer a ready "
-    "template (video_render_terminal, video_render_chart, video_render_tierlist) or a "
-    "catalog block (video_catalog then video_render_block); author raw HTML with "
-    "video_render / video_render_timeline ONLY when no template fits — read the relevant "
-    "video_skill docs first, then video_lint and fix every ERROR (warnings are fine) until "
-    "lint passes. Never render HTML that fails lint.\n"
-    "4. Render — a render tool returns a job_id. Call video_render_status ONCE with it; it "
-    "blocks until done and returns the MP4 url. Do NOT poll in a loop.\n\n"
-    "Multi-clip videos — a documentary, montage, compilation, 'put clips together' — are ONE "
-    "video_render_timeline call with several DIFFERENT downloaded clips as segments. Size the "
-    "segments so their count x length roughly hits the requested duration (a ~2-min doc is "
-    "~12-20 segments, NOT one clip), and put narration/music in the timeline's audio array — "
-    "fetch the audio to a media_id with video_download_media first (the audio array takes "
-    "media_ids, not base64). Never answer a multi-clip brief with a single clip or one text "
-    "card.\n\n"
-    "Efficiency & honesty — you are judged on getting it right in the fewest steps:\n"
-    "- Fix a composition BEFORE rendering (video_lint); don't re-render the SAME thing to "
-    "'improve' it afterward.\n"
-    "- video_render_status blocks until done — don't poll in a loop.\n"
-    "- Report only a url a tool returned; NEVER invent a url. And NEVER claim a length, clips, "
-    "or narration you did not actually produce — your final caption must match the real file.\n\n"
-    "When a render tool takes a metadata title/description, write them like a real creator "
-    "posting the video — catchy and human, never a restatement of the brief and never "
-    "addressing the requester by name.\n\n"
-    "Final answer: ONE short, natural caption — a single line, no markdown, no emoji, no "
-    "URLs — the way a person would describe the clip they just made. Don't address the user "
-    "by name, don't say things like 'ready for you', don't sound like an announcer. The bot "
-    "appends the link itself.\n\n"
+    "You are CloudBot's video-editor agent. Deliver ONE finished MP4 for the brief, then "
+    "stop. The tools and the authoring guide below tell you how to build it.\n\n"
+    "Operating rules:\n"
+    "- A render tool returns a job_id; call video_render_status ONCE — it blocks until done "
+    "and returns the url. Do NOT poll in a loop.\n"
+    "- Report only a url a tool actually returned; NEVER invent one. NEVER claim a length, "
+    "clips, or narration you didn't produce — your caption must match the real file.\n"
+    "- When a render tool takes a metadata title/description, write them like a real creator "
+    "posting the video — catchy and human, never a restatement of the brief, never addressing "
+    "the requester by name.\n"
+    "- Final answer: ONE short natural caption — single line, no markdown, no emoji, no URLs — "
+    "the way a person describes a clip they just made. Don't address the user by name, don't "
+    "say 'ready for you', don't sound like an announcer. The bot appends the link itself.\n\n"
 )
 
 _STATUS_TOOL = "video_render_status"
@@ -237,10 +210,18 @@ def _build_reply(text: str, captured: dict[str, str]) -> str:
     return f"🎬 {desc} {video}" if desc else f"🎬 {video}"
 
 
-async def run_hyperframes(bot: Any, prompt: str) -> str:
+_REITERATE_NOTE = (
+    "Videos you recently made in this channel (newest first). If the user is asking to change, "
+    "improve, or riff on one of these, call video_get_recipe on its URL to recover the exact recipe, "
+    "tweak the fields, and re-render — do not rebuild from scratch:\n"
+)
+
+
+async def run_hyperframes(bot: Any, prompt: str, channel: str = "") -> str:
     """Create a video via the video-mcp server and return a short result with the
     MP4 URL. Shared by the ``.video`` command and the main agent's ``create_video``
-    tool. Raises on misconfiguration."""
+    tool. Recent videos in ``channel`` are surfaced so a follow-up can iterate on them.
+    Raises on misconfiguration."""
     url, key = hyperframes.config_from_bot(bot)
     agent = await _get_agent(url, key)
     max_turns, timeout_s = _run_limits(bot)
@@ -248,7 +229,9 @@ async def run_hyperframes(bot: Any, prompt: str) -> str:
     model = cfg.get("model") or None
     disable_thinking = bool(cfg.get("disable_thinking", False))
     ts = datetime.now().strftime("%H:%M:%S")
-    enriched = f"[time: {ts}]\n{prompt}"
+    recent = recent_block(channel, "video")
+    context_note = f"{_REITERATE_NOTE}{recent}\n\n" if recent else ""
+    enriched = f"{context_note}[time: {ts}]\n{prompt}"
     captured: dict[str, str] = {}
     text = await run_subagent(
         bot,
@@ -260,7 +243,14 @@ async def run_hyperframes(bot: Any, prompt: str) -> str:
         model=model,
         disable_thinking=disable_thinking,
     )
-    return _build_reply(text, captured)
+    reply = _build_reply(text, captured)
+    video_url = captured.get("video_url")
+    if video_url:
+        summary = (
+            _MD_RE.sub("", _MP4_RE.sub("", reply)).replace("🎬", "").strip()
+        )
+        record_run(channel, "video", summary, video_url)
+    return reply
 
 
 _bg_tasks: set[asyncio.Task[None]] = set()
@@ -277,7 +267,8 @@ def _spawn(coro: Any) -> None:
 async def _post_video(bot: Any, conn: Any, target: str, prompt: str) -> None:
     try:
         answer = await asyncio.wait_for(
-            run_hyperframes(bot, prompt), timeout=_RENDER_TIMEOUT_S
+            run_hyperframes(bot, prompt, channel=target),
+            timeout=_RENDER_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
         answer = "Video failed: render timed out."

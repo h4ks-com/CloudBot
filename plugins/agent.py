@@ -36,6 +36,7 @@ from cloudbot.agent import (
     sanitise_err_message,
     upload_markdown_paste,
 )
+from cloudbot.agent.runs import recent_runs
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
 from cloudbot.util.ai_common import wrap_reply_lines
@@ -994,6 +995,22 @@ def _build_memory_recall(event) -> str:
     )
 
 
+def _build_artifact_recall(event) -> str:
+    """Inject the artifacts (videos, songs) recently produced in this channel so
+    a follow-up like "make that video longer" can find and iterate on them —
+    for a video, video_get_recipe on its URL recovers the exact recipe to tweak."""
+    chan = getattr(event, "chan", "") or ""
+    runs = recent_runs(chan)
+    if not runs:
+        return ""
+    lines = [f'- [{record.kind}] "{record.summary}" — {record.url}' for record in runs]
+    return (
+        "\n## Recent Creations (newest first — to modify/improve one, reuse it: "
+        "videos via video recipe recovery, songs via cover/recompose)\n"
+        + "\n".join(lines)
+    )
+
+
 def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
     """Return a callable suitable for Agent(instructions=...).
 
@@ -1016,6 +1033,9 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
         recall = _build_memory_recall(event)
         if recall:
             parts.append(recall)
+        artifacts = _build_artifact_recall(event)
+        if artifacts:
+            parts.append(artifacts)
         outputs = _build_output_recall(event)
         if outputs:
             parts.append(outputs)

@@ -22,6 +22,11 @@ import requests
 from cloudbot.util.web import get_session
 
 TIMEOUT = 90
+# /generate is synchronous on the server (browser flow through cloak): ~40-60s
+# healthy, but a stale-session account can burn ~5.5 minutes before the pool
+# rotates to the next one — the bound must survive one bad account plus a good
+# attempt, or the clips get generated server-side and the clip ids are lost.
+GENERATE_TIMEOUT = 420
 # A clip's finished MP3 may lag the submit by a couple of minutes; covers run
 # the full UI flow and take longer. Stop watching past these so a stuck job
 # doesn't leak a pending entry forever.
@@ -58,13 +63,18 @@ def config_from_bot(bot: Any) -> tuple[str, str]:
 
 
 def _request(
-    method: str, url: str, key: str, path: str, **kwargs: Any
+    method: str,
+    url: str,
+    key: str,
+    path: str,
+    timeout: float = TIMEOUT,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     resp = get_session().request(
         method,
         f"{url}{path}",
         headers={"X-API-Key": key},
-        timeout=TIMEOUT,
+        timeout=timeout,
         **kwargs,
     )
     try:
@@ -99,7 +109,7 @@ def generate_song(
         "lyrics": lyrics,
         "title": title,
     }
-    return _request("POST", url, key, "/generate", json=body)
+    return _request("POST", url, key, "/generate", timeout=GENERATE_TIMEOUT, json=body)
 
 
 def split_audio_prompt(text: str) -> tuple[str, str]:
@@ -142,7 +152,9 @@ def cover_from_url(
         body["prompt"] = prompt
     if account:
         body["account"] = account
-    return _request("POST", url, key, "/generate/cover/url", json=body)
+    return _request(
+        "POST", url, key, "/generate/cover/url", timeout=GENERATE_TIMEOUT, json=body
+    )
 
 
 def get_job(url: str, key: str, job_id: str) -> dict[str, Any]:

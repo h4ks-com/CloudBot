@@ -11,8 +11,13 @@ Config (``config.json``)::
     "plugins": {"suno": {"api_url": "...", "api_key": "..."}}
 """
 
+import re
+
 from cloudbot import hook
+from cloudbot.agent.runs import record_run
 from cloudbot.util import suno
+
+_READY_URL_RE = re.compile(r"https?://\S+")
 
 
 def _client(bot):
@@ -59,9 +64,7 @@ def suno_cover(text, bot, chan, nick, conn):
         return cfg
     url, key = cfg
     try:
-        resp = suno.cover_from_url(
-            url, key, audio_url, prompt=prompt, wait=False
-        )
+        resp = suno.cover_from_url(url, key, audio_url, prompt=prompt, wait=False)
     except suno.SunoError as e:
         return f"suno error: {e}"
     job_id = resp.get("id", "")
@@ -117,5 +120,11 @@ def suno_watch_tick(bot):
         conn = bot.connections.get(network)
         if conn and conn.ready:
             conn.message(chan, message)
+        # A "ready" message is a finished artifact — remember it so the agent can
+        # find and reuse it (e.g. .sunocover on the mp3) in a follow-up.
+        url_match = _READY_URL_RE.search(message)
+        if "ready" in message and url_match:
+            summary = _READY_URL_RE.sub("", message).strip(" →|:")
+            record_run(chan, "song", f"suno: {summary}", url_match.group(0))
 
     suno.poll_watches(post)
