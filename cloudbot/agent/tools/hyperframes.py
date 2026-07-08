@@ -12,17 +12,14 @@ would create a cycle.
 import json
 import re
 import time
+from typing import get_args
 
 from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
 from cloudbot.util import hyperframes
 
-_ANALYZE_ACTIVE = {"queued", "running", "pending", "in_progress", "processing"}
 
-
-def _run_analysis(
-    api_url: str, key: str, args: dict[str, object]
-) -> tuple[str, bool]:
+def _run_analysis(api_url: str, key: str, args: dict[str, object]) -> tuple[str, bool]:
     """Submit video_analyze_static and block until the async job (download + opencv
     pass) finishes, returning the final ``(text, is_error)``."""
     sub, err = hyperframes.call_tool(api_url, key, "video_analyze_static", args)
@@ -36,7 +33,11 @@ def _run_analysis(
     text = sub
     while time.monotonic() < deadline:
         text, err = hyperframes.call_tool(
-            api_url, key, "video_render_status", {"job_id": job_id}
+            api_url,
+            key,
+            "video_render_status",
+            {"job_id": job_id},
+            timeout=hyperframes.STATUS_TIMEOUT,
         )
         if err:
             return text, True
@@ -44,7 +45,7 @@ def _run_analysis(
             state = str(json.loads(text).get("state", "")).lower()
         except (ValueError, TypeError):
             state = ""
-        if state and state not in _ANALYZE_ACTIVE:
+        if state and state not in hyperframes.ACTIVE_STATES:
             return text, False
         time.sleep(3)
     return text, False
@@ -56,8 +57,10 @@ def _run_analysis(
         "Create a finished video from a natural-language brief using the Hyperframes "
         "renderer (searches/downloads source clips, composes, renders to MP4). Use for any "
         "'make/create a video' request — presentations/explainers/slideshows, documentaries, "
-        "montages, tier-list countdowns, terminal demos, animated charts, or fully custom "
-        "compositions. Pass the brief as a clear shape: the most common (text + bg clips + "
+        "montages, tier-list countdowns, terminal demos, animated charts, math/formula/3D-surface "
+        "animations (rendered natively as real animated manim scenes — pass the math in the brief, "
+        "no need to draw or fetch pictures of it), or fully custom compositions. Pass the brief as "
+        "a clear shape: the most common (text + bg clips + "
         "music) is a SLIDESHOW, not custom HTML — say so in the prompt with concrete segments "
         '(e.g. \'slideshow of 15 scenes ~10s each: scene 1 text "...", scene 2 text "...", '
         "bg clips from nature/landscape YouTube, soundtrack URL <...>'). When you've gathered "
@@ -77,7 +80,18 @@ def _run_analysis(
             "prompt": {
                 "type": "string",
                 "description": "What the video should be — topic, style, length, sources to use.",
-            }
+            },
+            "effort": {
+                "type": "string",
+                "enum": list(get_args(hyperframes.Effort)),
+                "description": (
+                    "How much reasoning the video agent spends per step. 'fast' (default) is "
+                    "right for most briefs — math renders, clip edits, tier lists, slideshows. "
+                    "Pick 'deep' only when a previous fast attempt at the same brief failed or "
+                    "came back with warnings — it can be several times slower per step, so it is "
+                    "a retry escalation, not a default for hard-looking briefs."
+                ),
+            },
         },
         "required": ["prompt"],
     },
@@ -86,6 +100,8 @@ async def create_video(ctx, data):
     prompt = str(data.get("prompt") or "").strip()
     if not prompt:
         return "(error: prompt required)"
+    requested = data.get("effort")
+    effort = requested if requested in get_args(hyperframes.Effort) else None
     # Lazy import: plugins.hyperframes → plugins.agent → cloudbot.agent, which
     # eagerly imports this tools package; importing at module load cycles.
     from plugins.hyperframes import spawn_video
@@ -96,7 +112,7 @@ async def create_video(ctx, data):
     bot = getattr(event, "bot", None)
     if not (bot and conn and target):
         return "(error: no channel context available to post the video)"
-    spawn_video(bot, conn, target, prompt)
+    spawn_video(bot, conn, target, prompt, effort)
     return (
         "Video render STARTED in the background — the finished MP4 will be posted to the "
         "channel automatically in a few minutes (or a failure message if it can't render). "

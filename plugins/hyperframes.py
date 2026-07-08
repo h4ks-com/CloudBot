@@ -56,7 +56,6 @@ PREAMBLE = (
 )
 
 _STATUS_TOOL = "video_render_status"
-_ACTIVE_STATES = {"queued", "running", "pending", "in_progress", "processing"}
 _STATUS_CAP_S = 540.0
 _STATUS_INTERVAL_S = 4.0
 
@@ -86,7 +85,7 @@ def _wait_for_job(url: str, key: str, job_id: str) -> tuple[str, bool]:
     thread; returns the final ``(text, is_error)``."""
     deadline = time.monotonic() + _STATUS_CAP_S
     text, is_error = hyperframes.call_tool(
-        url, key, _STATUS_TOOL, {"job_id": job_id}
+        url, key, _STATUS_TOOL, {"job_id": job_id}, timeout=hyperframes.STATUS_TIMEOUT
     )
     while time.monotonic() < deadline:
         if is_error or _MP4_RE.search(text or ""):
@@ -95,18 +94,26 @@ def _wait_for_job(url: str, key: str, job_id: str) -> tuple[str, bool]:
             state = str(json.loads(text).get("state", "")).lower()
         except (ValueError, TypeError):
             state = ""
-        if state and state not in _ACTIVE_STATES:
+        if state and state not in hyperframes.ACTIVE_STATES:
             return text, is_error
         time.sleep(_STATUS_INTERVAL_S)
         text, is_error = hyperframes.call_tool(
-            url, key, _STATUS_TOOL, {"job_id": job_id}
+            url,
+            key,
+            _STATUS_TOOL,
+            {"job_id": job_id},
+            timeout=hyperframes.STATUS_TIMEOUT,
         )
-    return text, is_error
+    if is_error or _MP4_RE.search(text or ""):
+        return text, is_error
+    return (
+        f"(still rendering after {int(_STATUS_CAP_S)}s — job {job_id} did not finish; "
+        "no video was produced)",
+        True,
+    )
 
 
-def _build_tools(
-    url: str, key: str, specs: list[dict[str, Any]]
-) -> list[FunctionTool]:
+def _build_tools(url: str, key: str, specs: list[dict[str, Any]]) -> list[FunctionTool]:
     """Bridge each tool video-mcp exposes to a FunctionTool. Generic, so new
     server tools appear automatically; every result is scanned for the final MP4
     and metadata URLs, captured into the run context for deterministic replies.
@@ -175,9 +182,7 @@ async def _get_agent(url: str, key: str) -> Agent:
         return _AgentState.agent
     guides = await run_in_executor(_load_guides, url, key)
     if not guides.strip():
-        raise hyperframes.HyperframesError(
-            "video-mcp returned no authoring guides"
-        )
+        raise hyperframes.HyperframesError("video-mcp returned no authoring guides")
     specs = await run_in_executor(hyperframes.list_tools, url, key)
     agent = Agent(
         name="VideoCreator",
@@ -200,7 +205,7 @@ def _build_reply(text: str, captured: dict[str, str]) -> str:
     """
     video = captured.get("video_url")
     if not video:
-        return text or "(no result)"
+        return _URL_RE.sub("", text or "").strip() or "(no result)"
     desc = _URL_RE.sub("", text or "")
     desc = _MD_RE.sub("", desc)
     desc = re.sub(r"\s+", " ", desc).strip()
@@ -217,17 +222,27 @@ _REITERATE_NOTE = (
 )
 
 
-async def run_hyperframes(bot: Any, prompt: str, channel: str = "") -> str:
+async def run_hyperframes(
+    bot: Any,
+    prompt: str,
+    channel: str = "",
+    effort: hyperframes.Effort | None = None,
+) -> str:
     """Create a video via the video-mcp server and return a short result with the
     MP4 URL. Shared by the ``.video`` command and the main agent's ``create_video``
     tool. Recent videos in ``channel`` are surfaced so a follow-up can iterate on them.
-    Raises on misconfiguration."""
+    ``effort`` overrides the configured GLM thinking mode for this one run: "fast"
+    skips per-turn reasoning, "deep" enables it — a retry escalation, since a single
+    reasoning turn can cost minutes. Raises on misconfiguration."""
     url, key = hyperframes.config_from_bot(bot)
     agent = await _get_agent(url, key)
     max_turns, timeout_s = _run_limits(bot)
     cfg = (bot.config.get("plugins") or {}).get("hyperframes_agent") or {}
     model = cfg.get("model") or None
-    disable_thinking = bool(cfg.get("disable_thinking", False))
+    if effort is not None:
+        disable_thinking = effort == "fast"
+    else:
+        disable_thinking = bool(cfg.get("disable_thinking", False))
     ts = datetime.now().strftime("%H:%M:%S")
     recent = recent_block(channel, "video")
     context_note = f"{_REITERATE_NOTE}{recent}\n\n" if recent else ""
@@ -246,9 +261,7 @@ async def run_hyperframes(bot: Any, prompt: str, channel: str = "") -> str:
     reply = _build_reply(text, captured)
     video_url = captured.get("video_url")
     if video_url:
-        summary = (
-            _MD_RE.sub("", _MP4_RE.sub("", reply)).replace("🎬", "").strip()
-        )
+        summary = _MD_RE.sub("", _MP4_RE.sub("", reply)).replace("🎬", "").strip()
         record_run(channel, "video", summary, video_url)
     return reply
 
@@ -264,10 +277,16 @@ def _spawn(coro: Any) -> None:
     task.add_done_callback(_bg_tasks.discard)
 
 
-async def _post_video(bot: Any, conn: Any, target: str, prompt: str) -> None:
+async def _post_video(
+    bot: Any,
+    conn: Any,
+    target: str,
+    prompt: str,
+    effort: hyperframes.Effort | None = None,
+) -> None:
     try:
         answer = await asyncio.wait_for(
-            run_hyperframes(bot, prompt, channel=target),
+            run_hyperframes(bot, prompt, channel=target, effort=effort),
             timeout=_RENDER_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
@@ -277,15 +296,21 @@ async def _post_video(bot: Any, conn: Any, target: str, prompt: str) -> None:
     except (hyperframes.HyperframesError, SubagentError) as e:
         answer = f"Video failed: {e}"
     except requests.RequestException as e:
-        answer = f"Video failed: video-mcp unreachable ({e.__class__.__name__})"
+        answer = f"Video failed: video-mcp request rejected ({e.__class__.__name__})"
     except Exception:
         logger.exception("hyperframes: unexpected error in _post_video")
         answer = "Video failed: unexpected error (see bot logs)"
     conn.message(target, answer)
 
 
-def spawn_video(bot: Any, conn: Any, target: str, prompt: str) -> None:
-    _spawn(_post_video(bot, conn, target, prompt))
+def spawn_video(
+    bot: Any,
+    conn: Any,
+    target: str,
+    prompt: str,
+    effort: hyperframes.Effort | None = None,
+) -> None:
+    _spawn(_post_video(bot, conn, target, prompt, effort))
 
 
 @hook.command("video", autohelp=False, allow_private=False)

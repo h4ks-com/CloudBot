@@ -13,7 +13,7 @@ tool (``cloudbot/agent/tools/hyperframes.py``).
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 import requests
 
@@ -22,6 +22,15 @@ from cloudbot.util.web import get_session
 # Aligns with the server's Kong upstream timeout: yt-dlp downloads block until
 # done, so a short client timeout would clip an in-progress fetch.
 TIMEOUT = 1800
+# Status polls get a short timeout: on a dead backend the long one holds the whole run.
+STATUS_TIMEOUT = 30
+
+# The states video-mcp reports for a job that hasn't reached a terminal result yet.
+ACTIVE_STATES = frozenset({"queued", "running", "pending", "in_progress", "processing"})
+
+# How much per-step reasoning the video sub-agent spends. "deep" is a retry
+# escalation after a failed or warned "fast" attempt, not a default for hard briefs.
+Effort = Literal["fast", "deep"]
 
 
 class HyperframesError(Exception):
@@ -65,29 +74,34 @@ def _parse_mcp_body(text: str) -> dict[str, Any]:
 
 
 def mcp_request(
-    url: str, key: str, method: str, params: dict[str, Any] | None = None
+    url: str,
+    key: str,
+    method: str,
+    params: dict[str, Any] | None = None,
+    timeout: float = TIMEOUT,
 ) -> dict[str, Any]:
-    resp = get_session().post(
-        f"{url}/mcp",
-        headers={
-            "x-api-key": key,
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-        },
-        json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": params or {},
-        },
-        timeout=TIMEOUT,
-    )
+    try:
+        resp = get_session().post(
+            f"{url}/mcp",
+            headers={
+                "x-api-key": key,
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": method,
+                "params": params or {},
+            },
+            timeout=timeout,
+        )
+    except (requests.Timeout, requests.ConnectionError) as e:
+        raise HyperframesError(f"video-mcp unreachable: {e}") from e
     try:
         resp.raise_for_status()
     except requests.HTTPError as e:
-        raise HyperframesError(
-            f"HTTP {resp.status_code}: {resp.text[:200]}"
-        ) from e
+        raise HyperframesError(f"HTTP {resp.status_code}: {resp.text[:200]}") from e
     data = _parse_mcp_body(resp.text)
     if "error" in data:
         err = data["error"]
@@ -104,17 +118,23 @@ def list_tools(url: str, key: str) -> list[dict[str, Any]]:
 
 
 def call_tool(
-    url: str, key: str, name: str, arguments: dict[str, Any]
+    url: str,
+    key: str,
+    name: str,
+    arguments: dict[str, Any],
+    timeout: float = TIMEOUT,
 ) -> tuple[str, bool]:
     """Call an MCP tool; return ``(text, is_error)`` — the concatenated text
     content blocks of the result."""
     res = mcp_request(
-        url, key, "tools/call", {"name": name, "arguments": arguments}
+        url,
+        key,
+        "tools/call",
+        {"name": name, "arguments": arguments},
+        timeout=timeout,
     )
     parts = [
-        c.get("text", "")
-        for c in res.get("content", [])
-        if c.get("type") == "text"
+        c.get("text", "") for c in res.get("content", []) if c.get("type") == "text"
     ]
     return "\n".join(p for p in parts if p), bool(res.get("isError"))
 
@@ -130,7 +150,5 @@ def read_resource(url: str, key: str, uri: str) -> str:
     sub-agent's instructions, so the video know-how lives in the server, not here.
     """
     res = mcp_request(url, key, "resources/read", {"uri": uri})
-    parts = [
-        c.get("text", "") for c in res.get("contents", []) if c.get("text")
-    ]
+    parts = [c.get("text", "") for c in res.get("contents", []) if c.get("text")]
     return "\n\n".join(parts)
