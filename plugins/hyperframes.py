@@ -32,6 +32,7 @@ from cloudbot.agent.common import parse_args, run_in_executor
 from cloudbot.agent.runs import recent_block, record_run
 from cloudbot.agent.subagent import SubagentError, run_subagent
 from cloudbot.util import hyperframes
+from cloudbot.util.typing import start_typing_for_command, stop_typing_for_command
 
 logger = logging.getLogger("cloudbot")
 
@@ -269,6 +270,7 @@ async def run_hyperframes(
 _bg_tasks: set[asyncio.Task[None]] = set()
 
 _RENDER_TIMEOUT_S = 2700.0
+_video_seq = 0
 
 
 def _spawn(coro: Any) -> None:
@@ -284,6 +286,14 @@ async def _post_video(
     prompt: str,
     effort: hyperframes.Effort | None = None,
 ) -> None:
+    # The dispatch itself is already announced (the .agi reply / the .video command
+    # line). Here we only keep a typing signal live for the whole background render —
+    # the spawning command's own typing stopped when it returned — and post the
+    # finished video or a failure.
+    global _video_seq
+    _video_seq += 1
+    typing_id = _video_seq
+    await start_typing_for_command(conn, target, typing_id)
     try:
         answer = await asyncio.wait_for(
             run_hyperframes(bot, prompt, channel=target, effort=effort),
@@ -300,6 +310,8 @@ async def _post_video(
     except Exception:
         logger.exception("hyperframes: unexpected error in _post_video")
         answer = "Video failed: unexpected error (see bot logs)"
+    finally:
+        await stop_typing_for_command(conn, target, typing_id)
     conn.message(target, answer)
 
 
@@ -320,6 +332,6 @@ async def video_command(text, event):
         event.reply("usage: .video <what the video should be>")
         return
     event.reply(
-        "🎬 Working on your video — I'll post it here when it's ready (a few minutes)."
+        "🎬 On it — putting your video together now; I'll post it here when it's ready (a few minutes)."
     )
     spawn_video(event.bot, event.conn, event.chan, text)

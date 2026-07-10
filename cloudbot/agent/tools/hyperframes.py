@@ -113,11 +113,12 @@ async def create_video(ctx, data):
     if not (bot and conn and target):
         return "(error: no channel context available to post the video)"
     spawn_video(bot, conn, target, prompt, effort)
+    # create_video is a stop tool (see plugins/agent.py): the agent run ends here and
+    # THIS string is posted verbatim as the reply — the model gets no turn to narrate a
+    # video that does not exist yet. Keep it a fixed, honest dispatch acknowledgement.
     return (
-        "Video render STARTED in the background — the finished MP4 will be posted to the "
-        "channel automatically in a few minutes (or a failure message if it can't render). "
-        "Tell the user it's rendering and the link will appear here shortly. Do NOT wait, do "
-        "NOT invent a URL, and NEVER build a webpage or any other substitute for the video."
+        "🎬 On it — putting your video together now; I'll post it here when it's ready "
+        "(a few minutes)."
     )
 
 

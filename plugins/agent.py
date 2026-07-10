@@ -19,6 +19,7 @@ from datetime import datetime
 
 import httpx
 from agents import Agent, FunctionTool, RunContextWrapper, RunHooks, Runner
+from agents.agent import StopAtTools
 from agents.exceptions import MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_provider import OpenAIProvider
@@ -1058,7 +1059,16 @@ def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
     base_instructions = cfg.get("instructions") or AGENT_INSTRUCTIONS
     gh_suffix = _build_gh_suffix(bot, cfg)
     instructions_fn = _make_dynamic_instructions(base_instructions, gh_suffix)
-    agent = Agent(name="CloudBot", instructions=instructions_fn, tools=tools)
+    # create_video is a fire-and-forget dispatch: it spawns the render and the
+    # background job posts progress and the finished video itself. Making it a
+    # stop tool ends the turn at the dispatch, so the model never gets a final
+    # turn to narrate a video that does not exist yet (and one LLM turn is saved).
+    agent = Agent(
+        name="CloudBot",
+        instructions=instructions_fn,
+        tools=tools,
+        tool_use_behavior=StopAtTools(stop_at_tool_names=["create_video"]),
+    )
     _AGENT_CACHE[key] = agent
     return agent
 
