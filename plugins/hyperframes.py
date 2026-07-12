@@ -60,12 +60,18 @@ PREAMBLE = (
     "video_narrated_scenes. Pass ordered scenes, each a `line` plus EITHER the `media_id` of footage "
     "for that line (download each first) OR a `math` spec (latex, optional plot_expr / x_range / "
     "y_range / title) rendered for you — plus optional music_media_id, lead_in_sec, and "
-    "voice_reference to clone a voice. It narrates each line, fits that scene's visual to the line's "
-    "real length, and burns a synced, wrapped caption of the line, so sync, captions and length are "
-    "automatic at any length; it defaults to landscape (pass resolution portrait ONLY for a "
-    "short/reel). Do NOT add your own text overlays or caption timings — the tool captions each line "
-    "for you. Prefer this over building a video then attaching narration whenever the visuals must "
-    "track the words. Keep the "
+    "voice_reference to clone a voice, and caption_color to tint the subtitles. It narrates each "
+    "line, fits that scene's visual to the line's real length, force-aligns the narration to the "
+    "audio, and burns word-synced rolling subtitle cues in a bottom safe band — so sync, captions "
+    "and length are automatic at any length; it defaults to landscape (pass resolution portrait "
+    "ONLY for a short/reel). Captions are handled FOR you: do NOT add your own text overlays or "
+    "caption timings, and if a `math` scene, keep the formula/graph centered so it never reaches "
+    "into the bottom caption band. Caption styling knobs (all optional): caption_mode='karaoke' "
+    "highlights each word as it is spoken (great for shorts/reels — set caption_color to a bright "
+    "highlight like 'yellow' or 'cyan'), else the default 'block' shows readable phrase cues; "
+    "caption_position (bottom/center/top), caption_size (small/medium/large), caption_box, and "
+    "tail_sec (how long to hold after the last word). Prefer this over building a video then "
+    "attaching narration whenever the visuals must track the words. Keep the "
     "scene count to the request's ACTUAL scope: one scene per real beat — a 'short' clip or '3 "
     "moments' is ~3-5 scenes, NOT a dozen. Each scene is a separate cloned narration and they "
     "generate one at a time (~30-60s each), so scene count IS the wait — fewer, punchier scenes is "
@@ -132,6 +138,19 @@ VOICE_PREAMBLE = (
 _STATUS_TOOL = "video_render_status"
 _STATUS_CAP_S = 540.0
 _STATUS_INTERVAL_S = 4.0
+
+# Tools that build the entire video in one call — re-invoking them just re-runs the slow TTS. Once
+# dispatched in a run, repeats are refused (see on_invoke) so the model polls + posts instead.
+_ONE_SHOT_BUILDERS = {"video_narrated_scenes"}
+
+
+def _job_id_from(text: str) -> str:
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    job = parsed.get("job_id") if isinstance(parsed, dict) else None
+    return job if isinstance(job, str) else ""
 
 
 def _clean_schema(schema: Any) -> dict[str, Any]:
@@ -211,6 +230,18 @@ def _build_tools(
             ctx: RunContextWrapper, args_json: str, _name: str = name
         ) -> str:
             args = parse_args(args_json)
+            # video_narrated_scenes builds the WHOLE video in one call (each call re-runs the slow
+            # per-line TTS). The model sometimes re-renders it several times instead of posting the
+            # first result; once it is dispatched, refuse repeats and point back at the pending job.
+            ctxd = ctx.context if isinstance(ctx.context, dict) else None
+            if _name in _ONE_SHOT_BUILDERS and ctxd is not None:
+                pending = ctxd.get("_builder_job")
+                if pending:
+                    return (
+                        f"({_name} was already dispatched as job {pending}. Do NOT build it again — "
+                        f'call {_STATUS_TOOL} with job_id "{pending}" ONCE, then post that url and '
+                        "end your turn.)"
+                    )
             # A single tool error must not abort the whole sub-agent run; return the
             # error as plain text so the model can read it and route around.
             try:
@@ -226,6 +257,10 @@ def _build_tools(
                 return f"(tool error: {e})"
             if not is_error and isinstance(ctx.context, dict):
                 _capture_urls(ctx.context, text)
+                if _name in _ONE_SHOT_BUILDERS:
+                    job = _job_id_from(text)
+                    if job:
+                        ctx.context["_builder_job"] = job
             return text or "(no result)"
 
         tools.append(
