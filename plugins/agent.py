@@ -999,12 +999,16 @@ def _build_memory_recall(event) -> str:
 def _build_artifact_recall(event) -> str:
     """Inject the artifacts (videos, songs) recently produced in this channel so
     a follow-up like "make that video longer" can find and iterate on them —
-    for a video, video_get_recipe on its URL recovers the exact recipe to tweak."""
+    for a video, video_get_recipe on its URL recovers the exact recipe to tweak.
+    """
     chan = getattr(event, "chan", "") or ""
     runs = recent_runs(chan)
     if not runs:
         return ""
-    lines = [f'- [{record.kind}] "{record.summary}" — {record.url}' for record in runs]
+    lines = [
+        f'- [{record.kind}] "{record.summary}" — {record.url}'
+        for record in runs
+    ]
     return (
         "\n## Recent Creations (newest first — to modify/improve one, reuse it: "
         "videos via video recipe recovery, songs via cover/recompose)\n"
@@ -1067,7 +1071,9 @@ def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
         name="CloudBot",
         instructions=instructions_fn,
         tools=tools,
-        tool_use_behavior=StopAtTools(stop_at_tool_names=["create_video"]),
+        tool_use_behavior=StopAtTools(
+            stop_at_tool_names=["create_video", "create_voice"]
+        ),
     )
     _AGENT_CACHE[key] = agent
     return agent

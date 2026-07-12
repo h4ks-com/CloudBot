@@ -19,7 +19,9 @@ from cloudbot.agent.registry import tool
 from cloudbot.util import hyperframes
 
 
-def _run_analysis(api_url: str, key: str, args: dict[str, object]) -> tuple[str, bool]:
+def _run_analysis(
+    api_url: str, key: str, args: dict[str, object]
+) -> tuple[str, bool]:
     """Submit video_analyze_static and block until the async job (download + opencv
     pass) finishes, returning the final ``(text, is_error)``."""
     sub, err = hyperframes.call_tool(api_url, key, "video_analyze_static", args)
@@ -119,6 +121,57 @@ async def create_video(ctx, data):
     return (
         "🎬 On it — putting your video together now; I'll post it here when it's ready "
         "(a few minutes)."
+    )
+
+
+@tool(
+    name="create_voice",
+    description=(
+        "Generate ONE expressive spoken VOICE clip (returns an audio URL, not a video) via the "
+        "Hyperframes voice sub-agent. Use for a standalone voiceover, character line, or dramatic "
+        "reading with real acting, and for VOICE CLONING (make it sound like a specific person). "
+        "Put the ACTUAL words to speak in the brief, in ENGLISH (the voice model is English-only; "
+        "any other language comes out as garbled noise): if the text comes from a URL or a page, "
+        "web_fetch it FIRST and inline the real text. NEVER pass a placeholder like '[will provide]' "
+        "and never tell the sub-agent to fetch it. To clone, include the voice clip or VIDEO URL "
+        "and say to clone it: the voice sub-agent extracts the audio from it itself (yt-dlp), so you "
+        "do NOT download it yourself. Describe the DELIVERY (calm, terrified whisper, hyped, "
+        "villainous); the sub-agent picks the acting. This is the expressive/cloning path; for a "
+        "quick plain read use text_to_speech instead. Runs in the BACKGROUND like create_video: this "
+        "returns immediately and the finished audio (or a failure) is posted to the channel "
+        "automatically. Do NOT wait, and NEVER invent a URL."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "prompt": {
+                "type": "string",
+                "description": (
+                    "The exact words to speak (ALREADY fetched and inlined, never a placeholder) "
+                    "plus the delivery, and any voice clip/VIDEO URL to clone from. E.g. 'in a "
+                    "terrified whisper: \"is someone there?\"' or 'clone the voice from "
+                    "<video url> and, as him, say: <the real text here>'."
+                ),
+            },
+        },
+        "required": ["prompt"],
+    },
+)
+async def create_voice(ctx, data):
+    prompt = str(data.get("prompt") or "").strip()
+    if not prompt:
+        return "(error: prompt required)"
+    from plugins.hyperframes import spawn_voice
+
+    event = ctx.context
+    target = getattr(event, "chan", None) or getattr(event, "nick", None)
+    conn = getattr(event, "conn", None)
+    bot = getattr(event, "bot", None)
+    if not (bot and conn and target):
+        return "(error: no channel context available to post the audio)"
+    spawn_voice(bot, conn, target, prompt)
+    return (
+        "🎧 On it, generating the voice now; I'll post the audio here shortly."
     )
 
 
