@@ -4,8 +4,6 @@ Usage:
   .redlib [nick] - Rewrite your own (or [nick]'s) last posted reddit.com URL
 """
 
-from __future__ import annotations
-
 import re
 from urllib.parse import ParseResult, urlparse, urlunparse
 
