@@ -1,31 +1,18 @@
-"""
-.redlib - Rewrite reddit.com URLs to a redlib instance.
-
-Tracks the last URL posted by each user per channel, and when invoked,
-rewrites any reddit.com / www.reddit.com / old.reddit.com / new.reddit.com
-host to a redlib instance (configurable, defaults to redlib.nadeko.net).
+"""redlib.py - Rewrite reddit.com links to a redlib instance
 
 Usage:
-  .redlib           — rewrite your own last posted URL
-  .redlib <nick>    — rewrite <nick>'s last posted URL
+  .redlib [nick] - Rewrite your own (or [nick]'s) last posted reddit.com URL
 """
 
 import re
-import logging
-from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 from cloudbot import hook
+from cloudbot.util import web
 
-logger = logging.getLogger("cloudbot")
+REDLIB_INSTANCE = "redlib.nadeko.net"
 
-# Per-channel, per-nick URL tracking
-last_user_url: dict[tuple[str, str], str] = {}
-
-# Match URLs in messages
-URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
-
-# Reddit host variants
+# Reddit host variants we'll rewrite
 REDDIT_HOSTS = {
     "reddit.com",
     "www.reddit.com",
@@ -37,40 +24,46 @@ REDDIT_HOSTS = {
     "compact.reddit.com",
 }
 
+# Match URLs in chat
+URL_RE = re.compile(r'https?://\S+')
 
-def _get_redlib_host(bot: Any) -> str:
-    """Get the configured redlib instance host, or default."""
-    config = bot.config.get("plugins", {}).get("redlib", {})
-    return config.get("instance", "redlib.nadeko.net")
+url_cache = {}  # (chan, nick_lower) -> last reddit URL
+
+
+def _is_reddit_url(url):
+    parsed = urlparse(url)
+    return parsed.hostname and parsed.hostname.lower() in REDDIT_HOSTS
+
+
+def _rewrite(url):
+    parsed = urlparse(url)
+    if parsed.hostname and parsed.hostname.lower() in REDDIT_HOSTS:
+        new = parsed._replace(netloc=REDLIB_INSTANCE, scheme="https")
+        return urlunparse(new)
+    return None
 
 
 @hook.regex(URL_RE)
-def track_user_url(match, conn=None, nick=None, chan=None, **kwargs):
-    """Track the last URL posted by each user in each channel."""
-    if nick and chan:
-        last_user_url[(chan, nick.lower())] = match.group(0).rstrip(".,;:!?)")
+def redlib_track(match, nick, chan):
+    url = match.group(0).rstrip(',.)>!"\'')
+    if _is_reddit_url(url):
+        url_cache[(chan, nick.lower())] = url
 
 
-@hook.command("redlib", autohelp=False)
-def redlib(text: str, bot: Any, nick: str, chan: str) -> str:
-    """[nick] - Rewrite the last reddit.com URL from you (or [nick]) to a redlib instance
+@hook.command("redlib")
+def redlib(text, nick, chan, notice):
+    """[nick] - Rewrite your own (or [nick]'s) last reddit.com URL to a redlib instance"""
+    target = text.strip().lower() if text.strip() else nick.lower()
+    key = (chan, target)
 
-    Usage:
-      .redlib         — rewrite your own last posted URL
-      .redlib <nick>  — rewrite <nick>'s last posted URL
-    """
-    target_nick = text.strip().lower() if text and text.strip() else nick.lower()
+    if key not in url_cache:
+        who = target if target != nick.lower() else "you"
+        notice(f"No recent reddit link found for {who}.")
+        return
 
-    url = last_user_url.get((chan, target_nick))
-    if not url:
-        display = nick if target_nick == nick.lower() else target_nick
-        return f"No recent URL found for {display}."
-
-    parsed = urlparse(url)
-    if parsed.hostname and parsed.hostname.lower() in REDDIT_HOSTS:
-        redlib_host = _get_redlib_host(bot)
-        rewritten = urlunparse(parsed._replace(netloc=redlib_host))
+    url = url_cache[key]
+    rewritten = _rewrite(url)
+    if rewritten:
         return rewritten
     else:
-        host = parsed.hostname or "?"
-        return f"Last URL for {target_nick} is not a reddit link (got {host})."
+        notice("That URL doesn't appear to be a reddit link.")
