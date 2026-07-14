@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 import requests
@@ -9,8 +10,15 @@ from markitdown import MarkItDown
 
 from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
+from cloudbot.agent.zai_search_client import (
+    SearchError,
+    SearchResult,
+    mcp_search,
+)
 from cloudbot.util import web
 from cloudbot.util.ai_common import APP_HTML_PROMPT_SUFFIX, upload_html_app
+
+logger = logging.getLogger("cloudbot")
 
 # Template lives in plugins/ alongside the agent plugin; resolve from project
 # root so this module can move without breaking the lookup.
@@ -197,8 +205,29 @@ async def web_research(ctx, data):  # noqa: ARG001
     depth = max(1, min(6, int(data.get("depth") or 3)))
     limit = max(200, min(4000, int(data.get("excerpt_chars") or 1500)))
 
-    # Lazy import: the plugin module has @hook.command side effects on import; deferring it
-    # keeps this tool module load-order-independent.
+    try:
+        zai_results = await mcp_search(
+            ctx.context.bot, query, max_results=depth
+        )
+    except SearchError as error:
+        logger.info(
+            "web_research: using searxng fallback (z.ai unavailable: %s)",
+            error,
+        )
+        return await _searx_research(query, depth, limit)
+
+    logger.info(
+        "web_research: z.ai returned %d hit(s) for %r",
+        len(zai_results),
+        query[:80],
+    )
+    return _format_zai_sections(zai_results, depth)
+
+
+async def _searx_research(query: str, depth: int, limit: int) -> str:
+    """SearXNG + parallel MarkItDown fetches; the original web_research path."""
+    # Lazy import: the plugin module has @hook.command side effects on import;
+    # deferring it keeps this tool module load-order-independent.
     from plugins.google_search_plugin import searx_search
 
     results = await run_in_executor(searx_search, query)
@@ -211,18 +240,43 @@ async def web_research(ctx, data):  # noqa: ARG001
     ]
     excerpts = await asyncio.gather(*fetches, return_exceptions=False)
 
-    sections = []
-    for r, (text, err) in zip(targets, excerpts, strict=False):
-        title = r.get("title") or r["url"]
+    sections: list[str] = []
+    for result, (text, err) in zip(targets, excerpts, strict=False):
+        title = result.get("title") or result["url"]
         body = text or err or "(empty)"
-        sections.append(f"## {title}\n{r['url']}\n\n{body}")
+        sections.append(f"## {title}\n{result['url']}\n\n{body}")
 
     more = results[depth : depth + 5]
     if more:
         sections.append(
             "## See also\n"
             + "\n".join(
-                f"- {r.get('title') or r['url']}: {r['url']}" for r in more
+                f"- {result.get('title') or result['url']}: {result['url']}"
+                for result in more
+            )
+        )
+    return "\n\n".join(sections)
+
+
+def _format_zai_sections(hits: list[SearchResult], depth: int) -> str:
+    """Render web_search_prime hits as markdown, mirroring the SearXNG output shape."""
+    shown = hits[:depth]
+    sections: list[str] = []
+    for hit in shown:
+        title = hit.title or hit.link or "(untitled)"
+        header = f"## {title}\n{hit.link}"
+        meta_parts = [part for part in (hit.media, hit.publish_date) if part]
+        if meta_parts:
+            header += f"  ({' / '.join(meta_parts)})"
+        body = hit.content or "(no summary)"
+        sections.append(f"{header}\n\n{body}")
+
+    more = hits[depth : depth + 5]
+    if more:
+        sections.append(
+            "## See also\n"
+            + "\n".join(
+                f"- {hit.title or hit.link}: {hit.link}" for hit in more
             )
         )
     return "\n\n".join(sections)

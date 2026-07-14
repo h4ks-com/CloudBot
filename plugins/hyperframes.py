@@ -56,30 +56,40 @@ PREAMBLE = (
     "- A render tool returns a job_id; call video_render_status ONCE — it blocks until done "
     "and returns the url. Do NOT poll in a loop.\n"
     "- SYNCED narrated video / explainer, footage OR math (this is ALSO how you make a math/formula "
-    "explainer — do NOT hand-build one with video_render_math + video_add_audio): use "
-    "video_narrated_scenes. Pass ordered scenes, each a `line` plus EITHER the `media_id` of footage "
-    "for that line (download each first) OR a `math` spec (latex, optional plot_expr / x_range / "
-    "y_range / title) rendered for you — plus optional music_media_id, lead_in_sec, and "
-    "voice_reference to clone a voice, and caption_color to tint the subtitles. It narrates each "
-    "line, fits that scene's visual to the line's real length, force-aligns the narration to the "
-    "audio, and burns word-synced rolling subtitle cues in a bottom safe band — so sync, captions "
-    "and length are automatic at any length; it defaults to landscape (pass resolution portrait "
-    "ONLY for a short/reel). Captions are handled FOR you: do NOT add your own text overlays or "
-    "caption timings, and if a `math` scene, keep the formula/graph centered so it never reaches "
-    "into the bottom caption band. Caption styling knobs (all optional): caption_mode='karaoke' "
-    "highlights each word as it is spoken (great for shorts/reels — set caption_color to a bright "
-    "highlight like 'yellow' or 'cyan'), else the default 'block' shows readable phrase cues; "
-    "caption_position (bottom/center/top), caption_size (small/medium/large), caption_box, and "
-    "tail_sec (how long to hold after the last word). Prefer this over building a video then "
-    "attaching narration whenever the visuals must track the words. Keep the "
-    "scene count to the request's ACTUAL scope: one scene per real beat — a 'short' clip or '3 "
-    "moments' is ~3-5 scenes, NOT a dozen. Each scene is a separate cloned narration and they "
-    "generate one at a time (~30-60s each), so scene count IS the wait — fewer, punchier scenes is "
-    "both faster and usually better. Download exactly one footage clip per scene, not several. Call "
-    "video_narrated_scenes EXACTLY ONCE with ALL the scenes in that one call — never call it several "
-    "times and never use a render queue; it returns a job_id you poll once. When that job is done, "
-    "its url IS the COMPLETE finished video — post it and END YOUR TURN. Do NOT call ANY tool after "
-    "it: not video_render / video_render_timeline / video_preview_frame, not another video_tts or "
+    "explainer. Do NOT hand-build one from video_graphic + video_add_audio): download the "
+    "footage and music you need first (media_ids), then author a composition JSON (the full "
+    "preset/schema is in the video_compose tool description; don't guess it). A composition is "
+    "tracks of clips: each scene is a `composition` clip (duration \"fit\") holding its own tracks, "
+    "one visual (footage media_id, or a math/graphic clip), at most one `voice` clip narrating it, "
+    "and at most one `caption` clip. Music is a single `audio` clip on its own top-level track, not "
+    "inside a scene. Caption and other styles cascade from `defaults`, so set "
+    "`defaults.caption.mode` / `.color` once there and only override per scene when it must differ. "
+    "Call video_plan on the composition first (it is free and instant) and read the findings it "
+    "returns (`[{path,severity,message,hint}]`); fix EVERY error finding and re-plan until it comes "
+    "back clean before rendering anything. Captions stay automatic and word-synced: caption mode "
+    "'karaoke' highlights each word as it is spoken (great for shorts/reels, pick a bright color "
+    "like 'yellow' or 'cyan'); the default phrase-cue mode reads better for longer lines. Caption "
+    "style also takes background ('box' translucent panel, 'blur' frosted strip, 'none' text only), "
+    "plus shadow and outline (both on by default for legibility): put 'blur' or 'box' behind "
+    "captions over uncontrolled YouTube footage (which may be bright or busy), but use 'none' over "
+    "a math/graphic scene, whose dark background already reads text cleanly. Keep "
+    "each scene's visual (especially a math/graph) centered so it never reaches into the bottom "
+    "caption band. Output defaults to landscape resolution (pick portrait ONLY for a short/reel). "
+    "Prefer this composition flow over building a video then attaching narration afterward, "
+    "whenever the visuals must track the words. Keep scene count to the request's ACTUAL scope: "
+    "one scene per real beat. A 'short' clip or '3 moments' is ~3-5 scenes, NOT a dozen. Each "
+    "scene's narration generates separately, so scene count IS the wait: fewer, "
+    "punchier scenes is both faster and usually better. Voice synthesis is the single biggest "
+    "cost and it scales DIRECTLY with word count (a few seconds per spoken second), so keep each "
+    "scene's narration to one or two tight sentences: verbose lines are the main thing that makes "
+    "a video slow. In this composition flow do NOT call video_tts_estimate (that is only for the "
+    "standalone video_tts path), and skip video_get_info heatmaps for calm narration b-roll: "
+    "search, pick ONE clip per scene, download it, and move straight to video_plan. Download "
+    "exactly one footage clip per scene, not several. Once video_plan is clean, call video_compose EXACTLY ONCE with the full "
+    "composition (never call it more than once, and never use a render queue); it returns a "
+    "job_id you poll once. When video_render_status returns a url for that job, that IS the "
+    "COMPLETE finished video: post it and END YOUR TURN. Do NOT call ANY tool after it: not "
+    "video_render / video_render_timeline / video_preview_frame, not another video_tts or "
     "video_add_audio, not a skill, not more downloads. It is finished; anything more just wastes "
     "minutes or rebuilds a slower, worse video.\n"
     "- Narration: read the tts guide (video_skill) first. To FIT a requested length, call "
@@ -96,7 +106,8 @@ PREAMBLE = (
     "clips, or narration you didn't produce — your caption must match the real file.\n"
     "- When a render tool takes a metadata title/description, write them like a real creator "
     "posting the video — catchy and human, never a restatement of the brief, never addressing "
-    "the requester by name.\n"
+    "the requester by name. Also pass metadata.brief = the user's request VERBATIM, so the "
+    "stored project file keeps what the video was asked to be.\n"
     "- Final answer: ONE short natural caption — single line, no markdown, no emoji, no URLs — "
     "the way a person describes a clip they just made. Don't address the user by name, don't "
     "say 'ready for you', don't sound like an announcer. The bot appends the link itself.\n\n"
@@ -141,7 +152,7 @@ _STATUS_INTERVAL_S = 4.0
 
 # Tools that build the entire video in one call — re-invoking them just re-runs the slow TTS. Once
 # dispatched in a run, repeats are refused (see on_invoke) so the model polls + posts instead.
-_ONE_SHOT_BUILDERS = {"video_narrated_scenes"}
+_ONE_SHOT_BUILDERS = {"video_compose"}
 
 
 def _job_id_from(text: str) -> str:
@@ -230,7 +241,7 @@ def _build_tools(
             ctx: RunContextWrapper, args_json: str, _name: str = name
         ) -> str:
             args = parse_args(args_json)
-            # video_narrated_scenes builds the WHOLE video in one call (each call re-runs the slow
+            # A one-shot builder renders the WHOLE video in one call (each call re-runs the slow
             # per-line TTS). The model sometimes re-renders it several times instead of posting the
             # first result; once it is dispatched, refuse repeats and point back at the pending job.
             ctxd = ctx.context if isinstance(ctx.context, dict) else None
@@ -261,6 +272,13 @@ def _build_tools(
                     job = _job_id_from(text)
                     if job:
                         ctx.context["_builder_job"] = job
+            # A failed build must not keep the one-shot lock: when the pending builder job's
+            # status comes back as an error, clear it so the model may fix and dispatch again.
+            if _name == _STATUS_TOOL and isinstance(ctx.context, dict):
+                pending = ctx.context.get("_builder_job")
+                polled = str(args.get("job_id") or "")
+                if pending and polled == pending and (is_error or '"state": "error"' in text):
+                    ctx.context.pop("_builder_job", None)
             return text or "(no result)"
 
         tools.append(
