@@ -24,8 +24,6 @@ import time
 from datetime import datetime
 from typing import Any, Literal
 
-Kind = Literal["video", "voice"]
-
 import requests
 from agents import Agent, FunctionTool, RunContextWrapper
 
@@ -38,6 +36,10 @@ from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
 )
+from plugins.core import bot_cmds
+
+Kind = Literal["video", "voice"]
+
 
 logger = logging.getLogger("cloudbot")
 
@@ -59,7 +61,7 @@ PREAMBLE = (
     "explainer. Do NOT hand-build one from video_graphic + video_add_audio): download the "
     "footage and music you need first (media_ids), then author a composition JSON (the full "
     "preset/schema is in the video_compose tool description; don't guess it). A composition is "
-    "tracks of clips: each scene is a `composition` clip (duration \"fit\") holding its own tracks, "
+    'tracks of clips: each scene is a `composition` clip (duration "fit") holding its own tracks, '
     "one visual (footage media_id, or a math/graphic clip), at most one `voice` clip narrating it, "
     "and at most one `caption` clip. Music is a single `audio` clip on its own top-level track, not "
     "inside a scene. Caption and other styles cascade from `defaults`, so set "
@@ -277,7 +279,11 @@ def _build_tools(
             if _name == _STATUS_TOOL and isinstance(ctx.context, dict):
                 pending = ctx.context.get("_builder_job")
                 polled = str(args.get("job_id") or "")
-                if pending and polled == pending and (is_error or '"state": "error"' in text):
+                if (
+                    pending
+                    and polled == pending
+                    and (is_error or '"state": "error"' in text)
+                ):
                     ctx.context.pop("_builder_job", None)
             return text or "(no result)"
 
@@ -370,6 +376,7 @@ async def run_hyperframes(
     channel: str = "",
     effort: hyperframes.Effort | None = None,
     kind: Kind = "video",
+    on_tool_step: Any = None,
 ) -> str:
     """Create a video via the video-mcp server and return a short result with the
     MP4 URL. Shared by the ``.video`` command and the main agent's ``create_video``
@@ -406,6 +413,7 @@ async def run_hyperframes(
         context=captured,
         model=model,
         disable_thinking=disable_thinking,
+        on_tool_step=on_tool_step,
     )
     reply = _build_reply(text, captured, kind)
     out_url = captured.get("audio_url" if kind == "voice" else "video_url")
@@ -442,37 +450,58 @@ async def _post(
     target: str,
     prompt: str,
     effort: hyperframes.Effort | None = None,
+    trigger_msgid: str | None = None,
 ) -> None:
     # The dispatch itself is already announced (the .agi reply / the command line).
-    # Here we only keep a typing signal live for the whole background render — the
-    # spawning command's own typing stopped when it returned — and post the finished
-    # media or a failure.
+    # Here we keep a typing signal live for the whole background render, stream the
+    # render's tool calls as a draft/bot-tools workflow, and post the finished media
+    # (or a failure) carrying the workflow's terminal so its card lands on this reply.
     noun = _KIND_NOUN[kind]
     global _video_seq
     _video_seq += 1
     typing_id = _video_seq
     await start_typing_for_command(conn, target, typing_id)
+    workflow_id = bot_cmds.start_tool_workflow(
+        conn, target, kind, trigger_msgid
+    )
+    failed = False
     try:
         answer = await asyncio.wait_for(
             run_hyperframes(
-                bot, prompt, channel=target, effort=effort, kind=kind
+                bot,
+                prompt,
+                channel=target,
+                effort=effort,
+                kind=kind,
+                on_tool_step=bot_cmds.tool_step_sink(conn, target, workflow_id),
             ),
             timeout=_RENDER_TIMEOUT_S,
         )
     except asyncio.TimeoutError:
         answer = f"{noun} failed: timed out."
+        failed = True
     except hyperframes.HyperframesNotConfigured:
         answer = f"{noun} not configured."
+        failed = True
     except (hyperframes.HyperframesError, SubagentError) as e:
         answer = f"{noun} failed: {e}"
+        failed = True
     except requests.RequestException as e:
         answer = f"{noun} failed: video-mcp request rejected ({e.__class__.__name__})"
+        failed = True
     except Exception:
         logger.exception("hyperframes: unexpected error in _post (%s)", kind)
         answer = f"{noun} failed: unexpected error (see bot logs)"
+        failed = True
     finally:
         await stop_typing_for_command(conn, target, typing_id)
-    conn.message(target, answer)
+    conn.message(
+        target,
+        answer,
+        tags=bot_cmds.workflow_terminal_tag(
+            workflow_id, "failed" if failed else "complete"
+        ),
+    )
 
 
 def spawn_video(
@@ -481,8 +510,9 @@ def spawn_video(
     target: str,
     prompt: str,
     effort: hyperframes.Effort | None = None,
+    trigger_msgid: str | None = None,
 ) -> None:
-    _spawn(_post("video", bot, conn, target, prompt, effort))
+    _spawn(_post("video", bot, conn, target, prompt, effort, trigger_msgid))
 
 
 @hook.command("video", autohelp=False, allow_private=False)
@@ -494,7 +524,13 @@ async def video_command(text, event):
     event.reply(
         "🎬 On it — putting your video together now; I'll post it here when it's ready (a few minutes)."
     )
-    spawn_video(event.bot, event.conn, event.chan, text)
+    spawn_video(
+        event.bot,
+        event.conn,
+        event.chan,
+        text,
+        trigger_msgid=event.tag_value("msgid"),
+    )
 
 
 def spawn_voice(
@@ -503,8 +539,9 @@ def spawn_voice(
     target: str,
     prompt: str,
     effort: hyperframes.Effort | None = None,
+    trigger_msgid: str | None = None,
 ) -> None:
-    _spawn(_post("voice", bot, conn, target, prompt, effort))
+    _spawn(_post("voice", bot, conn, target, prompt, effort, trigger_msgid))
 
 
 @hook.command("speak", autohelp=False, allow_private=False)
@@ -518,4 +555,10 @@ async def speak_command(text, event):
     event.reply(
         "🎧 On it, generating the voice now; I'll post the audio here shortly."
     )
-    spawn_voice(event.bot, event.conn, event.chan, text)
+    spawn_voice(
+        event.bot,
+        event.conn,
+        event.chan,
+        text,
+        trigger_msgid=event.tag_value("msgid"),
+    )

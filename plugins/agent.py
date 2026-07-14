@@ -799,7 +799,9 @@ class CaptureEvent(CommandEvent):
         else:
             self._captured.append(str(message))
 
-    def reply(self, *messages, target=None, ping_own_line=False):
+    def reply(
+        self, *messages, target=None, ping_own_line=False, extra_tags=None
+    ):
         for msg in messages:
             if isinstance(msg, (list, tuple)):
                 self._captured.extend(str(m) for m in msg)

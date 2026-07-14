@@ -23,6 +23,7 @@ from cloudbot.util.typing import (
     stop_typing_for_command,
 )
 from plugins.agent import _format_answer
+from plugins.core import bot_cmds
 
 logger = logging.getLogger("cloudbot")
 
@@ -292,6 +293,9 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
     typing_id = id(event)
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
+    workflow_id = bot_cmds.start_tool_workflow(
+        event.conn, target, agent_type, event.tag_value("msgid")
+    )
     try:
         answer = await run_subagent(
             bot,
@@ -299,10 +303,19 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
             prompt=enriched,
             max_turns=max_turns,
             timeout_s=timeout,
+            on_tool_step=bot_cmds.tool_step_sink(
+                event.conn, target, workflow_id
+            ),
         )
-        event.reply(_format_answer(answer, agent_cfg))
+        event.reply(
+            _format_answer(answer, agent_cfg),
+            extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "complete"),
+        )
     except SubagentError as e:
-        event.reply(f"Agent failed: {e}")
+        event.reply(
+            f"Agent failed: {e}",
+            extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "failed"),
+        )
     finally:
         await stop_typing_for_command(event.conn, target, typing_id)
 

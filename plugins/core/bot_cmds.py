@@ -561,6 +561,66 @@ def emit_workflow(
     conn.tagmsg(target, {_BOT_TOOLS_TAG: encode(obj)})
 
 
+def start_tool_workflow(
+    conn, target: str, name: str, trigger: str | None = None
+) -> str:
+    """Open a draft/bot-tools workflow for a sub-agent run and return its id. The
+    sub-agent's tool calls stream into it via tool_step_sink; the run's final
+    message carries workflow_terminal_tag to close the card in place. Emit failures
+    (a closed connection) are swallowed so transparency never breaks the run."""
+    workflow_id = uuid.uuid4().hex[:12]
+    try:
+        emit_workflow(
+            conn,
+            target,
+            workflow_id,
+            "start",
+            name=name,
+            trigger=trigger,
+            features=["reasoning"],
+        )
+    except ValueError:
+        pass
+    return workflow_id
+
+
+def tool_step_sink(conn, target: str, workflow_id: str):
+    """Build the callback for run_subagent(on_tool_step=...) that fans each
+    sub-agent tool call out as a workflow step under workflow_id."""
+
+    def sink(
+        sid: str, step_type: str, state: str, tool: str, content: object = None
+    ) -> None:
+        try:
+            emit_step(
+                conn,
+                target,
+                workflow_id,
+                sid,
+                step_type,
+                state,
+                tool=tool,
+                content=content,
+            )
+        except ValueError:
+            pass
+
+    return sink
+
+
+def workflow_terminal_tag(
+    workflow_id: str, state: str
+) -> dict[str, str | None]:
+    """The +draft/bot-tools tag that closes a workflow in a given state, stamped
+    onto a sub-agent's final message so its card morphs into that reply in place.
+    """
+    return {
+        _BOT_TOOLS_TAG: encode(
+            {"msg": "workflow", "id": workflow_id, "state": state}
+        )
+    }
+
+
 def _handle_action(conn, event, msg_obj: dict) -> None:
     handler = (conn.memory.get("bot_tools_actions") or {}).get(
         msg_obj.get("target")

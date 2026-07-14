@@ -32,6 +32,7 @@ from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
 )
+from plugins.core import bot_cmds
 
 _URL_RE = re.compile(r"https?://\S+")
 _AUDIO_RE = re.compile(r"audio_url:\s*(\S+)")
@@ -49,7 +50,9 @@ def _clean_schema(schema: Any) -> dict[str, Any]:
     }
 
 
-def _build_tools(url: str, key: str, specs: list[dict[str, Any]]) -> list[FunctionTool]:
+def _build_tools(
+    url: str, key: str, specs: list[dict[str, Any]]
+) -> list[FunctionTool]:
     """Bridge each tool rendel's MCP server exposes to a FunctionTool. Generic, so
     new rendel tools appear automatically — except strudel_render, whose exact
     audio URL is captured from the result (the model is never trusted to repeat
@@ -144,7 +147,8 @@ def _build_reply(text: str, captured: dict[str, str]) -> str:
 
 def _recent_songs_note(channel: str) -> str:
     """Recent songs made in this channel; the newest one's code inline so a
-    follow-up like 'make it faster' edits it instead of composing from scratch."""
+    follow-up like 'make it faster' edits it instead of composing from scratch.
+    """
     songs = recent_runs(channel, "song", n=3)
     if not songs:
         return ""
@@ -159,7 +163,9 @@ def _recent_songs_note(channel: str) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-async def run_strudel(bot: Any, prompt: str, channel: str = "") -> str:
+async def run_strudel(
+    bot: Any, prompt: str, channel: str = "", on_tool_step: Any = None
+) -> str:
     """Compose+render a song via the rendel MCP server and return a short result
     with the URL(s). Shared by the ``.strudel`` command and the main agent's
     ``compose_strudel`` tool. Recent songs in ``channel`` are surfaced so a
@@ -177,13 +183,16 @@ async def run_strudel(bot: Any, prompt: str, channel: str = "") -> str:
         max_turns=max_turns,
         timeout_s=timeout_s,
         context=captured,
+        on_tool_step=on_tool_step,
     )
     # The editor link is a short s.h4ks redirect to strudel.cc (the raw link is
     # ~1.5KB and truncates in chat); the raw link is the fallback if paste fails.
     code = captured.get("code")
     if code:
         try:
-            captured["share_url"] = await run_in_executor(strudel.share_short_url, code)
+            captured["share_url"] = await run_in_executor(
+                strudel.share_short_url, code
+            )
         except web.ServiceError:
             captured["share_url"] = strudel.share_url(code)
     reply = _build_reply(text, captured)
@@ -209,14 +218,33 @@ async def strudel_command(text, event):
     typing_id = id(event)
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
+    workflow_id = bot_cmds.start_tool_workflow(
+        event.conn, target, "strudel", event.tag_value("msgid")
+    )
     try:
-        answer = await run_strudel(event.bot, text, channel=target)
+        answer = await run_strudel(
+            event.bot,
+            text,
+            channel=target,
+            on_tool_step=bot_cmds.tool_step_sink(
+                event.conn, target, workflow_id
+            ),
+        )
     except strudel.StrudelNotConfigured:
-        event.reply("Strudel not configured.")
+        event.reply(
+            "Strudel not configured.",
+            extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "failed"),
+        )
         return
     except (strudel.StrudelError, SubagentError) as e:
-        event.reply(f"Strudel agent failed: {e}")
+        event.reply(
+            f"Strudel agent failed: {e}",
+            extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "failed"),
+        )
         return
     finally:
         await stop_typing_for_command(event.conn, target, typing_id)
-    event.reply(answer)
+    event.reply(
+        answer,
+        extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "complete"),
+    )

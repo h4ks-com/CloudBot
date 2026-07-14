@@ -17,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
+from collections.abc import Callable
 from typing import Any
 
 from agents import Agent, RunConfig, RunHooks, Runner
@@ -38,13 +40,30 @@ def agent_config(bot: Any) -> dict[str, Any]:
     return (bot.config.get("plugins") or {}).get("agent") or {}
 
 
+# (sid, step_type, state, tool, content) -> None. Fed by _SubagentProfiler so a
+# caller can stream a sub-agent's tool calls as a draft/bot-tools workflow.
+ToolStepSink = Callable[[str, str, str, str, object], None]
+
+
 class _SubagentProfiler(RunHooks):
-    def __init__(self, backend: str, agent_name: str):
+    def __init__(
+        self,
+        backend: str,
+        agent_name: str,
+        on_tool_step: ToolStepSink | None = None,
+    ):
         self.backend = backend
         self.agent_name = agent_name
+        self.on_tool_step = on_tool_step
         self.t0 = time.monotonic()
         self.last_event = self.t0
         self.tool_count = 0
+        # Open tool-call step ids per tool name, so on_tool_end pairs its result
+        # with the right start FIFO. The Agents SDK runs a turn's tool calls
+        # concurrently, so pairing by call ordinal would cross the wires; unique
+        # sids also keep a fallback-backend retry from colliding with the primary
+        # attempt's steps under the same workflow.
+        self._open_sids: dict[str, list[str]] = {}
 
     def _emit(self, kind: str, name: str, extra: str) -> None:
         now = time.monotonic()
@@ -65,10 +84,31 @@ class _SubagentProfiler(RunHooks):
     async def on_tool_start(self, ctx, agent, tool):
         self.tool_count += 1
         self._emit("START", tool.name, f"#{self.tool_count}")
+        if self.on_tool_step is not None:
+            sid = "s" + uuid.uuid4().hex[:10]
+            self._open_sids.setdefault(tool.name, []).append(sid)
+            self.on_tool_step(sid, "tool-call", "start", tool.name, None)
 
     async def on_tool_end(self, ctx, agent, tool, result):
-        size = len(str(result)) if result is not None else 0
-        self._emit("END", tool.name, f"result={size}B")
+        result_str = str(result) if result is not None else ""
+        self._emit("END", tool.name, f"result={len(result_str)}B")
+        if self.on_tool_step is not None:
+            failed = result_str[:20].startswith(
+                ("(error", "(mcp", "(tool error")
+            )
+            state = "failed" if failed else "complete"
+            open_sids = self._open_sids.get(tool.name)
+            call_sid = (
+                open_sids.pop(0) if open_sids else "s" + uuid.uuid4().hex[:10]
+            )
+            self.on_tool_step(call_sid, "tool-call", state, tool.name, None)
+            self.on_tool_step(
+                "r" + uuid.uuid4().hex[:10],
+                "tool-result",
+                state,
+                tool.name,
+                result_str[:200],
+            )
 
 
 def _backends_to_try(agent_cfg: dict[str, Any]) -> list[str]:
@@ -123,6 +163,7 @@ async def run_subagent(
     context: Any = None,
     model: str | None = None,
     disable_thinking: bool = False,
+    on_tool_step: ToolStepSink | None = None,
 ) -> str:
     """Run ``agent`` on ``prompt`` and return its final text output.
 
@@ -131,7 +172,8 @@ async def run_subagent(
     :class:`SubagentError` if the agent is disabled/unconfigured or every
     backend fails. ``context`` is passed to the run so tools can record results
     the caller reads back (e.g. exact URLs, instead of trusting the model to
-    retype them).
+    retype them). ``on_tool_step``, when given, is called on every tool
+    start/end so the caller can stream the run as a draft/bot-tools workflow.
     """
     agent_cfg = agent_config(bot)
     if not agent_cfg.get("enabled", False) or not agent_cfg.get("backends"):
@@ -166,7 +208,7 @@ async def run_subagent(
             )
             last_err = e
             continue
-        profiler = _SubagentProfiler(backend, agent.name)
+        profiler = _SubagentProfiler(backend, agent.name, on_tool_step)
         try:
             result = await asyncio.wait_for(
                 Runner.run(
