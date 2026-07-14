@@ -22,6 +22,7 @@ from collections.abc import Callable
 from typing import Any
 
 from agents import Agent, RunConfig, RunHooks, Runner
+from agents.exceptions import MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 
@@ -181,6 +182,7 @@ async def run_subagent(
 
     run_context = context if context is not None else {}
     last_err: BaseException | None = None
+    first_err: BaseException | None = None
     for index, backend in enumerate(_backends_to_try(agent_cfg)):
         b = (agent_cfg.get("backends") or {}).get(backend) or {}
         # Model override applies only to the primary backend's provider; a different-provider
@@ -206,6 +208,8 @@ async def run_subagent(
             logger.warning(
                 "subagent: cannot build run config for %s: %s", backend, e
             )
+            if first_err is None:
+                first_err = e
             last_err = e
             continue
         profiler = _SubagentProfiler(backend, agent.name, on_tool_step)
@@ -225,17 +229,31 @@ async def run_subagent(
             logger.warning(
                 "subagent: %s timed out after %ss", backend, timeout_s
             )
+            if first_err is None:
+                first_err = e
             last_err = e
             continue
+        except MaxTurnsExceeded as e:
+            # Running out of turns is a run-level failure, not a backend fault: retrying on
+            # the fallback would burn it again and its own error (often an out-of-quota 403)
+            # would mask the real cause. Surface it directly instead of falling through.
+            raise SubagentError(
+                f"agent hit the {max_turns}-turn limit before finishing"
+            ) from e
         except (
             Exception
         ) as e:  # noqa: BLE001 — backend failure must fall through to the next
             logger.warning(
                 "subagent: %s failed: %s: %s", backend, type(e).__name__, e
             )
+            if first_err is None:
+                first_err = e
             last_err = e
             continue
         return str(result.final_output or "").strip() or "(no answer)"
 
-    err_name = type(last_err).__name__ if last_err else "unknown"
-    raise SubagentError(f"all backends failed ({err_name})")
+    # Report the PRIMARY backend's failure (what the agent actually ran on); the fallback's
+    # error is usually noise — e.g. an out-of-quota 403 — that masks the real cause.
+    err = first_err or last_err
+    detail = f"{type(err).__name__}: {err}" if err else "unknown"
+    raise SubagentError(f"all backends failed ({detail[:160]})")

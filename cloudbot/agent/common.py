@@ -56,10 +56,30 @@ def parse_args(args_json: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def namespace_for(event) -> str:
+    """Default memory namespace for an event: per-nick-per-network.
+
+    A user's memories follow them across channels on the same IRC network
+    without bleeding to other networks. Falls back to nick-only when the
+    connection name can't be read, then to "global".
+    """
+    nick = (getattr(event, "nick", "") or "").strip()
+    conn = getattr(event, "conn", None)
+    conn_name = (getattr(conn, "name", "") or "").strip()
+    if nick and conn_name:
+        ns = f"{conn_name}/{nick}"
+    elif nick:
+        ns = f"nick/{nick}"
+    else:
+        ns = "global"
+    return ns[:100]
+
+
 def parse_namespace(data: dict[str, Any], ctx: RunContextWrapper) -> str:
-    return str(data.get("namespace") or ctx.context.chan or "global").strip()[
-        :100
-    ]
+    explicit = str(data.get("namespace") or "").strip()
+    if explicit:
+        return explicit[:100]
+    return namespace_for(ctx.context)
 
 
 def split_repo(repo: str) -> tuple[str, str]:

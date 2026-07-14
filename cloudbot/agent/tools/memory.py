@@ -153,7 +153,7 @@ def fts_search(namespace: str, query: str, limit: int) -> list[tuple[str, str]]:
     description=(
         "Store a key-value pair in persistent memory. Use to remember facts, "
         "preferences, or notes across conversations. "
-        "namespace defaults to the current channel. "
+        "namespace defaults to the calling user (network/nick). "
         f"Value is capped at {_MEMORY_VALUE_MAX} chars."
     ),
     schema={
@@ -169,7 +169,7 @@ def fts_search(namespace: str, query: str, limit: int) -> list[tuple[str, str]]:
             },
             "namespace": {
                 "type": "string",
-                "description": "Scope (default: current channel)",
+                "description": "Scope (default: calling user, i.e. network/nick)",
             },
         },
         "required": ["key", "value"],
@@ -199,7 +199,7 @@ async def memory_set(ctx, data):
     name="memory_get",
     description=(
         "Retrieve a stored memory by key. "
-        "namespace defaults to the current channel. "
+        "namespace defaults to the calling user (network/nick). "
         "Returns the value or a not-found message."
     ),
     schema={
@@ -208,7 +208,7 @@ async def memory_set(ctx, data):
             "key": {"type": "string", "description": "Memory key to retrieve"},
             "namespace": {
                 "type": "string",
-                "description": "Scope (default: current channel)",
+                "description": "Scope (default: calling user, i.e. network/nick)",
             },
         },
         "required": ["key"],
@@ -242,7 +242,7 @@ async def memory_get(ctx, data):
     name="memory_search",
     description=(
         "Search stored memories by keyword in key or value. "
-        "namespace defaults to the current channel. "
+        "namespace defaults to the calling user (network/nick). "
         f"Returns up to {_MEMORY_SEARCH_LIMIT} matching entries."
     ),
     schema={
@@ -254,7 +254,7 @@ async def memory_get(ctx, data):
             },
             "namespace": {
                 "type": "string",
-                "description": "Scope (default: current channel)",
+                "description": "Scope (default: calling user, i.e. network/nick)",
             },
         },
         "required": ["query"],

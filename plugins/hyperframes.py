@@ -151,6 +151,10 @@ VOICE_PREAMBLE = (
 _STATUS_TOOL = "video_render_status"
 _STATUS_CAP_S = 540.0
 _STATUS_INTERVAL_S = 4.0
+# A render pod restart (OOM / deploy) makes status calls transiently error (Kong 503) while it
+# comes back. Ride out this many consecutive errors before treating the job as gone, so a blip
+# doesn't abort the wait and send the model thrashing + re-dispatching.
+_STATUS_MAX_ERRORS = 8
 
 # Tools that build the entire video in one call — re-invoking them just re-runs the slow TTS. Once
 # dispatched in a run, repeats are refused (see on_invoke) so the model polls + posts instead.
@@ -193,23 +197,9 @@ def _wait_for_job(url: str, key: str, job_id: str) -> tuple[str, bool]:
     is hit, so one agent turn covers the whole async render. Runs in an executor
     thread; returns the final ``(text, is_error)``."""
     deadline = time.monotonic() + _STATUS_CAP_S
-    text, is_error = hyperframes.call_tool(
-        url,
-        key,
-        _STATUS_TOOL,
-        {"job_id": job_id},
-        timeout=hyperframes.STATUS_TIMEOUT,
-    )
+    errors = 0
+    text = ""
     while time.monotonic() < deadline:
-        if is_error or _MEDIA_RE.search(text or ""):
-            return text, is_error
-        try:
-            state = str(json.loads(text).get("state", "")).lower()
-        except (ValueError, TypeError):
-            state = ""
-        if state and state not in hyperframes.ACTIVE_STATES:
-            return text, is_error
-        time.sleep(_STATUS_INTERVAL_S)
         text, is_error = hyperframes.call_tool(
             url,
             key,
@@ -217,8 +207,24 @@ def _wait_for_job(url: str, key: str, job_id: str) -> tuple[str, bool]:
             {"job_id": job_id},
             timeout=hyperframes.STATUS_TIMEOUT,
         )
-    if is_error or _MEDIA_RE.search(text or ""):
-        return text, is_error
+        if is_error:
+            errors += 1
+            if errors >= _STATUS_MAX_ERRORS:
+                return text, True
+            time.sleep(_STATUS_INTERVAL_S)
+            continue
+        errors = 0
+        if _MEDIA_RE.search(text or ""):
+            return text, False
+        try:
+            state = str(json.loads(text).get("state", "")).lower()
+        except (ValueError, TypeError):
+            state = ""
+        if state and state not in hyperframes.ACTIVE_STATES:
+            return text, False
+        time.sleep(_STATUS_INTERVAL_S)
+    if _MEDIA_RE.search(text or ""):
+        return text, False
     return (
         f"(still rendering after {int(_STATUS_CAP_S)}s — job {job_id} did not finish; "
         "no output was produced)",
@@ -275,15 +281,13 @@ def _build_tools(
                     if job:
                         ctx.context["_builder_job"] = job
             # A failed build must not keep the one-shot lock: when the pending builder job's
-            # status comes back as an error, clear it so the model may fix and dispatch again.
+            # render itself reports an error, clear it so the model may fix and dispatch again.
+            # A transient transport error (a 503 while the pod restarts) is NOT a render failure:
+            # keep the lock so a blip doesn't trigger a wasteful re-compose that re-runs all the TTS.
             if _name == _STATUS_TOOL and isinstance(ctx.context, dict):
                 pending = ctx.context.get("_builder_job")
                 polled = str(args.get("job_id") or "")
-                if (
-                    pending
-                    and polled == pending
-                    and (is_error or '"state": "error"' in text)
-                ):
+                if pending and polled == pending and '"state": "error"' in text:
                     ctx.context.pop("_builder_job", None)
             return text or "(no result)"
 

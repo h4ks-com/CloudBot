@@ -37,6 +37,7 @@ from cloudbot.agent import (
     sanitise_err_message,
     upload_markdown_paste,
 )
+from cloudbot.agent.common import namespace_for
 from cloudbot.agent.runs import recent_runs
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
@@ -963,14 +964,14 @@ def _build_gh_suffix(bot, cfg: dict) -> str:
 
 
 def _build_memory_recall(event) -> str:
-    """Inject an index of what the agent has saved for this channel.
+    """Inject an index of what the agent has saved for the calling user.
 
     Lists each memory's key with a short preview so the agent is aware of what
     it knows without dumping full values; it reads the full value with
     memory_get(key) or finds entries with memory_search(text) when it needs to.
     Newest first, capped by count and characters.
     """
-    ns = getattr(event, "chan", "") or ""
+    ns = namespace_for(event)
     if not ns:
         return ""
     try:
@@ -992,8 +993,8 @@ def _build_memory_recall(event) -> str:
     if not lines:
         return ""
     return (
-        "\n## Your Memory (saved facts for this channel — previews shown; call "
-        "memory_get(key) for a full value, memory_search(text) to find by "
+        "\n## Your Memory (saved facts for the calling user — previews shown; "
+        "call memory_get(key) for a full value, memory_search(text) to find by "
         "content)\n" + "\n".join(lines)
     )
 
