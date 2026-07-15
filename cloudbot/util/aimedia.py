@@ -23,6 +23,7 @@ import requests
 from cloudbot.util.web import get_session
 
 TIMEOUT = 90
+EDIT_TIMEOUT = 180  # img2img edits run through a browser, so they take longer than plain gen
 VIDEO_WATCH_TIMEOUT = (
     600.0  # renders take a few minutes; stop watching a stuck job past this
 )
@@ -51,14 +52,19 @@ def config_from_bot(bot: Any) -> tuple[str, str]:
 
 
 def _request(
-    method: str, url: str, key: str, path: str, **kwargs: Any
+    method: str,
+    url: str,
+    key: str,
+    path: str,
+    timeout: int = TIMEOUT,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     try:
         resp = get_session().request(
             method,
             f"{url}{path}",
             headers={"X-API-Key": key},
-            timeout=TIMEOUT,
+            timeout=timeout,
             **kwargs,
         )
     except requests.RequestException as e:
@@ -93,6 +99,7 @@ def edit_image(url: str, key: str, prompt: str, image_b64: str) -> list[bytes]:
         url,
         key,
         "/image",
+        timeout=EDIT_TIMEOUT,
         json={"prompt": prompt, "image_b64": image_b64},
     )
     return [base64.b64decode(b) for b in data.get("images", [])]
