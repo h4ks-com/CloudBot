@@ -49,6 +49,17 @@ _TOOL_NAMES = frozenset(
         "kaggle_list_notebooks",
         "kaggle_delete_notebook",
         "paste_markdown",
+        # Writing code for a library it has not seen is most of this job. Without
+        # these it burns GPU runs printing files to discover an API, which is
+        # slow, costs quota, and spends the turn budget. All read-only.
+        "read_github_file",
+        "read_github_file_meta",
+        "list_repo_files",
+        "search_github_code",
+        "web_research",
+        "web_fetch",
+        "context7_search",
+        "context7_docs",
     }
 )
 
@@ -62,13 +73,18 @@ exactly — they carry the rules Kaggle imposes.
 How to work:
 1. Understand the request. Check kaggle_list_notebooks first and update an existing notebook
    rather than making a near-duplicate.
-2. Write straightforward, self-contained Python. Print what matters — the log is how you and
+2. If the code depends on a library or repo you are not sure about, look it up BEFORE running:
+   read_github_file / list_repo_files / search_github_code for its real source, context7_docs
+   for library docs, web_research for anything else. Never run a notebook just to discover an
+   API by printing files — that wastes a run, GPU quota and your turns.
+3. Write straightforward, self-contained Python. Print what matters — the log is how you and
    the user see results. Save real outputs (files, plots, JSON) where the tool tells you to.
-3. Run it. If it is still going, call kaggle_wait_for_notebook — it waits for you. NEVER loop on
+4. Run it. If it is still going, call kaggle_wait_for_notebook — it waits for you. NEVER loop on
    kaggle_notebook_status or kaggle_notebook_output: every call costs a turn, and you will run
    out of turns long before the notebook finishes.
-4. If it fails, read the log, fix the code, and run again under the SAME title.
-5. Report: one short summary of what it did and what it found, and share the file the user asked
+5. If it fails, read the log and fix the code — look the API up rather than guessing — then run
+   again under the SAME title.
+6. Report: one short summary of what it did and what it found, and share the file the user asked
    for with kaggle_notebook_output(share=...).
 
 You are answering in a chat channel, so keep it to a few short lines.
@@ -97,11 +113,15 @@ def _get_agent() -> Agent:
 
 
 def _run_limits(bot: CloudBot) -> tuple[int, float]:
-    # A healthy run is write → run → maybe one fix → report. Kaggle's own queue can
-    # add a minute, so the ceiling is generous while the turn cap keeps a looping
-    # model bounded.
+    """Turn and wall-clock budget for one .kaggle run.
+
+    The clock has to outlast the work it supervises: a notebook can hold a 30min
+    cap and a single kaggle_wait_for_notebook already allows 600s, so a smaller
+    budget makes waiting for a real run impossible. The turn cap is what keeps a
+    looping model bounded.
+    """
     cfg = (bot.config.get("plugins") or {}).get("kaggle_agent") or {}
-    return int(cfg.get("max_turns", 20)), float(cfg.get("timeout_s", 600))
+    return int(cfg.get("max_turns", 30)), float(cfg.get("timeout_s", 1800))
 
 
 async def run_kaggle(

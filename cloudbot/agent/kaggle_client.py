@@ -221,8 +221,11 @@ class Quota:
 
     @property
     def remaining_h(self) -> float:
-        # timeReserved is held by in-flight sessions; ignoring it lets two
-        # concurrent pushes both believe there is room.
+        """Hours actually still available.
+
+        timeReserved is held by in-flight sessions; ignoring it lets two
+        concurrent pushes both believe there is room.
+        """
         return max(0.0, self.total_h - self.used_h - self.reserved_h)
 
 

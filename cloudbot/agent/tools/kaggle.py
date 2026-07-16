@@ -328,8 +328,11 @@ def _record_usage(nick: str) -> None:
 
 
 def format_quota(report: kaggle_client.QuotaReport) -> str:
-    # Two decimals because a whole notebook run is minutes: at one decimal any
-    # run under ~3 minutes reads as 0.0h and the counter looks broken.
+    """Render weekly quota for chat.
+
+    Two decimals because a whole notebook run is minutes: at one decimal any run
+    under ~3 minutes reads as 0.0h and the counter looks broken.
+    """
     return (
         f"GPU: {report.gpu.remaining_h:.2f}h left of {report.gpu.total_h:.0f}h "
         f"(used {report.gpu.used_h:.2f}h, reserved {report.gpu.reserved_h:.2f}h) | "
