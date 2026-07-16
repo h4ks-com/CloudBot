@@ -59,6 +59,9 @@ _URL_RE = re.compile(r"(https?://\S+)")
 # sessionTimeoutSeconds starts when the notebook leaves Kaggle's queue, so a run
 # outlives push+timeout by however long it waited.
 _QUEUE_GRACE_S = 600
+# Kaggle spends the first seconds of a session starting the container, so a
+# shorter cap than this kills the notebook before its code runs at all.
+_MIN_TIMEOUT_S = 60
 
 
 @dataclass
@@ -223,7 +226,7 @@ class KaggleConfig:
     repo ships no kaggle_agent block."""
 
     default_timeout_s: int = 900
-    max_timeout_s: int = 3600
+    max_timeout_s: int = 1800
     wait_s: int = 90
     min_gpu_reserve_h: float = 2.0
     max_concurrent: int = 3
@@ -268,10 +271,14 @@ def _config(bot: CloudBot) -> KaggleConfig:
 
 def _timeout_for(cfg: KaggleConfig, requested: int | None) -> int:
     """The only ceiling on a runaway notebook: Kaggle exposes no usable cancel,
-    so a hung run bills until this fires. Clamped here rather than trusted from
-    the model."""
-    wanted = cfg.default_timeout_s if requested is None else int(requested)
-    return max(60, min(wanted, cfg.max_timeout_s))
+    so a hung run bills until this fires. Capped here rather than trusted from
+    the model, and never 0 — that is proto3's default, which the server would
+    read as "unset" and fall back to its own 12h limit.
+    """
+    wanted = int(requested or 0)
+    if wanted <= 0:
+        wanted = cfg.default_timeout_s
+    return max(_MIN_TIMEOUT_S, min(wanted, cfg.max_timeout_s))
 
 
 def _limits(cfg: KaggleConfig, nick: str) -> str | None:
@@ -319,11 +326,12 @@ def _record_usage(nick: str) -> None:
 
 
 def format_quota(report: kaggle_client.QuotaReport) -> str:
-    """Shared by the kaggle_quota tool and the .kquota command."""
+    # Two decimals because a whole notebook run is minutes: at one decimal any
+    # run under ~3 minutes reads as 0.0h and the counter looks broken.
     return (
-        f"GPU: {report.gpu.remaining_h:.1f}h left of {report.gpu.total_h:.0f}h "
-        f"(used {report.gpu.used_h:.1f}h, reserved {report.gpu.reserved_h:.1f}h) | "
-        f"TPU: {report.tpu.remaining_h:.1f}h left of {report.tpu.total_h:.0f}h | "
+        f"GPU: {report.gpu.remaining_h:.2f}h left of {report.gpu.total_h:.0f}h "
+        f"(used {report.gpu.used_h:.2f}h, reserved {report.gpu.reserved_h:.2f}h) | "
+        f"TPU: {report.tpu.remaining_h:.2f}h left of {report.tpu.total_h:.0f}h | "
         f"resets {report.refresh_at}"
     )
 
@@ -394,7 +402,7 @@ async def kaggle_quota(ctx, data) -> str:
             },
             "timeout_s": {
                 "type": "integer",
-                "description": "Hard cap on the run in seconds. Clamped to the configured maximum.",
+                "description": "Hard cap on the run in seconds (default 900, max 1800). Raise it for genuinely long work — the run is KILLED at this cap and cannot be extended or cancelled, so a job that needs 20 minutes must ask for it up front.",
             },
             "wait_s": {
                 "type": "integer",
@@ -448,7 +456,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             f"'{title}' was already launched and is {state} — ref "
             f"'{already.ref}'. Not pushing again (a run cannot be cancelled). "
             + (
-                await _result_text(token, already.ref, state, last)
+                await _result_text(token, already.ref, state, last, timeout_s)
                 if state in kaggle_client.TERMINAL_STATES
                 else "Poll kaggle_notebook_status."
             )
@@ -544,7 +552,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             f"Poll kaggle_notebook_status, then kaggle_notebook_output."
         )
     return f"Finished ({state}): {head}\n" + await _result_text(
-        token, ref, state, last
+        token, ref, state, last, timeout_s
     )
 
 
@@ -666,7 +674,11 @@ async def _artifact_links(files: list[kaggle_client.OutputFile]) -> list[str]:
 
 
 async def _result_text(
-    token: str, ref: str, state: str, last: LastRun | None = None
+    token: str,
+    ref: str,
+    state: str,
+    last: LastRun | None = None,
+    timeout_s: int = 0,
 ) -> str:
     try:
         files, log = await run_in_executor(kaggle_client.output, token, ref)
@@ -683,8 +695,13 @@ async def _result_text(
         if reason:
             parts.append(f"failure: {reason}")
     if state == kaggle_client.KernelState.CANCEL_ACKNOWLEDGED:
+        # The model cannot infer the remedy from the state name, and this is the
+        # one it reads — say what to do, not just what happened.
         parts.append(
-            "run hit its timeout and was killed (artifacts below are partial)"
+            f"run was KILLED at its {timeout_s}s timeout before finishing, so "
+            f"any artifacts below are partial. If the work genuinely needs "
+            f"longer, re-run the SAME title with a bigger timeout_s; otherwise "
+            f"make the code do less."
         )
     if files:
         links = await _artifact_links(files)

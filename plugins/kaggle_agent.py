@@ -128,17 +128,23 @@ async def run_kaggle(
 
 
 def _build_reply(text: str, last: LastRun | None) -> str:
-    """The model's answer, with a URL it invented removed and the real notebook
-    link appended. Models retype URLs and corrupt them, so a link is only shown
-    if a tool actually emitted it."""
+    """The model's answer, minus any URL it made up.
+
+    A link a tool emitted is real and passes through untouched; anything else is
+    invented, since the model cannot know a URL it was not given. The notebook
+    link is appended only when the answer left it out — it is the point of the
+    run, so it must never be missing.
+    """
     if last is None or not last.url:
         return text or "(no result)"
-    kept = _URL_RE.sub(
+    answer = _URL_RE.sub(
         lambda m: m.group(0) if m.group(0) in last.known_urls else "",
         text or "",
-    )
+    ).strip()
+    if last.url in answer:
+        return answer
     return "\n".join(
-        [kept.strip(), colors.parse(f"$(bold)notebook$(clear) {last.url}")]
+        [answer, colors.parse(f"$(bold)notebook$(clear) {last.url}")]
     )
 
 
