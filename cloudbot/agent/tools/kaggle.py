@@ -29,7 +29,7 @@ from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
 from cloudbot.agent.runs import record_run
 from cloudbot.bot import CloudBot
-from cloudbot.util import database, web
+from cloudbot.util import colors, database, web
 
 logger = logging.getLogger("cloudbot")
 
@@ -325,6 +325,26 @@ def _record_usage(nick: str) -> None:
 
     with _session() as db:
         record(db, f"{_USER_BUCKET}:{nick.lower()}")
+
+
+def format_notebooks(rows: list[NotebookRow]) -> str:
+    """Shared by the kaggle_list_notebooks tool and the .knotebooks command."""
+    if not rows:
+        return "No notebooks yet."
+    lines = []
+    for notebook in rows:
+        desc = (
+            f" — {notebook['description']}"
+            if notebook.get("description")
+            else ""
+        )
+        accelerator = "GPU" if notebook.get("gpu") else "CPU"
+        lines.append(
+            f"{colors.parse('$(bold)' + notebook['ref'] + '$(clear)')} "
+            f"[{accelerator}, {notebook.get('last_status') or '?'}]{desc}\n"
+            f"  {notebook.get('url') or ''}"
+        )
+    return "\n".join(lines)
 
 
 def format_quota(report: kaggle_client.QuotaReport) -> str:
@@ -886,22 +906,7 @@ async def kaggle_list_notebooks(ctx, data) -> str:
         else ""
     )
     rows = await run_in_executor(list_notebooks, channel)
-    if not rows:
-        return "No notebooks yet."
-    lines = []
-    for notebook in rows:
-        desc = (
-            f" — {notebook['description']}"
-            if notebook.get("description")
-            else ""
-        )
-        accelerator = "GPU" if notebook.get("gpu") else "CPU"
-        lines.append(
-            f"- {notebook['ref']} [{accelerator}, "
-            f"{notebook.get('last_status') or '?'}]{desc}\n"
-            f"  {notebook.get('url') or ''}"
-        )
-    return "\n".join(lines)
+    return format_notebooks(rows)
 
 
 @tool(

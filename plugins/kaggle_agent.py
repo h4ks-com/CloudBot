@@ -26,7 +26,13 @@ from cloudbot.agent.kaggle_client import (
 )
 from cloudbot.agent.registry import build_custom_tools
 from cloudbot.agent.subagent import SubagentError, ToolStepSink, run_subagent
-from cloudbot.agent.tools.kaggle import LastRun, format_quota, last_run
+from cloudbot.agent.tools.kaggle import (
+    LastRun,
+    format_notebooks,
+    format_quota,
+    last_run,
+    list_notebooks,
+)
 from cloudbot.bot import CloudBot
 from cloudbot.event import CommandEvent
 from cloudbot.util import colors
@@ -195,6 +201,13 @@ async def kaggle_quota_command(bot: CloudBot) -> str:
     except KaggleError as e:
         return f"Kaggle error: {e}"
     return format_quota(report)
+
+
+@hook.command("knotebooks", "klist", "kls", autohelp=False, allow_private=False)
+async def kaggle_notebooks_command(event) -> None:
+    """- list the Kaggle notebooks the bot has made, with what each is for and its link."""
+    rows = await run_in_executor(list_notebooks)
+    event.reply(*format_reply_lines(format_notebooks(rows)), ping_own_line=True)
 
 
 @hook.command("kaggle", autohelp=False, allow_private=False)
