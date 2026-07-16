@@ -20,9 +20,17 @@ _SSE_FIELDS = ("data:", "event:", "id:", "retry:")
 SHA_PATTERN = re.compile(r"\(SHA:\s*([0-9a-f]{6,64})\)")
 STALE_SHA_PATTERN = re.compile(r"Current file SHA is ([0-9a-f]{6,64})", re.I)
 
+# MCP methods that only read a public repo, so anyone may use them. Everything
+# else commits, forks or opens something under the bot's own GitHub identity and
+# stays behind botcontrol. An allowlist, so a method added later is locked until
+# someone decides it is safe.
+_READONLY_METHODS = frozenset({"get_file_contents", "search_code"})
+
 # Per-run budgets — counters live on the IRC event so they reset per .ask call.
 BUDGETS: dict[str, int] = {
-    "explore": 8,
+    # Reading is the common case and is not a step towards anything — most asks
+    # are "what does this repo do". Only high enough to stop a runaway loop.
+    "explore": 30,
     "edit": 12,
     "fork": 1,
     "branch": 1,
@@ -118,8 +126,14 @@ async def mcp_call_raw(event, tool_name: str, args: dict) -> Any:
     Callers that need extracted text use mcp_call below.
     """
     bot = event.bot
-    if not event.conn.permissions.has_perm_mask(event.mask, "botcontrol"):
-        return f"(error: GitHub MCP tools require botcontrol permission — {event.nick} is not authorised)"
+    if (
+        tool_name not in _READONLY_METHODS
+        and not event.conn.permissions.has_perm_mask(event.mask, "botcontrol")
+    ):
+        return (
+            f"(error: {tool_name} changes a GitHub repo and needs botcontrol "
+            f"permission — {event.nick} is not authorised. Reading is allowed.)"
+        )
     cfg = ((bot.config.get("plugins") or {}).get("agent") or {}).get(
         "github_mcp"
     ) or {}
@@ -263,8 +277,8 @@ def bump_budget(event, kind: str) -> str | None:
         return None
     if kind == "explore":
         return (
-            f"(error: exploration budget exhausted ({counters[kind]}/{cap} read+list calls). "
-            f"STOP reading. You have enough info — fork, branch, edit, open PR now.)"
+            f"(error: read budget exhausted ({counters[kind]}/{cap} read/list/search "
+            f"calls). STOP reading and answer with what you already have.)"
         )
     if kind == "edit":
         return (

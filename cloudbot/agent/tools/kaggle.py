@@ -53,6 +53,8 @@ _NOTEBOOKS_TABLE = Table(
 _LOG_TAIL_MAX = 1500
 _LIST_LIMIT = 25
 _CODE_MAX = 60000
+_ARTIFACT_LIST_MAX = 40
+
 
 _USER_BUCKET = "kaggle-push-user"
 _URL_RE = re.compile(r"(https?://\S+)")
@@ -368,10 +370,11 @@ async def kaggle_quota(ctx, data) -> str:
         "Write plain Python. Save any artifact you want to keep to /kaggle/working/ "
         "— files there are retrievable afterwards, and they survive even if the run "
         "is killed by the timeout. stdout/stderr are captured as the run log.\n"
-        "Artifacts are auto-uploaded to the paste service and returned as links, "
-        "but ONLY up to 25MB each — anything bigger cannot be shared and stays on "
-        "the notebook page, so prefer writing small outputs (a summary, a plot, a "
-        "JSON) over dumping a huge checkpoint if the user needs to see it.\n"
+        "Nothing is published automatically except the notebook link. To give the "
+        "user a file, call kaggle_notebook_output with `share=<path>` — pick the "
+        "one or two files they actually asked for. /kaggle/working/ is also the "
+        "working directory, so clone repos and install packages under /tmp "
+        "instead, or the outputs get buried.\n"
         "CPU is free and unmetered; set gpu=true ONLY for real GPU work (it burns "
         "a 30h/week quota — check kaggle_quota first). Set internet=true if the "
         "code must reach the network: pip install, downloads, OR reading an input "
@@ -446,7 +449,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
         already = _launches.get(slug)
     if already:
         owner, _, _ = already.ref.partition("/")
-        last = _remember(
+        _remember(
             event, f"https://www.kaggle.com/code/{owner}/{slug}", already.ref
         )
         state = await _poll(token, already.ref, wait_s)
@@ -456,7 +459,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             f"'{title}' was already launched and is {state} — ref "
             f"'{already.ref}'. Not pushing again (a run cannot be cancelled). "
             + (
-                await _result_text(token, already.ref, state, last, timeout_s)
+                await _result_text(token, already.ref, state, timeout_s)
                 if state in kaggle_client.TERMINAL_STATES
                 else "Poll kaggle_notebook_status."
             )
@@ -511,7 +514,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             expires=time.monotonic() + timeout_s + _QUEUE_GRACE_S,
         )
     ref = pushed.ref
-    last = _remember(event, pushed.url, ref)
+    _remember(event, pushed.url, ref)
     description = str(data.get("description", "")).strip()
     await _bookkeep(
         partial(_record_usage, nick),
@@ -552,7 +555,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             f"Poll kaggle_notebook_status, then kaggle_notebook_output."
         )
     return f"Finished ({state}): {head}\n" + await _result_text(
-        token, ref, state, last, timeout_s
+        token, ref, state, timeout_s
     )
 
 
@@ -607,7 +610,6 @@ class LastRun:
 
     url: str = ""
     ref: str = ""
-    artifacts: list[str] = field(default_factory=list)
     known_urls: set[str] = field(default_factory=set)
 
 
@@ -644,41 +646,20 @@ def _paste_url(raw: str) -> str:
     return match.group(1) if match else raw
 
 
-async def _artifact_links(files: list[kaggle_client.OutputFile]) -> list[str]:
-    """Upload every artifact to the paste service. Shared by the run and output
-    tools so a finished run always carries shareable links."""
-    lines = []
-    for item in files:
-        try:
-            blob = await run_in_executor(kaggle_client.fetch_file, item.url)
-        except kaggle_client.ArtifactTooLarge as e:
-            lines.append(
-                f"{item.name} (not shared, {e} — it is still on the notebook)"
-            )
-            continue
-        except kaggle_client.KaggleError as e:
-            lines.append(f"{item.name} (download failed: {e})")
-            continue
-        ext = item.name.rsplit(".", 1)[-1] if "." in item.name else "txt"
-        try:
-            # Without raise_on_no_paste, web.paste returns its failure message as
-            # a plain string, which would be reported here as if it were a URL.
-            url = await run_in_executor(
-                partial(web.paste, blob, ext, raise_on_no_paste=True)
-            )
-        except (OSError, ValueError, web.NoPasteException) as e:
-            lines.append(f"{item.name} (upload failed: {e})")
-            continue
-        lines.append(f"{item.name}: {_paste_url(url)}")
-    return lines
+async def _share_artifact(item: kaggle_client.OutputFile) -> str:
+    """Mirror one output file to the paste service and return its link."""
+    blob = await run_in_executor(kaggle_client.fetch_file, item.url)
+    ext = item.name.rsplit(".", 1)[-1] if "." in item.name else "txt"
+    # Without raise_on_no_paste, web.paste returns its failure message as a
+    # plain string, which would be reported as if it were a URL.
+    url = await run_in_executor(
+        partial(web.paste, blob, ext, raise_on_no_paste=True)
+    )
+    return _paste_url(url)
 
 
 async def _result_text(
-    token: str,
-    ref: str,
-    state: str,
-    last: LastRun | None = None,
-    timeout_s: int = 0,
+    token: str, ref: str, state: str, timeout_s: int = 0
 ) -> str:
     try:
         files, log = await run_in_executor(kaggle_client.output, token, ref)
@@ -704,11 +685,15 @@ async def _result_text(
             f"make the code do less."
         )
     if files:
-        links = await _artifact_links(files)
-        if last is not None:
-            last.artifacts = links
-            last.known_urls.update(_URL_RE.findall("\n".join(links)))
-        parts.append("artifacts:\n" + "\n".join(f"- {line}" for line in links))
+        parts.append(
+            "files in /kaggle/working/ (share one with kaggle_notebook_output):"
+            + "".join(f"\n- {f.name}" for f in files[:_ARTIFACT_LIST_MAX])
+            + (
+                f"\n… and {len(files) - _ARTIFACT_LIST_MAX} more"
+                if len(files) > _ARTIFACT_LIST_MAX
+                else ""
+            )
+        )
     if log:
         tail = log[-_LOG_TAIL_MAX:]
         parts.append(f"log:\n{tail}")
@@ -753,10 +738,10 @@ async def kaggle_notebook_status(ctx, data) -> str:
 @tool(
     name="kaggle_notebook_output",
     description=(
-        "Fetch a finished notebook's artifacts and run log. Uploads each artifact "
-        "to the paste service and returns shareable URLs, plus the tail of the log. "
-        "Works even for runs killed by their timeout — those keep whatever they "
-        "had already written to /kaggle/working/."
+        "List what a notebook run produced, plus the tail of its log. Pass "
+        "`share=<path>` to publish ONE of those files and get a link for it — "
+        "only share what the user asked for, not everything. Works even for runs "
+        "killed by their timeout, which keep whatever they had already written."
     ),
     schema={
         "type": "object",
@@ -765,9 +750,9 @@ async def kaggle_notebook_status(ctx, data) -> str:
                 "type": "string",
                 "description": "Notebook ref, 'owner/slug'.",
             },
-            "upload": {
-                "type": "boolean",
-                "description": "Upload artifacts to the paste service and return URLs. Default true.",
+            "share": {
+                "type": "string",
+                "description": "Path of ONE file to upload and get a shareable link for, exactly as listed (e.g. 'song.wav'). Omit to just list what the run produced.",
             },
         },
         "required": ["ref"],
@@ -779,22 +764,40 @@ async def kaggle_notebook_output(ctx, data) -> str:
     ref = str(data.get("ref", "")).strip()
     if not ref:
         return "(error: ref required)"
-    upload = bool(data.get("upload", True))
+    share = str(data.get("share", "")).strip()
     try:
         token = kaggle_client.token_from_bot(event.bot)
         files, log = await run_in_executor(kaggle_client.output, token, ref)
     except kaggle_client.KaggleError as e:
         return f"(error: {e})"
 
+    if share:
+        wanted = next((f for f in files if f.name == share), None)
+        if wanted is None:
+            names = ", ".join(f.name for f in files[:_ARTIFACT_LIST_MAX])
+            return f"(error: no file named '{share}'. Available: {names or 'none'})"
+        try:
+            url = await _share_artifact(wanted)
+        except (
+            kaggle_client.KaggleError,
+            OSError,
+            ValueError,
+            web.NoPasteException,
+        ) as e:
+            return f"(error sharing {share}: {e})"
+        _remember_urls(event, url)
+        return f"{share}: {url}"
+
     lines = []
     if not files:
-        lines.append("no artifacts (nothing written to /kaggle/working/)")
-    elif upload:
-        links = await _artifact_links(files)
-        _remember_urls(event, "\n".join(links))
-        lines.extend(f"- {line}" for line in links)
+        lines.append("no files (nothing written to /kaggle/working/)")
     else:
-        lines.extend(f"- {item.name}" for item in files)
+        lines.append(
+            "files in /kaggle/working/ (pass one as `share` to publish it):"
+        )
+        lines.extend(f"- {item.name}" for item in files[:_ARTIFACT_LIST_MAX])
+        if len(files) > _ARTIFACT_LIST_MAX:
+            lines.append(f"… and {len(files) - _ARTIFACT_LIST_MAX} more")
     if log:
         lines.append(f"log:\n{log[-_LOG_TAIL_MAX:]}")
     return "\n".join(lines)
