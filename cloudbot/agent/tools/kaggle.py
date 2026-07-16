@@ -381,7 +381,7 @@ async def kaggle_quota(ctx, data) -> str:
         "file you already have a URL for (e.g. an s.h4ks.com paste) — without it "
         "the notebook has no network at all and those fetches fail.\n"
         "If the run is still going when the wait elapses, you get a ref back — "
-        "poll it with kaggle_notebook_status and then kaggle_notebook_output."
+        "wait for it with kaggle_wait_for_notebook, which blocks until it is done."
     ),
     schema={
         "type": "object",
@@ -461,7 +461,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             + (
                 await _result_text(token, already.ref, state, timeout_s)
                 if state in kaggle_client.TERMINAL_STATES
-                else "Poll kaggle_notebook_status."
+                else "Wait for it with kaggle_wait_for_notebook."
             )
         )
 
@@ -552,7 +552,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
     if state not in kaggle_client.TERMINAL_STATES:
         return (
             f"Started: {head}\nStill {state} after {wait_s}s — ref '{ref}'. "
-            f"Poll kaggle_notebook_status, then kaggle_notebook_output."
+            f"Call kaggle_wait_for_notebook('{ref}') to wait for it; do not poll."
         )
     return f"Finished ({state}): {head}\n" + await _result_text(
         token, ref, state, timeout_s
@@ -701,10 +701,64 @@ async def _result_text(
 
 
 @tool(
+    name="kaggle_wait_for_notebook",
+    description=(
+        "BLOCK until a running notebook finishes, then return its outcome, files "
+        "and log — the same result kaggle_run_notebook gives when it finishes in "
+        "time.\n"
+        "Use this whenever a run is still going. Do NOT sit in a loop calling "
+        "kaggle_notebook_status: this waits for you in a single step, while "
+        "polling burns a turn every few seconds and will run you out of turns "
+        "before the notebook is done.\n"
+        "If it returns 'still running' the wait elapsed, not the run — call it "
+        "again."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "ref": {
+                "type": "string",
+                "description": "Notebook ref, 'owner/slug'.",
+            },
+            "wait_s": {
+                "type": "integer",
+                "description": "How long to wait, in seconds (default 300, max 600).",
+            },
+        },
+        "required": ["ref"],
+    },
+    wrap_errors=True,
+)
+async def kaggle_wait_for_notebook(ctx, data) -> str:
+    event = ctx.context
+    ref = str(data.get("ref", "")).strip()
+    if not ref:
+        return "(error: ref required)"
+    wait_s = max(5, min(int(data.get("wait_s") or 300), 600))
+    try:
+        token = kaggle_client.token_from_bot(event.bot)
+    except kaggle_client.KaggleNotConfigured as e:
+        return f"(error: {e})"
+    state = await _poll(token, ref, wait_s)
+    await _bookkeep(partial(_mark_status, ref, state))
+    if state not in kaggle_client.TERMINAL_STATES:
+        return (
+            f"{ref}: still {state} after waiting {wait_s}s. Call "
+            f"kaggle_wait_for_notebook again — do not poll."
+        )
+    _mark_done(ref)
+    return f"{ref} finished ({state}).\n" + await _result_text(
+        token, ref, state
+    )
+
+
+@tool(
     name="kaggle_notebook_status",
     description=(
-        "Check a Kaggle notebook run's state. Terminal states: complete, error, "
-        "cancelacknowledged (= killed by its timeout; partial artifacts still exist)."
+        "One-shot check of a notebook run's state. If it is still running and you "
+        "intend to wait for it, use kaggle_wait_for_notebook instead of calling "
+        "this repeatedly. Terminal states: complete, error, cancelacknowledged "
+        "(= killed by its timeout; partial artifacts still exist)."
     ),
     schema={
         "type": "object",

@@ -43,6 +43,7 @@ _TOOL_NAMES = frozenset(
     {
         "kaggle_quota",
         "kaggle_run_notebook",
+        "kaggle_wait_for_notebook",
         "kaggle_notebook_status",
         "kaggle_notebook_output",
         "kaggle_list_notebooks",
@@ -63,9 +64,12 @@ How to work:
    rather than making a near-duplicate.
 2. Write straightforward, self-contained Python. Print what matters — the log is how you and
    the user see results. Save real outputs (files, plots, JSON) where the tool tells you to.
-3. Run it. If it fails, read the log, fix the code, and run again under the SAME title.
-4. Report: one short summary of what it did and what it found, plus the notebook URL and any
-   artifact links.
+3. Run it. If it is still going, call kaggle_wait_for_notebook — it waits for you. NEVER loop on
+   kaggle_notebook_status or kaggle_notebook_output: every call costs a turn, and you will run
+   out of turns long before the notebook finishes.
+4. If it fails, read the log, fix the code, and run again under the SAME title.
+5. Report: one short summary of what it did and what it found, and share the file the user asked
+   for with kaggle_notebook_output(share=...).
 
 You are answering in a chat channel, so keep it to a few short lines.
 
@@ -169,9 +173,9 @@ async def kaggle_command(text, event):
             "usage: .kaggle <what you want computed / built / analysed>"
         )
         return
-    event.reply(
-        "Writing and running a Kaggle notebook, this may take a minute..."
-    )
+    # Deliberately vague: this command also lists, polls, shares and deletes, so
+    # naming an action here would be wrong more often than right.
+    event.reply("On it, this may take a minute...")
     typing_id = id(event)
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
