@@ -1,0 +1,205 @@
+"""Kaggle notebook sub-agent for CloudBot.
+
+  .kaggle <request>  — write a Python notebook, run it on Kaggle's free compute,
+                       and reply with the notebook URL plus its artifacts/log.
+  .kquota            — remaining weekly GPU/TPU quota.
+
+Runs on the main agent's model and backend (via ``run_subagent``) with its own
+turn/time budget, so a multi-step write→run→inspect→fix loop can't blow the main
+``.agi`` loop's much smaller cap.
+
+The main agent does not delegate here — it holds the same kaggle_* tools directly
+and uses this command's larger budget only when a job needs it.
+"""
+
+import re
+
+from agents import Agent
+
+from cloudbot import hook
+from cloudbot.agent.common import run_in_executor
+from cloudbot.agent.kaggle_client import (
+    KaggleError,
+    KaggleNotConfigured,
+    quota,
+    token_from_bot,
+)
+from cloudbot.agent.registry import build_custom_tools
+from cloudbot.agent.subagent import SubagentError, ToolStepSink, run_subagent
+from cloudbot.agent.tools.kaggle import LastRun, format_quota, last_run
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.util.typing import (
+    start_typing_for_command,
+    stop_typing_for_command,
+)
+from plugins.core import bot_cmds
+
+_URL_RE = re.compile(r"https?://\S+")
+
+_TOOL_NAMES = frozenset(
+    {
+        "kaggle_quota",
+        "kaggle_run_notebook",
+        "kaggle_notebook_status",
+        "kaggle_notebook_output",
+        "kaggle_list_notebooks",
+        "kaggle_delete_notebook",
+        "paste_markdown",
+    }
+)
+
+# The Kaggle rules the model must follow live in the kaggle_* tool descriptions,
+# which it reads at call time — repeating them here would fork one live external
+# contract across two files. This covers only how to run the job.
+KAGGLE_INSTRUCTIONS = """You are KaggleRunner. You write small Python programs, run them on \
+Kaggle's free compute, and report what actually happened. Follow each tool's description
+exactly — they carry the rules Kaggle imposes.
+
+How to work:
+1. Understand the request. Check kaggle_list_notebooks first and update an existing notebook
+   rather than making a near-duplicate.
+2. Write straightforward, self-contained Python. Print what matters — the log is how you and
+   the user see results. Save real outputs (files, plots, JSON) where the tool tells you to.
+3. Run it. If it fails, read the log, fix the code, and run again under the SAME title.
+4. Report: one short summary of what it did and what it found, plus the notebook URL and any
+   artifact links.
+
+Give a compact, factual answer. Do not invent results — only report what the log and artifacts
+actually show."""
+
+
+class _AgentState:
+    agent: Agent | None = None
+
+
+def _get_agent() -> Agent:
+    if _AgentState.agent is not None:
+        return _AgentState.agent
+    tools = [t for t in build_custom_tools() if t.name in _TOOL_NAMES]
+    if not tools:
+        raise SubagentError("no kaggle tools registered")
+    agent = Agent(
+        name="KaggleRunner",
+        instructions=KAGGLE_INSTRUCTIONS,
+        tools=tools,
+    )
+    _AgentState.agent = agent
+    return agent
+
+
+def _run_limits(bot: CloudBot) -> tuple[int, float]:
+    # A healthy run is write → run → maybe one fix → report. Kaggle's own queue can
+    # add a minute, so the ceiling is generous while the turn cap keeps a looping
+    # model bounded.
+    cfg = (bot.config.get("plugins") or {}).get("kaggle_agent") or {}
+    return int(cfg.get("max_turns", 20)), float(cfg.get("timeout_s", 600))
+
+
+async def run_kaggle(
+    bot: CloudBot,
+    prompt: str,
+    event: CommandEvent | None = None,
+    on_tool_step: ToolStepSink | None = None,
+) -> str:
+    """Write+run a notebook on Kaggle and return a short result with URLs.
+
+    Raises KaggleNotConfigured before spending a sub-agent run: the tools
+    themselves only surface a missing token as a tool-result string, which the
+    model would then try to work around.
+    """
+    token_from_bot(bot)
+    agent = _get_agent()
+    max_turns, timeout_s = _run_limits(bot)
+    text = await run_subagent(
+        bot,
+        agent=agent,
+        prompt=prompt,
+        max_turns=max_turns,
+        timeout_s=timeout_s,
+        context=event,
+        on_tool_step=on_tool_step,
+    )
+    return _build_reply(text, last_run(event))
+
+
+def _build_reply(text: str, last: LastRun | None) -> str:
+    """Append the notebook and artifact links the tools actually produced.
+
+    The links are never taken from the model's prose — models retype URLs and
+    corrupt them, and the whole point of a run is a notebook someone can open.
+    Any URL the model wrote itself is stripped, so the ones below are the only
+    ones shown.
+    """
+    if last is None or not last.url:
+        return text or "(no result)"
+    lines = []
+    for raw in _URL_RE.sub("", text or "").splitlines():
+        line = re.sub(r"[ \t]{2,}", " ", raw).strip()
+        # Models introduce their links ("Notebook: <url>"); once the url is gone
+        # the label points at nothing, so drop what is left of it.
+        if not line or line.rstrip("*_` ").endswith(":"):
+            continue
+        lines.append(line)
+    lines.append(f"notebook: {last.url}")
+    lines.extend(f"artifact: {item}" for item in last.artifacts)
+    return "\n".join(lines)
+
+
+@hook.command("kquota", "kagglequota", autohelp=False)
+async def kaggle_quota_command(bot: CloudBot) -> str:
+    """- remaining Kaggle GPU/TPU quota for the week. CPU runs are unmetered."""
+    try:
+        token = token_from_bot(bot)
+        report = await run_in_executor(quota, token)
+    except KaggleNotConfigured:
+        return "Kaggle not configured."
+    except KaggleError as e:
+        return f"Kaggle error: {e}"
+    return format_quota(report)
+
+
+@hook.command("kaggle", autohelp=False, allow_private=False)
+async def kaggle_command(text, event):
+    """<request> - write and run a Python notebook on Kaggle's free compute; returns the notebook URL and results."""
+    if not text:
+        event.reply(
+            "usage: .kaggle <what you want computed / built / analysed>"
+        )
+        return
+    event.reply(
+        "Writing and running a Kaggle notebook, this may take a minute..."
+    )
+    typing_id = id(event)
+    target = event.chan or event.nick
+    await start_typing_for_command(event.conn, target, typing_id)
+    workflow_id = bot_cmds.start_tool_workflow(
+        event.conn, target, "kaggle", event.tag_value("msgid")
+    )
+    try:
+        answer = await run_kaggle(
+            event.bot,
+            text,
+            event=event,
+            on_tool_step=bot_cmds.tool_step_sink(
+                event.conn, target, workflow_id
+            ),
+        )
+    except KaggleNotConfigured:
+        event.reply(
+            "Kaggle not configured.",
+            extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "failed"),
+        )
+        return
+    except SubagentError as e:
+        event.reply(
+            f"Kaggle agent failed: {e}",
+            extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "failed"),
+        )
+        return
+    finally:
+        await stop_typing_for_command(event.conn, target, typing_id)
+    event.reply(
+        answer,
+        extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "complete"),
+    )

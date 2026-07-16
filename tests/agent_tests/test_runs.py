@@ -2,17 +2,12 @@
 
 import time
 from dataclasses import FrozenInstanceError
-
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 from cloudbot.agent import runs
-from cloudbot.agent.runs import (
-    recent_block,
-    recent_runs,
-    record_run,
-    RunRecord,
-)
+from cloudbot.agent.runs import RunRecord, recent_block, recent_runs, record_run
 
 
 def _clear():

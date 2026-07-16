@@ -24,7 +24,7 @@ REDDIT_HOSTS: set[str] = {
 }
 
 # Match URLs in chat
-URL_RE: re.Pattern[str] = re.compile(r'https?://\S+')
+URL_RE: re.Pattern[str] = re.compile(r"https?://\S+")
 
 # (channel, nick_lower) -> last reddit URL
 url_cache: dict[tuple[str, str], str] = {}
@@ -38,14 +38,16 @@ def _is_reddit_url(url: str) -> bool:
 def _rewrite(url: str) -> str | None:
     parsed: ParseResult = urlparse(url)
     if parsed.hostname and parsed.hostname.lower() in REDDIT_HOSTS:
-        new: ParseResult = parsed._replace(netloc=REDLIB_INSTANCE, scheme="https")
+        new: ParseResult = parsed._replace(
+            netloc=REDLIB_INSTANCE, scheme="https"
+        )
         return urlunparse(new)
     return None
 
 
 @hook.regex(URL_RE)
 def redlib_track(match: re.Match[str], nick: str, chan: str) -> None:
-    url: str = match.group(0).rstrip(',.)>!"\'')
+    url: str = match.group(0).rstrip(",.)>!\"'")
     if _is_reddit_url(url):
         url_cache[(chan, nick.lower())] = url
 

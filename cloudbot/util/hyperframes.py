@@ -26,7 +26,9 @@ TIMEOUT = 1800
 STATUS_TIMEOUT = 30
 
 # The states video-mcp reports for a job that hasn't reached a terminal result yet.
-ACTIVE_STATES = frozenset({"queued", "running", "pending", "in_progress", "processing"})
+ACTIVE_STATES = frozenset(
+    {"queued", "running", "pending", "in_progress", "processing"}
+)
 
 # How much per-step reasoning the video sub-agent spends. "deep" is a retry
 # escalation after a failed or warned "fast" attempt, not a default for hard briefs.
@@ -101,7 +103,9 @@ def mcp_request(
     try:
         resp.raise_for_status()
     except requests.HTTPError as e:
-        raise HyperframesError(f"HTTP {resp.status_code}: {resp.text[:200]}") from e
+        raise HyperframesError(
+            f"HTTP {resp.status_code}: {resp.text[:200]}"
+        ) from e
     data = _parse_mcp_body(resp.text)
     if "error" in data:
         err = data["error"]
@@ -134,7 +138,9 @@ def call_tool(
         timeout=timeout,
     )
     parts = [
-        c.get("text", "") for c in res.get("content", []) if c.get("type") == "text"
+        c.get("text", "")
+        for c in res.get("content", [])
+        if c.get("type") == "text"
     ]
     return "\n".join(p for p in parts if p), bool(res.get("isError"))
 
@@ -150,5 +156,7 @@ def read_resource(url: str, key: str, uri: str) -> str:
     sub-agent's instructions, so the video know-how lives in the server, not here.
     """
     res = mcp_request(url, key, "resources/read", {"uri": uri})
-    parts = [c.get("text", "") for c in res.get("contents", []) if c.get("text")]
+    parts = [
+        c.get("text", "") for c in res.get("contents", []) if c.get("text")
+    ]
     return "\n\n".join(parts)

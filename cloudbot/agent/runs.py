@@ -76,7 +76,9 @@ def recent_runs(
             del _RUNS[channel]
             return []
         items = [
-            record for record in reversed(log) if kind is None or record.kind == kind
+            record
+            for record in reversed(log)
+            if kind is None or record.kind == kind
         ]
     return items[:n]
 

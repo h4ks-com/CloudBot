@@ -39,6 +39,7 @@ from cloudbot.agent import (
 )
 from cloudbot.agent.common import namespace_for
 from cloudbot.agent.runs import recent_runs
+from cloudbot.agent.tools.kaggle import ensure_kaggle_table
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
 from cloudbot.util.ai_common import wrap_reply_lines
@@ -1446,12 +1447,21 @@ def _report_failure(event, tracker, err, prompt, backends_tried) -> None:
 
 
 @hook.on_start()
-def _init_agent_memory(bot):
-    """Build the agent_memory table + FTS5 search mirror at startup."""
+def _init_agent_tables(bot):
+    """Build the tables backing the agent's own tools.
+
+    They are created here because this plugin is what registers those tools: the
+    tool modules are imported unconditionally, so a table owned by any other
+    plugin could be missing while its tool is still callable.
+    """
     try:
         ensure_fts(bot.db_engine)
     except SQLAlchemyError:
         logger.exception("agent: memory init failed")
+    try:
+        ensure_kaggle_table(bot.db_engine)
+    except SQLAlchemyError:
+        logger.exception("agent: kaggle table init failed")
 
 
 @hook.command("agi", "agent", "ask", autohelp=False, allow_private=False)

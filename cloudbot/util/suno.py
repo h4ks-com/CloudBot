@@ -109,7 +109,9 @@ def generate_song(
         "lyrics": lyrics,
         "title": title,
     }
-    return _request("POST", url, key, "/generate", timeout=GENERATE_TIMEOUT, json=body)
+    return _request(
+        "POST", url, key, "/generate", timeout=GENERATE_TIMEOUT, json=body
+    )
 
 
 def split_audio_prompt(text: str) -> tuple[str, str]:
@@ -153,7 +155,12 @@ def cover_from_url(
     if account:
         body["account"] = account
     return _request(
-        "POST", url, key, "/generate/cover/url", timeout=GENERATE_TIMEOUT, json=body
+        "POST",
+        url,
+        key,
+        "/generate/cover/url",
+        timeout=GENERATE_TIMEOUT,
+        json=body,
     )
 
 

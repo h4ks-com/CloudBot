@@ -64,7 +64,9 @@ def suno_cover(text, bot, chan, nick, conn):
         return cfg
     url, key = cfg
     try:
-        resp = suno.cover_from_url(url, key, audio_url, prompt=prompt, wait=False)
+        resp = suno.cover_from_url(
+            url, key, audio_url, prompt=prompt, wait=False
+        )
     except suno.SunoError as e:
         return f"suno error: {e}"
     job_id = resp.get("id", "")
