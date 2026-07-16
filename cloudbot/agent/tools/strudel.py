@@ -41,6 +41,9 @@ async def compose_strudel(ctx, data):
         return "(error: prompt required)"
     # Lazy import: plugins.strudel_agent → plugins.agent → cloudbot.agent,
     # which eagerly imports this tools package; importing at module load cycles.
+    # cloudbot.agent.subagent is deferred for the same reason: it imports
+    # plugins.agent at module scope.
+    # pylint: disable=import-outside-toplevel
     from cloudbot.agent.subagent import SubagentError
     from plugins.strudel_agent import run_strudel
 

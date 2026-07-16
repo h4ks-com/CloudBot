@@ -13,7 +13,7 @@ from cloudbot.util.multiline import split_long_line
 
 logger = logging.getLogger("cloudbot")
 
-RoleType = Literal["user", "assistant"]
+RoleType = Literal["system", "user", "assistant"]
 
 APP_HTML_PROMPT_SUFFIX = (
     "\nMake sure to put everything in a single html file so it can be a single code block"

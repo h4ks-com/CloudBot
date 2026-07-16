@@ -300,6 +300,11 @@ disable = [
   "too-many-instance-attributes",
   "broad-exception-raised",
   "use-implicit-booleaness-not-comparison",
+  # cloudbot/agent/subagent.py imports plugins.agent for _make_run_config, so
+  # cloudbot.agent <-> plugins.agent is cyclic by design and broken at runtime by
+  # deferred imports. pylint counts deferred imports too, and reports this at an
+  # arbitrary module, so it cannot be suppressed locally.
+  "cyclic-import",
 ]
 
 enable = ["c-extension-no-member"]

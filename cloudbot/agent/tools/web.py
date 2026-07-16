@@ -228,6 +228,7 @@ async def _searx_research(query: str, depth: int, limit: int) -> str:
     """SearXNG + parallel MarkItDown fetches; the original web_research path."""
     # Lazy import: the plugin module has @hook.command side effects on import;
     # deferring it keeps this tool module load-order-independent.
+    # pylint: disable=import-outside-toplevel
     from plugins.google_search_plugin import searx_search
 
     results = await run_in_executor(searx_search, query)

@@ -1,6 +1,7 @@
 import re
 
 from chartlyrics import ChartLyricsClient
+from chartlyrics.client import SearchLyricResult
 from chartlyrics.lyrics import Strophe
 
 from cloudbot import hook
@@ -11,7 +12,9 @@ poped3 = Queue()
 
 
 def pop3(results, reply, chan, nick):
-    songs = []
+    # The queue holds search hits or, after getlyrics, that song's strophes; a
+    # strophe means the caller paginated into lyrics, so there is nothing to list.
+    songs: list[SearchLyricResult] = []
     lines = []
     for i in range(3):
         try:

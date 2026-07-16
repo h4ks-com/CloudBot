@@ -59,9 +59,13 @@ def _parse_mcp_body(text: str) -> dict[str, Any]:
         for line in text.splitlines():
             stripped = line.strip()
             if stripped.startswith("data:"):
-                return json.loads(stripped[len("data:") :].strip())
+                parsed: dict[str, Any] = json.loads(
+                    stripped[len("data:") :].strip()
+                )
+                return parsed
         return {}
-    return json.loads(text)
+    body: dict[str, Any] = json.loads(text)
+    return body
 
 
 def mcp_request(
@@ -94,7 +98,9 @@ def mcp_request(
 
 def list_tools(url: str, key: str) -> list[dict[str, Any]]:
     """The tools rendel's MCP server exposes (name, description, inputSchema)."""
-    return mcp_request(url, key, "tools/list").get("tools", [])
+    result = mcp_request(url, key, "tools/list")
+    tools: list[dict[str, Any]] = result.get("tools", [])
+    return tools
 
 
 def call_tool(
@@ -120,7 +126,8 @@ def get_prompt_text(url: str, key: str, name: str) -> str:
     for msg in res.get("messages", []):
         content = msg.get("content") or {}
         if isinstance(content, dict) and content.get("type") == "text":
-            return content.get("text", "")
+            text: str = content.get("text", "")
+            return text
     return ""
 
 

@@ -62,16 +62,27 @@ repos:
   - id: mypy
     name: mypy
     entry: mypy
+    args:
+    - cloudbot
+    - plugins
+    - tests
     language: system
     types: [python]
+    pass_filenames: false
+    always_run: true
   - id: pylint
     name: pylint
     entry: pylint
     args:
     - '-s'
     - 'no'
+    - cloudbot
+    - plugins
+    - tests
     language: system
     types: [python]
+    pass_filenames: false
+    always_run: true
 - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
   rev: 8d1b9cadaf854cb25bb0b0f5870e1cc66a083d6b  # frozen: 0.2.3
   hooks:

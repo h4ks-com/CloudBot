@@ -216,6 +216,9 @@ def test_attach_reply_tags_stamps_matching_reply():
 
     result = bot_cmds.attach_reply_tags(parsed, conn, line)
 
+    # attach_reply_tags returns Message | str; irclib.parser is in pylint's
+    # ignored-modules, so it only infers the str (passthrough) half.
+    # pylint: disable=no-member
     assert result.tags["+draft/reply"].value == "mid"
     assert "+draft/invoked-by" in result.tags
 

@@ -923,9 +923,13 @@ def _fetch_user_repos(username: str, count: int) -> str:
     # Public REST API: unauthenticated, faster than MCP/web-search.
     # Sorted by recent push so abandoned forks rank last.
     url = f"https://api.github.com/users/{username}/repos"
+    params: dict[str, str | int] = {
+        "per_page": min(count, 30),
+        "sort": "pushed",
+    }
     response = requests.get(
         url,
-        params={"per_page": min(count, 30), "sort": "pushed"},
+        params=params,
         headers={
             "Accept": "application/vnd.github+json",
             "User-Agent": "CloudBot",

@@ -91,4 +91,5 @@ class TestRunRecord:
     def test_frozen(self):
         record = RunRecord(kind="video", summary="s", url="u", ts=0.0)
         with pytest.raises(FrozenInstanceError):
-            record.url = "other"
+            # Assigning is the thing under test, so the type error is the point.
+            record.url = "other"  # type: ignore[misc]

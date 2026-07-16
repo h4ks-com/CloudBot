@@ -172,7 +172,9 @@ def _build_reply(text: str, last: LastRun | None) -> str:
     )
 
 
-@hook.command("kquota", "kagglequota", autohelp=False, allow_private=False)
+@hook.command(
+    "kquota", "kagglequota", "kbal", autohelp=False, allow_private=False
+)
 async def kaggle_quota_command(bot: CloudBot) -> str:
     """- remaining Kaggle GPU/TPU quota for the week. CPU runs are unmetered."""
     try:

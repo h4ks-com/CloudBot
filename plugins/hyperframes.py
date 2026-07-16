@@ -17,6 +17,7 @@ output and never taken from the model's prose.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import re
@@ -447,7 +448,7 @@ async def run_hyperframes(
 _bg_tasks: set[asyncio.Task[None]] = set()
 
 _RENDER_TIMEOUT_S = 2700.0
-_video_seq = 0
+_video_seq = itertools.count(1)
 
 
 def _spawn(coro: Any) -> None:
@@ -473,9 +474,7 @@ async def _post(
     # render's tool calls as a draft/bot-tools workflow, and post the finished media
     # (or a failure) carrying the workflow's terminal so its card lands on this reply.
     noun = _KIND_NOUN[kind]
-    global _video_seq
-    _video_seq += 1
-    typing_id = _video_seq
+    typing_id = next(_video_seq)
     await start_typing_for_command(conn, target, typing_id)
     workflow_id = bot_cmds.start_tool_workflow(
         conn, target, kind, trigger_msgid

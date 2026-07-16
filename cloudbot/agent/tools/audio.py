@@ -33,6 +33,7 @@ async def text_to_speech(ctx, data):
     if not text:
         return "(error: text required)"
     voice = str(data.get("voice") or "").strip()
+    # pylint: disable=import-outside-toplevel
     from plugins.ollama import synthesize_speech
 
     return await run_in_executor(
@@ -66,6 +67,7 @@ async def speech_to_text(ctx, data):
     if not audio_url.startswith(("http://", "https://")):
         return "(error: audio_url must be a public http(s) URL)"
     model = str(data.get("model") or "").strip()
+    # pylint: disable=import-outside-toplevel
     from plugins.ollama import transcribe_audio
 
     return await run_in_executor(

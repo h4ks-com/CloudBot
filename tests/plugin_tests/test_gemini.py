@@ -39,10 +39,6 @@ def _text_url() -> str:
     return gemini.GEMINI_BASE + gemini.GEMINI_TEXT_MODEL + ":generateContent"
 
 
-def _img_url() -> str:
-    return gemini.GEMINI_BASE + gemini.GEMINI_IMAGE_MODEL + ":generateContent"
-
-
 def _mock_text_ok(mock_requests, text: str = "hello world"):
     mock_requests.add(
         "POST",
