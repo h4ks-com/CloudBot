@@ -211,14 +211,28 @@ class NotebookRow(TypedDict):
     updated_at: str
 
 
-def list_notebooks(channel: str = "") -> list[NotebookRow]:
+def list_notebooks(
+    channel: str = "", search: str = "", limit: int = _LIST_LIMIT
+) -> list[NotebookRow]:
+    """Notebooks this bot owns, newest first.
+
+    `search` matches the ref, title or description — the description is the only
+    record of what a notebook is FOR, so it is the useful thing to search.
+    """
     query = _NOTEBOOKS_TABLE.select().order_by(
         _NOTEBOOKS_TABLE.c.updated_at.desc()
     )
     if channel:
         query = query.where(_NOTEBOOKS_TABLE.c.channel == channel)
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            _NOTEBOOKS_TABLE.c.ref.ilike(like)
+            | _NOTEBOOKS_TABLE.c.title.ilike(like)
+            | _NOTEBOOKS_TABLE.c.description.ilike(like)
+        )
     with _session() as db:
-        rows = db.execute(query.limit(_LIST_LIMIT)).mappings().fetchall()
+        rows = db.execute(query.limit(limit)).mappings().fetchall()
         return [cast(NotebookRow, dict(row)) for row in rows]
 
 

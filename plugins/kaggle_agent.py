@@ -3,6 +3,8 @@
   .kaggle <request>  — write a Python notebook, run it on Kaggle's free compute,
                        and reply with the notebook URL plus its artifacts/log.
   .kquota            — remaining weekly GPU/TPU quota.
+  .ks [q]            — notebooks it has made, with descriptions and links; searches
+                       ref/title/description. .knotebooksn pages through them.
 
 Runs on the main agent's model and backend (via ``run_subagent``) with its own
 turn/time budget, so a multi-step write→run→inspect→fix loop can't blow the main
@@ -13,6 +15,7 @@ and uses this command's larger budget only when a job needs it.
 """
 
 import re
+from functools import lru_cache, partial
 
 from agents import Agent
 
@@ -37,6 +40,7 @@ from cloudbot.bot import CloudBot
 from cloudbot.event import CommandEvent
 from cloudbot.util import colors
 from cloudbot.util.ai_common import format_reply_lines
+from cloudbot.util.queue import Queue
 from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
@@ -44,6 +48,10 @@ from cloudbot.util.typing import (
 from plugins.core import bot_cmds
 
 _URL_RE = re.compile(r"https?://\S+")
+# A chat page, not a database page: a handful of two-line entries is all
+# anyone reads before scrolling.
+_PAGE_SIZE = 4
+_SEARCH_MAX = 200
 
 _TOOL_NAMES = frozenset(
     {
@@ -203,11 +211,49 @@ async def kaggle_quota_command(bot: CloudBot) -> str:
     return format_quota(report)
 
 
-@hook.command("knotebooks", "klist", "kls", autohelp=False, allow_private=False)
-async def kaggle_notebooks_command(event) -> None:
-    """- list the Kaggle notebooks the bot has made, with what each is for and its link."""
-    rows = await run_in_executor(list_notebooks)
-    event.reply(*format_reply_lines(format_notebooks(rows)), ping_own_line=True)
+@lru_cache
+def _notebook_queue() -> Queue:
+    return Queue()
+
+
+def _page(chan: str, nick: str) -> list[str]:
+    rows = _notebook_queue()[chan][nick]
+    if not rows:
+        return ["No [more] notebooks — run .knotebooks again."]
+    page = [rows.pop() for _ in range(min(_PAGE_SIZE, len(rows)))]
+    lines = format_notebooks(page).splitlines()
+    if rows:
+        lines.append(f"({len(rows)} more — .knotebooksn)")
+    return lines
+
+
+@hook.command(
+    "knotebooks",
+    "klist",
+    "kls",
+    "ks",
+    "ksearch",
+    autohelp=False,
+    allow_private=False,
+)
+async def kaggle_notebooks_command(text, chan, nick) -> list[str]:
+    """[search] - Kaggle notebooks the bot made, with what each is for and its link. Searches ref/title/description. .knotebooksn for more."""
+    search = text.strip()
+    rows = await run_in_executor(
+        partial(list_notebooks, search=search, limit=_SEARCH_MAX)
+    )
+    if not rows:
+        return [
+            f"No notebooks match '{search}'." if search else "No notebooks yet."
+        ]
+    _notebook_queue()[chan][nick] = rows
+    return _page(chan, nick)
+
+
+@hook.command("knotebooksn", "kn", autohelp=False, allow_private=False)
+def kaggle_notebooks_next(chan, nick) -> list[str]:
+    """- next page of the last .knotebooks list."""
+    return _page(chan, nick)
 
 
 @hook.command("kaggle", autohelp=False, allow_private=False)
