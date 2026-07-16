@@ -15,6 +15,7 @@ from typing import Any
 import openai
 import requests
 from agents import RunContextWrapper
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger("cloudbot")
 
@@ -23,6 +24,9 @@ logger = logging.getLogger("cloudbot")
 # openai.APIError covers RateLimitError, AuthenticationError, BadRequestError,
 # APIConnectionError — all the failure modes any tool that calls AsyncOpenAI
 # can hit. Without it a 429 in describe_image kills the whole agent run.
+# SQLAlchemyError is here for the same reason: tools touching the shared SQLite
+# file hit transient locks ("database is locked") under concurrency, and that is
+# a tool-level failure, not a reason to abort the user's whole run.
 TOOL_BOUNDARY_ERRORS: tuple[type[BaseException], ...] = (
     TypeError,
     KeyError,
@@ -31,6 +35,7 @@ TOOL_BOUNDARY_ERRORS: tuple[type[BaseException], ...] = (
     requests.RequestException,
     json.JSONDecodeError,
     openai.APIError,
+    SQLAlchemyError,
     OSError,
     RuntimeError,
 )

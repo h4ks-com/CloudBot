@@ -8,8 +8,12 @@ It records what each notebook is FOR, which the Kaggle API cannot tell us.
 
 import asyncio
 import logging
+import re
+import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import partial
 from typing import TypedDict, cast
@@ -18,6 +22,7 @@ from sqlalchemy import Column, Integer, String, Table, Text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from cloudbot.agent import kaggle_client
 from cloudbot.agent.common import run_in_executor
@@ -50,42 +55,72 @@ _LIST_LIMIT = 25
 _CODE_MAX = 60000
 
 _USER_BUCKET = "kaggle-push-user"
+_URL_RE = re.compile(r"(https?://\S+)")
+# sessionTimeoutSeconds starts when the notebook leaves Kaggle's queue, so a run
+# outlives push+timeout by however long it waited.
+_QUEUE_GRACE_S = 600
 
 
 @dataclass
 class _Launch:
     """A push we made, tracked until it is known to have stopped.
 
-    A run cannot be cancelled, so `expires` is the one thing we can be sure of:
-    Kaggle kills the notebook at its session timeout, so past that it is gone
-    even if we never saw a terminal status.
+    A run cannot be cancelled, so `expires` is the one thing we can be sure of.
+    It allows for queue time on top of the session cap: sessionTimeoutSeconds
+    starts when the notebook leaves the queue, and forgetting a run early would
+    let max_concurrent admit an extra one.
     """
 
     ref: str
     expires: float
-    done: bool = False
 
 
+# Written from the event loop and pruned from executor threads (_limits runs in
+# one), and a dict mutated mid-iteration raises — same reason runs.py locks.
 _launches: dict[str, _Launch] = {}
+_LAUNCHES_LOCK = threading.Lock()
 
 
 def _prune_launches() -> None:
     now = time.monotonic()
-    for slug, launch in list(_launches.items()):
-        if launch.done or now >= launch.expires:
-            del _launches[slug]
+    with _LAUNCHES_LOCK:
+        for slug in [s for s, l in _launches.items() if now >= l.expires]:
+            _launches.pop(slug, None)
 
 
 def _active_count() -> int:
     _prune_launches()
-    return len(_launches)
+    with _LAUNCHES_LOCK:
+        return len(_launches)
 
 
 def _mark_done(ref: str) -> None:
-    for slug, launch in list(_launches.items()):
-        if launch.ref == ref:
-            launch.done = True
-            del _launches[slug]
+    with _LAUNCHES_LOCK:
+        for slug in [s for s, l in _launches.items() if l.ref == ref]:
+            _launches.pop(slug, None)
+
+
+@contextmanager
+def _session() -> Iterator[Session]:
+    """A SQLite session that always ends its transaction and releases the thread.
+
+    Every DB call here runs in a `run_in_executor` thread, and `database.Session`
+    is thread-local — so consecutive calls land on different threads holding
+    different connections. SQLite allows one writer, so a transaction left open on
+    one makes the next thread's write fail with "database is locked" — and a raw
+    `database.Session()` here has no lifecycle owner to close it, unlike a hook's
+    session. (`ratelimit.check` leaves its prune uncommitted for exactly that
+    reason: it expects its caller to own the transaction boundary.)
+    """
+    db = database.Session()
+    try:
+        yield db
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+    finally:
+        database.Session.remove()
 
 
 def ensure_kaggle_table(engine: Engine) -> None:
@@ -107,7 +142,6 @@ def _record(
     channel: str,
     nick: str,
 ) -> None:
-    db = database.Session()
     now = _now()
     values = {
         "ref": ref,
@@ -115,7 +149,7 @@ def _record(
         "description": description,
         "url": url,
         "gpu": 1 if gpu else 0,
-        "last_status": "queued",
+        "last_status": kaggle_client.KernelState.QUEUED.value,
         "last_version": version,
         "channel": channel,
         "nick": nick,
@@ -132,44 +166,30 @@ def _record(
                 "description": description,
                 "url": url,
                 "gpu": 1 if gpu else 0,
-                "last_status": "queued",
+                "last_status": kaggle_client.KernelState.QUEUED.value,
                 "last_version": version,
                 "updated_at": now,
             },
         )
     )
-    try:
+    with _session() as db:
         db.execute(stmt)
-        db.commit()
-    except SQLAlchemyError:
-        db.rollback()
-        raise
 
 
 def _mark_status(ref: str, state: str) -> None:
-    db = database.Session()
-    try:
+    with _session() as db:
         db.execute(
             _NOTEBOOKS_TABLE.update()
             .where(_NOTEBOOKS_TABLE.c.ref == ref)
             .values(last_status=state, updated_at=_now())
         )
-        db.commit()
-    except SQLAlchemyError:
-        db.rollback()
-        raise
 
 
 def _forget(ref: str) -> None:
-    db = database.Session()
-    try:
+    with _session() as db:
         db.execute(
             _NOTEBOOKS_TABLE.delete().where(_NOTEBOOKS_TABLE.c.ref == ref)
         )
-        db.commit()
-    except SQLAlchemyError:
-        db.rollback()
-        raise
 
 
 class NotebookRow(TypedDict):
@@ -187,14 +207,14 @@ class NotebookRow(TypedDict):
 
 
 def list_notebooks(channel: str = "") -> list[NotebookRow]:
-    db = database.Session()
     query = _NOTEBOOKS_TABLE.select().order_by(
         _NOTEBOOKS_TABLE.c.updated_at.desc()
     )
     if channel:
         query = query.where(_NOTEBOOKS_TABLE.c.channel == channel)
-    rows = db.execute(query.limit(_LIST_LIMIT)).mappings().fetchall()
-    return [cast(NotebookRow, dict(row)) for row in rows]
+    with _session() as db:
+        rows = db.execute(query.limit(_LIST_LIMIT)).mappings().fetchall()
+        return [cast(NotebookRow, dict(row)) for row in rows]
 
 
 @dataclass(frozen=True)
@@ -250,7 +270,8 @@ def _timeout_for(cfg: KaggleConfig, requested: int | None) -> int:
     """The only ceiling on a runaway notebook: Kaggle exposes no usable cancel,
     so a hung run bills until this fires. Clamped here rather than trusted from
     the model."""
-    return max(60, min(requested or cfg.default_timeout_s, cfg.max_timeout_s))
+    wanted = cfg.default_timeout_s if requested is None else int(requested)
+    return max(60, min(wanted, cfg.max_timeout_s))
 
 
 def _limits(cfg: KaggleConfig, nick: str) -> str | None:
@@ -274,25 +295,27 @@ def _limits(cfg: KaggleConfig, nick: str) -> str | None:
             f"to finish)"
         )
 
-    return check(
-        database.Session(),
-        f"{_USER_BUCKET}:{nick.lower()}",
-        [
-            Limit(
-                60,
-                cfg.user_per_minute,
-                f"(error: max {cfg.user_per_minute} notebooks a minute — "
-                f"wait a moment)",
-            )
-        ],
-    )
+    with _session() as db:
+        return check(
+            db,
+            f"{_USER_BUCKET}:{nick.lower()}",
+            [
+                Limit(
+                    60,
+                    cfg.user_per_minute,
+                    f"(error: max {cfg.user_per_minute} notebooks a minute — "
+                    f"wait a moment)",
+                )
+            ],
+        )
 
 
 def _record_usage(nick: str) -> None:
     # pylint: disable=import-outside-toplevel
     from plugins.ratelimit import record
 
-    record(database.Session(), f"{_USER_BUCKET}:{nick.lower()}")
+    with _session() as db:
+        record(db, f"{_USER_BUCKET}:{nick.lower()}")
 
 
 def format_quota(report: kaggle_client.QuotaReport) -> str:
@@ -411,7 +434,8 @@ async def kaggle_run_notebook(ctx, data) -> str:
 
     slug = kaggle_client.slugify(title)
     _prune_launches()
-    already = _launches.get(slug)
+    with _LAUNCHES_LOCK:
+        already = _launches.get(slug)
     if already:
         owner, _, _ = already.ref.partition("/")
         last = _remember(
@@ -431,7 +455,13 @@ async def kaggle_run_notebook(ctx, data) -> str:
         )
 
     nick = getattr(event, "nick", "") or "?"
-    blocked: str | None = await run_in_executor(partial(_limits, cfg, nick))
+    try:
+        blocked: str | None = await run_in_executor(partial(_limits, cfg, nick))
+    except SQLAlchemyError:
+        # A brake we cannot read is not a reason to refuse the user; the
+        # concurrency cap above is in-memory and still holds.
+        logger.exception("kaggle: rate-limit check failed, allowing")
+        blocked = None
     if blocked:
         return blocked
 
@@ -465,30 +495,35 @@ async def kaggle_run_notebook(ctx, data) -> str:
     except kaggle_client.KaggleError as e:
         return f"(error pushing notebook: {e})"
 
-    _launches[slug] = _Launch(
-        ref=pushed.ref, expires=time.monotonic() + timeout_s
-    )
-    await run_in_executor(partial(_record_usage, nick))
-    await run_in_executor(
+    # The notebook is live and uncancellable from here on. Bookkeeping must never
+    # be able to lose its URL, so every step below is best-effort.
+    with _LAUNCHES_LOCK:
+        _launches[slug] = _Launch(
+            ref=pushed.ref,
+            expires=time.monotonic() + timeout_s + _QUEUE_GRACE_S,
+        )
+    ref = pushed.ref
+    last = _remember(event, pushed.url, ref)
+    description = str(data.get("description", "")).strip()
+    await _bookkeep(
+        partial(_record_usage, nick),
         partial(
             _record,
-            pushed.ref,
+            ref,
             title,
-            str(data.get("description", "")).strip(),
+            description,
             pushed.url,
             gpu,
             pushed.version,
             getattr(event, "chan", "") or "",
             nick,
-        )
+        ),
     )
 
-    ref = pushed.ref
-    last = _remember(event, pushed.url, ref)
     state = await _poll(token, ref, wait_s)
     if state in kaggle_client.TERMINAL_STATES:
         _mark_done(ref)
-    await run_in_executor(partial(_mark_status, ref, state))
+    await _bookkeep(partial(_mark_status, ref, state))
     head = (
         f"{pushed.url} (v{pushed.version}, {'GPU' if gpu else 'CPU'}, "
         f"cap {timeout_s}s)"
@@ -499,7 +534,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
     record_run(
         getattr(event, "chan", "") or "",
         "notebook",
-        f"{title} — {str(data.get('description', '')).strip() or state}",
+        f"{title} — {description or state}",
         pushed.url,
         detail=code,
     )
@@ -511,6 +546,21 @@ async def kaggle_run_notebook(ctx, data) -> str:
     return f"Finished ({state}): {head}\n" + await _result_text(
         token, ref, state, last
     )
+
+
+async def _bookkeep(*steps: Callable[[], None]) -> None:
+    """Run local DB writes that must not cost the caller its result.
+
+    Once a notebook is pushed it cannot be cancelled, so failing to record it
+    locally is a bad trade for losing the URL of a run that is already burning
+    quota: safe_tool would turn the failure into an error string and the URL
+    would go with it.
+    """
+    for step in steps:
+        try:
+            await run_in_executor(step)
+        except SQLAlchemyError:
+            logger.exception("kaggle: bookkeeping write failed, continuing")
 
 
 async def _poll(token: str, ref: str, wait_s: int) -> str:
@@ -539,26 +589,51 @@ async def _poll(token: str, ref: str, wait_s: int) -> str:
 
 @dataclass
 class LastRun:
-    """What the run actually produced, captured from the tool's own results.
+    """What the tools actually produced, captured from their own results.
 
-    The reply is assembled from this rather than from the model's prose: models
-    retype URLs and corrupt them, and a notebook nobody can open is worthless.
+    Models retype URLs and corrupt them, so the reply is assembled from this
+    rather than from the model's prose. `known_urls` is every URL a tool really
+    emitted: the reply keeps those and drops the rest, which is what separates a
+    link the model read off a tool result from one it invented.
     """
 
-    url: str
-    ref: str
-    artifacts: list[str]
+    url: str = ""
+    ref: str = ""
+    artifacts: list[str] = field(default_factory=list)
+    known_urls: set[str] = field(default_factory=set)
+
+
+def _run_state(event: object) -> LastRun:
+    last: LastRun | None = last_run(event)
+    if last is None:
+        last = LastRun()
+        setattr(event, "_kaggle_last", last)
+    return last
 
 
 def _remember(event: object, url: str, ref: str) -> LastRun:
-    last = LastRun(url=url, ref=ref, artifacts=[])
-    setattr(event, "_kaggle_last", last)
+    last = _run_state(event)
+    last.url = url
+    last.ref = ref
+    last.known_urls.add(url)
     return last
+
+
+def _remember_urls(event: object, text: str) -> None:
+    """Register every URL a tool result carried, so the reply can keep them."""
+    _run_state(event).known_urls.update(_URL_RE.findall(text))
 
 
 def last_run(event: object) -> LastRun | None:
     value = getattr(event, "_kaggle_last", None)
     return value if isinstance(value, LastRun) else None
+
+
+def _paste_url(raw: str) -> str:
+    """The paste service answers a duplicate upload with "File already exists:
+    <url>" rather than a bare URL, so the URL has to be pulled back out."""
+    match = _URL_RE.search(raw)
+    return match.group(1) if match else raw
 
 
 async def _artifact_links(files: list[kaggle_client.OutputFile]) -> list[str]:
@@ -586,7 +661,7 @@ async def _artifact_links(files: list[kaggle_client.OutputFile]) -> list[str]:
         except (OSError, ValueError, web.NoPasteException) as e:
             lines.append(f"{item.name} (upload failed: {e})")
             continue
-        lines.append(f"{item.name}: {url}")
+        lines.append(f"{item.name}: {_paste_url(url)}")
     return lines
 
 
@@ -615,6 +690,7 @@ async def _result_text(
         links = await _artifact_links(files)
         if last is not None:
             last.artifacts = links
+            last.known_urls.update(_URL_RE.findall("\n".join(links)))
         parts.append("artifacts:\n" + "\n".join(f"- {line}" for line in links))
     if log:
         tail = log[-_LOG_TAIL_MAX:]
@@ -697,7 +773,9 @@ async def kaggle_notebook_output(ctx, data) -> str:
     if not files:
         lines.append("no artifacts (nothing written to /kaggle/working/)")
     elif upload:
-        lines.extend(f"- {line}" for line in await _artifact_links(files))
+        links = await _artifact_links(files)
+        _remember_urls(event, "\n".join(links))
+        lines.extend(f"- {line}" for line in links)
     else:
         lines.extend(f"- {item.name}" for item in files)
     if log:

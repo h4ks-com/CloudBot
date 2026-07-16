@@ -29,6 +29,8 @@ from cloudbot.agent.subagent import SubagentError, ToolStepSink, run_subagent
 from cloudbot.agent.tools.kaggle import LastRun, format_quota, last_run
 from cloudbot.bot import CloudBot
 from cloudbot.event import CommandEvent
+from cloudbot.util import colors
+from cloudbot.util.ai_common import format_reply_lines
 from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
@@ -65,8 +67,10 @@ How to work:
 4. Report: one short summary of what it did and what it found, plus the notebook URL and any
    artifact links.
 
+You are answering in a chat channel, so keep it to a few short lines.
+
 Give a compact, factual answer. Do not invent results — only report what the log and artifacts
-actually show."""
+actually show, and never write out a URL you did not get from a tool."""
 
 
 class _AgentState:
@@ -124,29 +128,21 @@ async def run_kaggle(
 
 
 def _build_reply(text: str, last: LastRun | None) -> str:
-    """Append the notebook and artifact links the tools actually produced.
-
-    The links are never taken from the model's prose — models retype URLs and
-    corrupt them, and the whole point of a run is a notebook someone can open.
-    Any URL the model wrote itself is stripped, so the ones below are the only
-    ones shown.
-    """
+    """The model's answer, with a URL it invented removed and the real notebook
+    link appended. Models retype URLs and corrupt them, so a link is only shown
+    if a tool actually emitted it."""
     if last is None or not last.url:
         return text or "(no result)"
-    lines = []
-    for raw in _URL_RE.sub("", text or "").splitlines():
-        line = re.sub(r"[ \t]{2,}", " ", raw).strip()
-        # Models introduce their links ("Notebook: <url>"); once the url is gone
-        # the label points at nothing, so drop what is left of it.
-        if not line or line.rstrip("*_` ").endswith(":"):
-            continue
-        lines.append(line)
-    lines.append(f"notebook: {last.url}")
-    lines.extend(f"artifact: {item}" for item in last.artifacts)
-    return "\n".join(lines)
+    kept = _URL_RE.sub(
+        lambda m: m.group(0) if m.group(0) in last.known_urls else "",
+        text or "",
+    )
+    return "\n".join(
+        [kept.strip(), colors.parse(f"$(bold)notebook$(clear) {last.url}")]
+    )
 
 
-@hook.command("kquota", "kagglequota", autohelp=False)
+@hook.command("kquota", "kagglequota", autohelp=False, allow_private=False)
 async def kaggle_quota_command(bot: CloudBot) -> str:
     """- remaining Kaggle GPU/TPU quota for the week. CPU runs are unmetered."""
     try:
@@ -199,7 +195,11 @@ async def kaggle_command(text, event):
         return
     finally:
         await stop_typing_for_command(event.conn, target, typing_id)
+    # One PRIVMSG cannot carry newlines, so a joined string would ship only its
+    # first line — silently dropping the notebook and artifact links, which are
+    # the point of the run. Each line has to be its own reply argument.
     event.reply(
-        answer,
+        *format_reply_lines(answer),
+        ping_own_line=True,
         extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "complete"),
     )
