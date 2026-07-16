@@ -17,7 +17,7 @@ import re
 from agents import Agent
 
 from cloudbot import hook
-from cloudbot.agent.common import run_in_executor
+from cloudbot.agent.common import recent_chat_snippet, run_in_executor
 from cloudbot.agent.kaggle_client import (
     KaggleError,
     KaggleNotConfigured,
@@ -142,13 +142,23 @@ async def run_kaggle(
     text = await run_subagent(
         bot,
         agent=agent,
-        prompt=prompt,
+        prompt=_with_context(event, prompt),
         max_turns=max_turns,
         timeout_s=timeout_s,
         context=event,
         on_tool_step=on_tool_step,
     )
     return _build_reply(text, last_run(event))
+
+
+def _with_context(event: CommandEvent | None, prompt: str) -> str:
+    """One line of text cannot say what "that" or "again" refers to."""
+    return (
+        recent_chat_snippet(
+            getattr(event, "conn", None), getattr(event, "chan", "")
+        )
+        + prompt
+    )
 
 
 def _build_reply(text: str, last: LastRun | None) -> str:

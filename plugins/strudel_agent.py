@@ -24,7 +24,11 @@ from typing import Any
 from agents import Agent, FunctionTool, RunContextWrapper
 
 from cloudbot import hook
-from cloudbot.agent.common import parse_args, run_in_executor
+from cloudbot.agent.common import (
+    parse_args,
+    recent_chat_snippet,
+    run_in_executor,
+)
 from cloudbot.agent.runs import recent_runs, record_run
 from cloudbot.agent.subagent import SubagentError, run_subagent
 from cloudbot.util import strudel, web
@@ -164,7 +168,11 @@ def _recent_songs_note(channel: str) -> str:
 
 
 async def run_strudel(
-    bot: Any, prompt: str, channel: str = "", on_tool_step: Any = None
+    bot: Any,
+    prompt: str,
+    channel: str = "",
+    on_tool_step: Any = None,
+    event: Any = None,
 ) -> str:
     """Compose+render a song via the rendel MCP server and return a short result
     with the URL(s). Shared by the ``.strudel`` command and the main agent's
@@ -174,7 +182,11 @@ async def run_strudel(
     agent = await _get_agent(url, key)
     max_turns, timeout_s = _run_limits(bot)
     ts = datetime.now().strftime("%H:%M:%S")
-    enriched = f"{_recent_songs_note(channel)}[time: {ts}]\n{prompt}"
+    enriched = (
+        f"{recent_chat_snippet(getattr(event, 'conn', None), channel)}"
+        f"{_recent_songs_note(channel)}"
+        f"[time: {ts}]\n{prompt}"
+    )
     captured: dict[str, str] = {}
     text = await run_subagent(
         bot,
@@ -229,6 +241,7 @@ async def strudel_command(text, event):
             on_tool_step=bot_cmds.tool_step_sink(
                 event.conn, target, workflow_id
             ),
+            event=event,
         )
     except strudel.StrudelNotConfigured:
         event.reply(

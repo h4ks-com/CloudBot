@@ -37,7 +37,7 @@ from cloudbot.agent import (
     sanitise_err_message,
     upload_markdown_paste,
 )
-from cloudbot.agent.common import namespace_for
+from cloudbot.agent.common import namespace_for, recent_chat_snippet
 from cloudbot.agent.runs import recent_runs
 from cloudbot.agent.tools.kaggle import ensure_kaggle_table
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
@@ -697,30 +697,6 @@ def _history_to_input(
     return items
 
 
-def _build_recent_chat_snippet(event, n: int) -> str:
-    """Format the last n IRC messages as a plain-text reference block.
-
-    Returned with a header that primes the model to treat the snippet as
-    background context, not as an open task to continue.
-    """
-    try:
-        history = list(event.conn.history[event.chan])
-    except (KeyError, AttributeError):
-        return ""
-    if not history:
-        return ""
-    recent = history[-n:]
-    lines = []
-    for nick, _ts, msg in recent:
-        msg = msg.replace("\x01ACTION ", "* ").replace("\x01", "")
-        lines.append(f"<{nick}> {msg}")
-    body = "\n".join(lines)
-    return (
-        "[recent channel context — reference only, NOT a task to continue]\n"
-        f"{body}\n[end recent context]\n"
-    )
-
-
 def _record_bot_output(conn_name: str, target: str, text: str) -> None:
     key = (conn_name, target)
     buf = _BOT_OUTPUTS.get(key)
@@ -1029,7 +1005,9 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
 
     def _instructions(ctx, agent):
         event = ctx.context
-        snippet = _build_recent_chat_snippet(event, _RECENT_CHAT_LINES)
+        snippet = recent_chat_snippet(
+            event.conn, event.chan, _RECENT_CHAT_LINES
+        )
         ts = datetime.now().strftime("%H:%M:%S")
         parts = [
             base_instructions,

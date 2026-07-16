@@ -40,6 +40,34 @@ TOOL_BOUNDARY_ERRORS: tuple[type[BaseException], ...] = (
     RuntimeError,
 )
 
+
+def recent_chat_snippet(conn: Any, chan: str, n: int = 6) -> str:
+    """The last n channel messages, as a reference block for a prompt.
+
+    Every agent here is invoked with one line of text, so without this it cannot
+    resolve "that", "again", or who it is answering. The header primes the model
+    to read it as background rather than an open task to continue.
+
+    Takes conn+chan rather than an event because the media agents run detached
+    from the command that started them and never have one.
+    """
+    try:
+        history = list(conn.history[chan])
+    except (KeyError, AttributeError, TypeError):
+        return ""
+    if not history:
+        return ""
+    lines = []
+    for nick, _ts, msg in history[-n:]:
+        msg = msg.replace("\x01ACTION ", "* ").replace("\x01", "")
+        lines.append(f"<{nick}> {msg}")
+    body = "\n".join(lines)
+    return (
+        "[recent channel context — reference only, NOT a task to continue]\n"
+        f"{body}\n[end recent context]\n"
+    )
+
+
 # Patterns scrubbed from exception messages before they go into pasted reports.
 _SECRET_PATTERNS = [
     re.compile(r"Bearer\s+[A-Za-z0-9_\-\.]+", re.I),

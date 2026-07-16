@@ -29,7 +29,11 @@ import requests
 from agents import Agent, FunctionTool, RunContextWrapper
 
 from cloudbot import hook
-from cloudbot.agent.common import parse_args, run_in_executor
+from cloudbot.agent.common import (
+    parse_args,
+    recent_chat_snippet,
+    run_in_executor,
+)
 from cloudbot.agent.runs import recent_block, record_run
 from cloudbot.agent.subagent import SubagentError, run_subagent
 from cloudbot.util import hyperframes
@@ -394,6 +398,7 @@ async def run_hyperframes(
     effort: hyperframes.Effort | None = None,
     kind: Kind = "video",
     on_tool_step: Any = None,
+    conn: Any = None,
 ) -> str:
     """Create a video via the video-mcp server and return a short result with the
     MP4 URL. Shared by the ``.video`` command and the main agent's ``create_video``
@@ -419,7 +424,7 @@ async def run_hyperframes(
         context_note = f"{_REITERATE_NOTE}{recent}\n\n" if recent else ""
     else:
         context_note = ""
-    enriched = f"{context_note}[time: {ts}]\n{prompt}"
+    enriched = f"{recent_chat_snippet(conn, channel)}{context_note}[time: {ts}]\n{prompt}"
     captured: dict[str, str] = {}
     text = await run_subagent(
         bot,
@@ -489,6 +494,7 @@ async def _post(
                 effort=effort,
                 kind=kind,
                 on_tool_step=bot_cmds.tool_step_sink(conn, target, workflow_id),
+                conn=conn,
             ),
             timeout=_RENDER_TIMEOUT_S,
         )

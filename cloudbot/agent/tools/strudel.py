@@ -49,7 +49,10 @@ async def compose_strudel(ctx, data):
 
     try:
         return await run_strudel(
-            ctx.context.bot, prompt, channel=getattr(ctx.context, "chan", "")
+            ctx.context.bot,
+            prompt,
+            channel=getattr(ctx.context, "chan", ""),
+            event=ctx.context,
         )
     except strudel.StrudelNotConfigured:
         return "(error: Strudel not configured)"
