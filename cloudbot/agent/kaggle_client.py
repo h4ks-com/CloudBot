@@ -13,15 +13,22 @@ here:
 - There is no usable cancel. ``CancelKernelSession`` needs a session id that no
   endpoint returns, so ``session_timeout_s`` sent at push time is the only
   ceiling on a runaway notebook. Always send one.
+- Nothing survives between runs, and there is no cell-level execution or session
+  to attach to — every push runs the whole notebook in a clean container. Setup
+  (clone, pip, weight downloads) therefore repeats on every run unless it is done
+  once in its own kernel and mounted into later ones via ``kernel_sources``.
 """
 
 import hashlib
 import json
 import re
+import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
+import nbformat
 import requests
 
 from cloudbot.bot import CloudBot
@@ -32,6 +39,15 @@ _ARTIFACT_MAX_BYTES = 25 * 1024 * 1024
 
 _SLUG_MAX = 50
 _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
+
+# ipykernel greets every code cell with this on stderr, so it scales with cell
+# count and would crowd the real output out of the log tail. Matched on its exact
+# wording rather than the bare "N.NNs - " prefix, which a notebook's own timing
+# print would collide with.
+_DEBUGGER_NOISE_RE = re.compile(
+    r"\d+\.\d+s - (Debugger warning|Note: Debugging will proceed|"
+    r"make the debugger miss|to python to disable frozen modules)"
+)
 
 
 class KernelState(str, Enum):
@@ -255,10 +271,51 @@ def quota(token: str) -> QuotaReport:
     )
 
 
+CellKind = Literal["markdown", "code"]
+
+
+class Cell(NamedTuple):
+    kind: CellKind
+    source: str
+
+
+def build_notebook(cells: Sequence[Cell]) -> str:
+    """Render cells as .ipynb JSON via nbformat.
+
+    nbformat owns this rather than a hand-rolled dict because its `source`
+    accepts either a string or a list whose every line must carry its own
+    trailing newline — a plain list of lines silently fuses into one broken
+    statement, which is a bug the notebook only reveals once it has run.
+    """
+    notebook = nbformat.v4.new_notebook()
+    # new_notebook() leaves metadata empty, and Kaggle runs the notebook through
+    # papermill, which refuses one that names no kernel ("No kernel name found in
+    # notebook and no override provided") before executing a single cell.
+    notebook.metadata.kernelspec = {
+        "display_name": "Python 3",
+        "language": "python",
+        "name": "python3",
+    }
+    notebook.cells = [
+        (
+            nbformat.v4.new_code_cell(cell.source)
+            if cell.kind == "code"
+            else nbformat.v4.new_markdown_cell(cell.source)
+        )
+        for cell in cells
+    ]
+    rendered: str = nbformat.writes(notebook)
+    return rendered
+
+
 class PushResult(NamedTuple):
     ref: str
     url: str
     version: int
+    # Kaggle answers an unknown kernel_sources ref with HTTP 200 and a real
+    # version, then runs the kernel without the mount — so the caller has to be
+    # told, or the notebook just redoes the setup it expected to find mounted.
+    invalid_sources: tuple[str, ...] = ()
 
 
 class OutputFile(NamedTuple):
@@ -271,30 +328,38 @@ def push(
     *,
     slug: str,
     title: str,
-    code: str,
+    cells: Sequence[Cell],
     session_timeout_s: int,
     language: str = "python",
-    kernel_type: str = "script",
     is_private: bool = True,
     enable_gpu: bool = False,
     enable_internet: bool = False,
     machine_shape: str | None = None,
-    dataset_sources: list[str] | None = None,
+    kernel_sources: list[str] | None = None,
 ) -> PushResult:
-    """Create-or-update the kernel and run it."""
+    """Create-or-update the kernel and run it.
+
+    A failure names the cell it happened in ("Exception encountered at In [2]").
+
+    Each ref in ``kernel_sources`` mounts that kernel's whole output read-only at
+    ``/kaggle/input/notebooks/<owner>/<slug>/`` (verified against the live API —
+    it is not ``/kaggle/input/<slug>/``). This is the only way to carry work
+    between runs: a push always re-runs the whole notebook in a clean container,
+    and Kaggle exposes no way to run one cell.
+    """
     owner = username(token)
     body: JsonObject = {
         "slug": f"{owner}/{slug}",
         "newTitle": title,
-        "text": code,
+        "text": build_notebook(cells),
         "language": language,
-        "kernelType": kernel_type,
+        "kernelType": "notebook",
         "isPrivate": is_private,
         "enableGpu": enable_gpu,
         "enableTpu": False,
         "enableInternet": enable_internet,
-        "datasetDataSources": dataset_sources or [],
-        "kernelDataSources": [],
+        "datasetDataSources": [],
+        "kernelDataSources": kernel_sources or [],
         "competitionDataSources": [],
         "modelDataSources": [],
         "categoryIds": [],
@@ -308,6 +373,11 @@ def push(
         url=_as_str(data.get("url"))
         or f"https://www.kaggle.com/code/{owner}/{slug}",
         version=_as_int(data.get("versionNumber")),
+        invalid_sources=tuple(
+            _as_str(s)
+            for s in _as_array(data.get("invalidKernelSources"))
+            if _as_str(s)
+        ),
     )
 
 
@@ -343,8 +413,10 @@ def _is_platform_noise(text: str) -> bool:
     matches, since these come from Kaggle's own site-packages.
     """
     stripped = text.lstrip()
-    return stripped.startswith("[NbConvertApp]") or (
-        "/dist-packages/" in stripped and "SyntaxWarning" in stripped
+    return (
+        stripped.startswith("[NbConvertApp]")
+        or bool(_DEBUGGER_NOISE_RE.match(stripped))
+        or ("/dist-packages/" in stripped and "SyntaxWarning" in stripped)
     )
 
 
@@ -356,6 +428,10 @@ def _render_log(raw: str) -> str:
         return raw
     if not isinstance(records, list):
         return raw
+    return _render_records(records)
+
+
+def _render_records(records: list[object]) -> str:
     lines: list[str] = []
     skip_next_continuation = False
     for entry in records:
@@ -376,6 +452,51 @@ def _render_log(raw: str) -> str:
         prefix = "! " if rec.get("stream_name") == "stderr" else ""
         lines.append(f"{prefix}{text}")
     return "\n".join(lines)
+
+
+def stream_log(token: str, ref: str, seconds: float) -> str:
+    """Whatever a kernel has printed so far, including while it is still running.
+
+    ``output()`` serves an empty log until the run reaches a terminal state, so
+    without this a caller watching a live run learns nothing until it is over and
+    cannot tell a slow download from a wedged one. The endpoint replays the log
+    from the start, proxying an SSE feed while the session is alive and returning
+    the stored blob once it is not, so the same call covers both.
+
+    Best-effort: a run this cannot read is still a run, so failures come back as
+    an empty string rather than an exception.
+    """
+    owner, _, slug = ref.partition("/")
+    deadline = time.monotonic() + seconds
+    records: list[object] = []
+    try:
+        with requests.get(
+            f"{API}/kernels/logs/stream/{owner}/{slug}",
+            headers=_headers(token),
+            stream=True,
+            # Read timeout, not total: it bounds the gap BETWEEN lines, which is
+            # what stops a silent kernel from holding this open to the deadline.
+            timeout=(10, min(max(seconds, 1.0), _HTTP_TIMEOUT)),
+        ) as resp:
+            if resp.status_code != 200:
+                return ""
+            if "event-stream" not in resp.headers.get("content-type", ""):
+                return _render_log(resp.text)
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line.startswith("data:"):
+                    continue
+                payload = line[len("data:") :].strip()
+                if not payload or "END_OF_LOG" in payload:
+                    break
+                try:
+                    records.append(json.loads(payload))
+                except json.JSONDecodeError:
+                    continue
+                if time.monotonic() >= deadline:
+                    break
+    except requests.RequestException:
+        return _render_records(records)
+    return _render_records(records)
 
 
 def output(token: str, ref: str) -> tuple[list[OutputFile], str]:

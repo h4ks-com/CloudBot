@@ -227,8 +227,20 @@ async def run_subagent(
             )
         except asyncio.TimeoutError as e:
             logger.warning(
-                "subagent: %s timed out after %ss", backend, timeout_s
+                "subagent: %s timed out after %ss (%d tool calls)",
+                backend,
+                timeout_s,
+                profiler.tool_count,
             )
+            # A retry costs another full timeout_s and redoes side effects that
+            # cannot be undone (a pushed Kaggle notebook has no cancel), so once
+            # the agent has acted the clock running out is the job's failure, not
+            # the backend's. Having done nothing, it may really be wedged.
+            if profiler.tool_count:
+                raise SubagentError(
+                    f"ran out of time after {timeout_s:.0f}s "
+                    f"({profiler.tool_count} tool calls)"
+                ) from e
             if first_err is None:
                 first_err = e
             last_err = e
@@ -255,5 +267,15 @@ async def run_subagent(
     # Report the PRIMARY backend's failure (what the agent actually ran on); the fallback's
     # error is usually noise — e.g. an out-of-quota 403 — that masks the real cause.
     err = first_err or last_err
-    detail = f"{type(err).__name__}: {err}" if err else "unknown"
+    if err is None:
+        detail = "unknown"
+    else:
+        # Some exceptions carry no message at all (asyncio.TimeoutError), which
+        # renders as a bare "TimeoutError: " that tells the user nothing.
+        message = str(err)
+        detail = (
+            f"{type(err).__name__}: {message}"
+            if message
+            else type(err).__name__
+        )
     raise SubagentError(f"all backends failed ({detail[:160]})")

@@ -7,6 +7,7 @@ It records what each notebook is FOR, which the Kaggle API cannot tell us.
 """
 
 import asyncio
+import json
 import logging
 import re
 import threading
@@ -52,6 +53,9 @@ _NOTEBOOKS_TABLE = Table(
 
 _LOG_TAIL_MAX = 1500
 _LIST_LIMIT = 25
+# Enough for the agent to spot the notebook a request means; the full list is a
+# tool call away and every line here is prompt on every run.
+_CONTEXT_MAX = 10
 _CODE_MAX = 60000
 _ARTIFACT_LIST_MAX = 40
 
@@ -103,6 +107,17 @@ def _mark_done(ref: str) -> None:
     with _LAUNCHES_LOCK:
         for slug in [s for s, l in _launches.items() if l.ref == ref]:
             _launches.pop(slug, None)
+
+
+def running_refs() -> list[str]:
+    """Refs pushed by this process that have not passed their timeout yet.
+
+    The stored last_status cannot answer this: it is only as fresh as the last
+    poll, and a run that nobody waited on keeps its 'queued' forever.
+    """
+    _prune_launches()
+    with _LAUNCHES_LOCK:
+        return sorted({launch.ref for launch in _launches.values()})
 
 
 @contextmanager
@@ -361,6 +376,72 @@ def format_notebooks(rows: list[NotebookRow]) -> str:
     return "\n".join(lines)
 
 
+def _parse_cells(raw: object) -> list[kaggle_client.Cell] | str:
+    """Model-supplied cells as typed Cells, or the error to hand back to it.
+
+    Returns the message rather than raising so a malformed call costs the model
+    one turn and a fixable sentence, not the whole run.
+    """
+    if not isinstance(raw, list) or not raw:
+        return (
+            "(error: cells required — a list of {type, source} objects, e.g. "
+            '[{"type": "markdown", "source": "# What this does"}, '
+            '{"type": "code", "source": "print(1)"}])'
+        )
+    cells: list[kaggle_client.Cell] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            return f"(error: cell {index} is not an object with 'type' and 'source')"
+        kind = str(item.get("type", "")).strip().lower()
+        source = str(item.get("source", ""))
+        if kind not in ("markdown", "code"):
+            return (
+                f"(error: cell {index} type must be 'markdown' or 'code', "
+                f"got {kind!r})"
+            )
+        if not source.strip():
+            return f"(error: cell {index} has an empty source)"
+        cells.append(
+            kaggle_client.Cell("code" if kind == "code" else "markdown", source)
+        )
+    if not any(cell.kind == "code" for cell in cells):
+        return "(error: notebook has no code cell, so it would do nothing)"
+    return cells
+
+
+def notebook_context() -> str:
+    """What already exists and what is still in flight, as a prompt block.
+
+    Injected on every run so the agent starts knowing both: discovering it costs
+    turns a run cannot spare, and nothing else can tell it a notebook is mid-run,
+    which matters because a Kaggle run cannot be cancelled and a second one just
+    spends quota racing the first.
+
+    Ambient context is worth less than the run it decorates, so a database that
+    will not answer costs the caller this block rather than its whole agent run.
+    """
+    try:
+        rows = list_notebooks(limit=_CONTEXT_MAX)
+    except SQLAlchemyError:
+        logger.exception("kaggle: notebook context lookup failed")
+        return ""
+    live = set(running_refs())
+    if not rows:
+        return ""
+    lines = ["[your Kaggle notebooks — reference only, NOT a task to continue]"]
+    for row in rows:
+        state = (
+            "RUNNING NOW"
+            if row["ref"] in live
+            else (row.get("last_status") or "?")
+        )
+        desc = f" — {row['description']}" if row.get("description") else ""
+        accelerator = "GPU" if row.get("gpu") else "CPU"
+        lines.append(f"- {row['ref']} [{accelerator}, {state}]{desc}")
+    lines.append("[end notebooks]\n")
+    return "\n".join(lines)
+
+
 def format_quota(report: kaggle_client.QuotaReport) -> str:
     """Render weekly quota for chat.
 
@@ -401,12 +482,34 @@ async def kaggle_quota(ctx, data) -> str:
         "Create (or update) a Kaggle notebook and RUN it, then wait briefly for "
         "the result. Pushing IS running — there is no separate run step, and "
         "re-running the same title just makes a new version of the same notebook.\n"
-        "The whole notebook is ONE program: you always send the complete source "
-        "and Kaggle always runs all of it top to bottom. There is no way to edit "
-        "or run a single cell, so to change anything, resend the full code.\n"
-        "Write plain Python. Save any artifact you want to keep to /kaggle/working/ "
+        "You always send the COMPLETE list of cells and Kaggle runs all of them top "
+        "to bottom in one fresh container. There is no way to run or re-run a single "
+        "cell, and nothing carries over between runs, so to change anything resend "
+        "every cell.\n"
+        "Cells are how the notebook reads to whoever opens its link, so write it like "
+        "something you'd publish: a markdown cell introducing it, a short markdown "
+        "cell before each step, and small single-purpose code cells. This also pays "
+        "off on failure — the error names the cell it happened in ('Exception "
+        "encountered at In [2]'), so small cells point straight at the problem.\n"
+        "Make it narrate itself. You can read a run's output while it is still going, "
+        "but only what it actually prints, so a silent notebook is one you cannot "
+        "debug and cannot tell apart from a hung one. Print before and after anything "
+        "slow, print what you are about to rely on (device, versions, file sizes, "
+        "paths), and never silence the noisy parts — no `pip install -q`, no discarded "
+        "stderr. Assume every run is one you will have to diagnose from its log alone.\n"
+        "Save any artifact you want to keep to /kaggle/working/ "
         "— files there are retrievable afterwards, and they survive even if the run "
         "is killed by the timeout. stdout/stderr are captured as the run log.\n"
+        "Every run starts from a CLEAN container, so pip installs, git clones and "
+        "model downloads all repeat and are usually most of the runtime. When setup "
+        "is heavy, do it ONCE in its own notebook that writes to /kaggle/working/ "
+        "(`pip download <pkgs> -d /kaggle/working/wheels`, clone into it, point "
+        "HF_HOME at it), then pass kernel_sources=['owner/slug'] on the runs that "
+        "iterate: that notebook's output mounts read-only at "
+        "/kaggle/input/notebooks/<owner>/<slug>/, and you install from it with "
+        "`pip install --no-index --find-links=/kaggle/input/notebooks/<owner>/<slug>/wheels`. "
+        "This turns a 6-minute edit-test cycle into seconds and is how you avoid "
+        "burning GPU quota re-downloading the same weights on every fix.\n"
         "Nothing is published automatically except the notebook link. To give the "
         "user a file, call kaggle_notebook_output with `share=<path>` — pick the "
         "one or two files they actually asked for. /kaggle/working/ is also the "
@@ -417,8 +520,9 @@ async def kaggle_quota(ctx, data) -> str:
         "code must reach the network: pip install, downloads, OR reading an input "
         "file you already have a URL for (e.g. an s.h4ks.com paste) — without it "
         "the notebook has no network at all and those fetches fail.\n"
-        "If the run is still going when the wait elapses, you get a ref back — "
-        "wait for it with kaggle_wait_for_notebook, which blocks until it is done."
+        "If the run is still going when the wait elapses you get a ref back plus "
+        "whatever it has printed so far — wait for it with kaggle_wait_for_notebook, "
+        "which blocks until it is done and shows you its live output meanwhile."
     ),
     schema={
         "type": "object",
@@ -427,7 +531,25 @@ async def kaggle_quota(ctx, data) -> str:
                 "type": "string",
                 "description": "Short notebook title; also its stable slug/URL. Reuse the same title to update an existing notebook.",
             },
-            "code": {"type": "string", "description": "Python source to run."},
+            "cells": {
+                "type": "array",
+                "description": "The notebook, cell by cell, in run order. Open with a markdown cell saying what it does, and put a short markdown cell before each step. Keep code cells small and single-purpose — one per step — because a failure is reported by cell number.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["markdown", "code"],
+                            "description": "'markdown' for prose, 'code' for Python.",
+                        },
+                        "source": {
+                            "type": "string",
+                            "description": "Cell body: markdown text, or Python source. Plain text — never JSON.",
+                        },
+                    },
+                    "required": ["type", "source"],
+                },
+            },
             "description": {
                 "type": "string",
                 "description": "What this notebook is for (stored locally so you can find it later).",
@@ -448,26 +570,38 @@ async def kaggle_quota(ctx, data) -> str:
                 "type": "integer",
                 "description": "How long to wait inline for completion before returning a handle.",
             },
+            "kernel_sources": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Refs ('owner/slug') of your own notebooks whose output to mount read-only at /kaggle/input/notebooks/<owner>/<slug>/. Use it to reuse a setup notebook's clone/wheels/weights instead of downloading them again.",
+            },
         },
-        "required": ["title", "code"],
+        "required": ["title", "cells"],
     },
     wrap_errors=True,
 )
 async def kaggle_run_notebook(ctx, data) -> str:
     event = ctx.context
     title = str(data.get("title", "")).strip()
-    code = str(data.get("code", ""))
     if not title:
         return "(error: title required)"
-    if not code.strip():
-        return "(error: code required)"
-    if len(code) > _CODE_MAX:
-        return f"(error: code too long, {len(code)} > {_CODE_MAX} chars)"
+    cells = _parse_cells(data.get("cells"))
+    if isinstance(cells, str):
+        return cells
+    size = sum(len(cell.source) for cell in cells)
+    if size > _CODE_MAX:
+        return f"(error: notebook too long, {size} > {_CODE_MAX} chars)"
 
     cfg = _config(event.bot)
     gpu = bool(data.get("gpu", False))
     internet = bool(data.get("internet", False))
     timeout_s = _timeout_for(cfg, data.get("timeout_s"))
+    raw_sources = data.get("kernel_sources")
+    kernel_sources = (
+        [s.strip() for s in raw_sources if isinstance(s, str) and s.strip()]
+        if isinstance(raw_sources, list)
+        else []
+    )
     # wait_s=0 is the caller asking to push and get a handle straight back, so it
     # has to survive as 0 rather than fall through to the default.
     requested_wait = data.get("wait_s")
@@ -532,12 +666,13 @@ async def kaggle_run_notebook(ctx, data) -> str:
                 token,
                 slug=slug,
                 title=title,
-                code=code,
+                cells=cells,
                 session_timeout_s=timeout_s,
                 is_private=False,
                 enable_gpu=gpu,
                 enable_internet=internet,
                 machine_shape="NvidiaTeslaT4" if gpu else None,
+                kernel_sources=kernel_sources,
             )
         )
     except kaggle_client.KaggleError as e:
@@ -576,6 +711,12 @@ async def kaggle_run_notebook(ctx, data) -> str:
         f"{pushed.url} (v{pushed.version}, {'GPU' if gpu else 'CPU'}, "
         f"cap {timeout_s}s)"
     )
+    if pushed.invalid_sources:
+        head += (
+            f"\nWARNING: no notebook named {', '.join(pushed.invalid_sources)}, "
+            f"so it was NOT mounted and this run has none of its cached setup. "
+            f"Check the ref against your notebook list."
+        )
     # The main agent injects recent runs into its own instructions, so a
     # follow-up ("make that notebook faster") can find this one; detail carries
     # the source so it can be edited rather than rewritten from scratch.
@@ -584,12 +725,16 @@ async def kaggle_run_notebook(ctx, data) -> str:
         "notebook",
         f"{title} — {description or state}",
         pushed.url,
-        detail=code,
+        # Stored in the shape the tool takes back, so an edit is a change to one
+        # cell rather than a rewrite of the notebook from memory.
+        detail=json.dumps(
+            [{"type": cell.kind, "source": cell.source} for cell in cells]
+        ),
     )
     if state not in kaggle_client.TERMINAL_STATES:
         return (
-            f"Started: {head}\nStill {state} after {wait_s}s — ref '{ref}'. "
-            f"Call kaggle_wait_for_notebook('{ref}') to wait for it; do not poll."
+            f"Started: {head}\nStill {state} after {wait_s}s — ref '{ref}'.\n"
+            + await _live_text(token, ref)
         )
     return f"Finished ({state}): {head}\n" + await _result_text(
         token, ref, state, timeout_s
@@ -695,6 +840,30 @@ async def _share_artifact(item: kaggle_client.OutputFile) -> str:
     return _paste_url(url)
 
 
+_LIVE_SAMPLE_S = 20
+
+
+async def _live_text(token: str, ref: str) -> str:
+    """What a still-running notebook has printed, so a wait reports something.
+
+    Without this the only news from a run in flight is its state, which cannot
+    separate a long download from a hang — and the run cannot be cancelled, so
+    that distinction is the caller's only real decision.
+    """
+    log = await run_in_executor(
+        kaggle_client.stream_log, token, ref, _LIVE_SAMPLE_S
+    )
+    if not log.strip():
+        return (
+            "It has printed nothing yet. Call kaggle_wait_for_notebook again — "
+            "do not poll."
+        )
+    return (
+        f"Output so far — use it to judge whether it is progressing or stuck, "
+        f"then call kaggle_wait_for_notebook again:\n{log[-_LOG_TAIL_MAX:]}"
+    )
+
+
 async def _result_text(
     token: str, ref: str, state: str, timeout_s: int = 0
 ) -> str:
@@ -747,8 +916,10 @@ async def _result_text(
         "kaggle_notebook_status: this waits for you in a single step, while "
         "polling burns a turn every few seconds and will run you out of turns "
         "before the notebook is done.\n"
-        "If it returns 'still running' the wait elapsed, not the run — call it "
-        "again."
+        "If the run is still going when the wait elapses you get what it has "
+        "PRINTED SO FAR — read it. That is how you tell a slow download from a "
+        "hang, and how you catch a run doing the wrong thing early. Then call "
+        "this again."
     ),
     schema={
         "type": "object",
@@ -779,9 +950,8 @@ async def kaggle_wait_for_notebook(ctx, data) -> str:
     state = await _poll(token, ref, wait_s)
     await _bookkeep(partial(_mark_status, ref, state))
     if state not in kaggle_client.TERMINAL_STATES:
-        return (
-            f"{ref}: still {state} after waiting {wait_s}s. Call "
-            f"kaggle_wait_for_notebook again — do not poll."
+        return f"{ref}: still {state} after waiting {wait_s}s.\n" + (
+            await _live_text(token, ref)
         )
     _mark_done(ref)
     return f"{ref} finished ({state}).\n" + await _result_text(

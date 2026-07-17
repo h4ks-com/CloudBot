@@ -35,7 +35,9 @@ from cloudbot.agent.tools.kaggle import (
     format_quota,
     last_run,
     list_notebooks,
+    notebook_context,
 )
+from cloudbot.agent.tools.web import upload_markdown_paste
 from cloudbot.bot import CloudBot
 from cloudbot.event import CommandEvent
 from cloudbot.util import colors
@@ -48,10 +50,23 @@ from cloudbot.util.typing import (
 from plugins.core import bot_cmds
 
 _URL_RE = re.compile(r"https?://\S+")
+# A URL is written into prose, so it arrives wearing whatever the sentence put
+# around it — markdown emphasis, a closing bracket, a full stop. \S+ swallows all
+# of that, so the raw match has to be undressed before it can be recognised.
+_URL_TRIM = "*_`~,.;:!?)]}>\"'"
+
+
+def _is_known(match: str, known: set[str]) -> bool:
+    return match.rstrip(_URL_TRIM) in known
+
+
 # A chat page, not a database page: a handful of two-line entries is all
 # anyone reads before scrolling.
 _PAGE_SIZE = 4
 _SEARCH_MAX = 200
+# format_reply_lines' own cap, named so the overflow test cannot drift from the
+# cap it is testing.
+_REPLY_MAX_LINES = 10
 
 _TOOL_NAMES = frozenset(
     {
@@ -85,20 +100,28 @@ Kaggle's free compute, and report what actually happened. Follow each tool's des
 exactly — they carry the rules Kaggle imposes.
 
 How to work:
-1. Understand the request. Check kaggle_list_notebooks first and update an existing notebook
-   rather than making a near-duplicate.
+1. Understand the request. Your existing notebooks are listed above with their state — update
+   one rather than making a near-duplicate, and never re-push one marked RUNNING NOW: wait for
+   it with kaggle_wait_for_notebook, since a run cannot be cancelled and a second one just
+   spends quota racing the first.
 2. If the code depends on a library or repo you are not sure about, look it up BEFORE running:
    read_github_file / list_repo_files / search_github_code for its real source, context7_docs
    for library docs, web_research for anything else. Never run a notebook just to discover an
    API by printing files — that wastes a run, GPU quota and your turns.
 3. Write straightforward, self-contained Python. Print what matters — the log is how you and
    the user see results. Save real outputs (files, plots, JSON) where the tool tells you to.
-4. Run it. If it is still going, call kaggle_wait_for_notebook — it waits for you. NEVER loop on
+4. Budget for the fact that every run redoes its own setup from scratch. You only get a few
+   runs before your time is up, so when a job needs a heavy clone, pip install or model
+   download, split it: one setup notebook that caches those into /kaggle/working/, then iterate
+   against it with kernel_sources. Reaching a ten-second bug through six minutes of setup, over
+   and over, is how a run ends with nothing to show for it.
+5. Run it. If it is still going, call kaggle_wait_for_notebook — it waits for you. NEVER loop on
    kaggle_notebook_status or kaggle_notebook_output: every call costs a turn, and you will run
    out of turns long before the notebook finishes.
-5. If it fails, read the log and fix the code — look the API up rather than guessing — then run
-   again under the SAME title.
-6. Report: one short summary of what it did and what it found, and share the file the user asked
+6. If it fails, read the log and fix the code — look the API up rather than guessing — then run
+   again under the SAME title. A run marked complete only means the notebook's top-level script
+   exited 0: if your code shelled out, read the log for the real outcome before calling it done.
+7. Report: one short summary of what it did and what it found, and share the file the user asked
    for with kaggle_notebook_output(share=...).
 
 You are answering in a chat channel, so keep it to a few short lines.
@@ -156,7 +179,7 @@ async def run_kaggle(
     text = await run_subagent(
         bot,
         agent=agent,
-        prompt=_with_context(event, prompt),
+        prompt=await _with_context(event, prompt),
         max_turns=max_turns,
         timeout_s=timeout_s,
         context=event,
@@ -165,13 +188,57 @@ async def run_kaggle(
     return _build_reply(text, last_run(event))
 
 
-def _with_context(event: CommandEvent | None, prompt: str) -> str:
-    """One line of text cannot say what "that" or "again" refers to."""
+async def _with_context(event: CommandEvent | None, prompt: str) -> str:
+    """One line of text cannot say what "that" or "again" refers to, and the
+    agent cannot judge a request without knowing what it has already built and
+    what is still running."""
+    notebooks = await run_in_executor(notebook_context)
     return (
         recent_chat_snippet(
             getattr(event, "conn", None), getattr(event, "chan", "")
         )
+        + notebooks
         + prompt
+    )
+
+
+async def _reply_lines(answer: str) -> list[str]:
+    """The answer as IRC lines, plus a link to the whole of it when it overflows.
+
+    Without the link the reply is simply cut at the cap, and what falls off the
+    end is what the run was for — the artifact links and the account of what
+    failed. The upload runs in an executor and the paste hook only hands back its
+    result: that hook is called synchronously, and this command is an async hook,
+    so uploading inside it would park the bot's whole event loop on a network
+    round trip.
+    """
+    lines = format_reply_lines(answer, max_lines=_REPLY_MAX_LINES)
+    if len(lines) < _REPLY_MAX_LINES:
+        return lines
+    url = await run_in_executor(upload_markdown_paste, answer, "Kaggle run")
+    return format_reply_lines(
+        answer, max_lines=_REPLY_MAX_LINES, paste=lambda: url
+    )
+
+
+def _failure_reply(err: str, last: LastRun | None) -> str:
+    """A pushed notebook outlives the agent that pushed it.
+
+    A run cannot be cancelled, so reporting only the failure strands a job that
+    is still burning quota with nothing for the user to look at — and by this
+    point the URL is already known.
+    """
+    message = f"Kaggle agent failed: {err}"
+    if last is None or not last.url:
+        return message
+    return "\n".join(
+        [
+            message,
+            colors.parse(
+                f"$(bold)notebook$(clear) {last.url} — it was pushed and may "
+                f"still be running; .ks to check"
+            ),
+        ]
     )
 
 
@@ -180,19 +247,22 @@ def _build_reply(text: str, last: LastRun | None) -> str:
 
     A link a tool emitted is real and passes through untouched; anything else is
     invented, since the model cannot know a URL it was not given. The notebook
-    link is appended only when the answer left it out — it is the point of the
-    run, so it must never be missing.
+    link is added only when the answer left it out — it is the point of the run,
+    so it must never be missing.
+
+    It leads because the reply is capped from the top, and a chatty answer
+    (ASCII art, a code block) would otherwise push it off the end.
     """
     if last is None or not last.url:
         return text or "(no result)"
     answer = _URL_RE.sub(
-        lambda m: m.group(0) if m.group(0) in last.known_urls else "",
+        lambda m: m.group(0) if _is_known(m.group(0), last.known_urls) else "",
         text or "",
     ).strip()
     if last.url in answer:
         return answer
     return "\n".join(
-        [answer, colors.parse(f"$(bold)notebook$(clear) {last.url}")]
+        [colors.parse(f"$(bold)notebook$(clear) {last.url}"), answer]
     )
 
 
@@ -290,7 +360,7 @@ async def kaggle_command(text, event):
         return
     except SubagentError as e:
         event.reply(
-            f"Kaggle agent failed: {e}",
+            *format_reply_lines(_failure_reply(str(e), last_run(event))),
             extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "failed"),
         )
         return
@@ -300,7 +370,7 @@ async def kaggle_command(text, event):
     # first line — silently dropping the notebook and artifact links, which are
     # the point of the run. Each line has to be its own reply argument.
     event.reply(
-        *format_reply_lines(answer),
+        *await _reply_lines(answer),
         ping_own_line=True,
         extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "complete"),
     )

@@ -39,7 +39,7 @@ from cloudbot.agent import (
 )
 from cloudbot.agent.common import namespace_for, recent_chat_snippet
 from cloudbot.agent.runs import recent_runs
-from cloudbot.agent.tools.kaggle import ensure_kaggle_table
+from cloudbot.agent.tools.kaggle import ensure_kaggle_table, notebook_context
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
 from cloudbot.util.ai_common import wrap_reply_lines
@@ -1023,6 +1023,9 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
         artifacts = _build_artifact_recall(event)
         if artifacts:
             parts.append(artifacts)
+        notebooks = notebook_context()
+        if notebooks:
+            parts.append(notebooks)
         outputs = _build_output_recall(event)
         if outputs:
             parts.append(outputs)

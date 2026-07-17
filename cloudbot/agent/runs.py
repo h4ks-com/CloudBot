@@ -12,7 +12,10 @@ import time
 from collections import deque
 from dataclasses import dataclass
 
-_TTL_S = 45 * 60
+# Long enough that "make that one longer" still finds it after the channel has
+# moved on for a while, short enough that this stays a scratchpad rather than a
+# history nobody pruned.
+_TTL_S = 3 * 60 * 60
 _MAX_PER_CHANNEL = 20
 _RECENT_IN_PROMPT = 6
 
