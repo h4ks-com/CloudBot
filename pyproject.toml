@@ -97,7 +97,7 @@ dependencies = [
     "revchatgpt==6.8.6",
     "rfc3986==1.5.0",
     "sgmllib3k==1.0.0",
-    "six==1.15.0",
+    "six>=1.16.0",
     "sniffio==1.2.0",
     "soupsieve==2.2.1",
     "sqlalchemy==1.4.27",
