@@ -264,6 +264,7 @@ DEFAULT_INCLUDE = frozenset(
         "quran",
         "queue",
         "randomword",
+        "recco",
         "reddit",
         "rhyme",
         "rhymerel",
