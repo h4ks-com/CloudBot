@@ -6,15 +6,21 @@ the codebase.
 """
 
 import re
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Column, String, Table, Text, text
+from sqlalchemy import Column, String, Table, Text, bindparam, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from cloudbot.agent.common import parse_namespace, run_in_executor
+from cloudbot.agent.common import (
+    memory_namespace,
+    memory_read_namespaces,
+    parse_scope,
+    run_in_executor,
+)
 from cloudbot.agent.registry import tool
 from cloudbot.util import database
 
@@ -31,19 +37,33 @@ _MEMORY_TABLE = Table(
 _MEMORY_VALUE_MAX = 2000
 _MEMORY_SEARCH_LIMIT = 20
 
+_SCOPE_PROPERTY = {
+    "type": "string",
+    "enum": ["user", "channel", "network"],
+    "description": (
+        "Who the memory is about. 'user': the person you are talking to, on "
+        "this network. 'channel': this channel, shared by everyone in it. "
+        "'network': everyone on this network. Memories never cross networks."
+    ),
+}
+
 
 def ensure_memory_table(engine: Engine) -> None:
     """Create the agent_memory table if absent (idempotent, for fresh DBs)."""
     _MEMORY_TABLE.create(bind=engine, checkfirst=True)
 
 
-def all_memories(namespace: str, limit: int) -> list[tuple[str, str]]:
-    """Every memory in a namespace, newest first (capped at limit)."""
+def all_memories(
+    namespaces: Sequence[str], limit: int
+) -> list[tuple[str, str]]:
+    """Every memory across these namespaces, newest first (capped at limit)."""
+    if not namespaces:
+        return []
     db = database.Session()
     rows = db.execute(
         _MEMORY_TABLE.select()
         .with_only_columns(_MEMORY_TABLE.c.key, _MEMORY_TABLE.c.value)
-        .where(_MEMORY_TABLE.c.namespace == namespace)
+        .where(_MEMORY_TABLE.c.namespace.in_(namespaces))
         .order_by(_MEMORY_TABLE.c.updated_at.desc())
         .limit(limit)
     ).fetchall()
@@ -131,19 +151,21 @@ def _fts_match_query(raw: str) -> str | None:
     return " OR ".join(f'"{tok}"' for tok in terms)
 
 
-def fts_search(namespace: str, query: str, limit: int) -> list[tuple[str, str]]:
-    """bm25-ranked keyword search over stored memories in one namespace."""
+def fts_search(
+    namespaces: Sequence[str], query: str, limit: int
+) -> list[tuple[str, str]]:
+    """bm25-ranked keyword search over stored memories across namespaces."""
     match = _fts_match_query(query)
-    if not match:
+    if not match or not namespaces:
         return []
     db = database.Session()
     sql = text(
         f"SELECT key, value FROM {_FTS_TABLE} "
-        f"WHERE {_FTS_TABLE} MATCH :q AND namespace = :ns "
+        f"WHERE {_FTS_TABLE} MATCH :q AND namespace IN :ns "
         f"ORDER BY bm25({_FTS_TABLE}) LIMIT :lim"
-    )
+    ).bindparams(bindparam("ns", expanding=True))
     rows = db.execute(
-        sql, {"q": match, "ns": namespace, "lim": limit}
+        sql, {"q": match, "ns": list(namespaces), "lim": limit}
     ).fetchall()
     return [(r[0], r[1]) for r in rows]
 
@@ -152,8 +174,11 @@ def fts_search(namespace: str, query: str, limit: int) -> list[tuple[str, str]]:
     name="memory_set",
     description=(
         "Store a key-value pair in persistent memory. Use to remember facts, "
-        "preferences, or notes across conversations. "
-        "namespace defaults to the calling user (network/nick). "
+        "preferences, or notes across conversations.\n"
+        "Choose the scope by who the fact is ABOUT, not who mentioned it: a "
+        "person's own preference is 'user' even when said in a channel, while "
+        "something true of the whole channel is 'channel'. Getting this right is "
+        "what decides who you can recall it for later. Defaults to 'user'.\n"
         f"Value is capped at {_MEMORY_VALUE_MAX} chars."
     ),
     schema={
@@ -167,10 +192,7 @@ def fts_search(namespace: str, query: str, limit: int) -> list[tuple[str, str]]:
                 "type": "string",
                 "description": f"Value to store (max {_MEMORY_VALUE_MAX} chars)",
             },
-            "namespace": {
-                "type": "string",
-                "description": "Scope (default: calling user, i.e. network/nick)",
-            },
+            "scope": _SCOPE_PROPERTY,
         },
         "required": ["key", "value"],
     },
@@ -178,10 +200,13 @@ def fts_search(namespace: str, query: str, limit: int) -> list[tuple[str, str]]:
 async def memory_set(ctx, data):
     key = str(data.get("key") or "").strip()[:200]
     value = str(data.get("value") or "").strip()
-    ns = parse_namespace(data, ctx)
+    scope = parse_scope(data) or "user"
+    ns = memory_namespace(ctx.context, scope)
 
     if not key:
         return "(error: key required)"
+    if not ns:
+        return f"(error: nothing here to scope a '{scope}' memory to)"
     if len(value) > _MEMORY_VALUE_MAX:
         return f"(error: value too long, max {_MEMORY_VALUE_MAX} chars)"
 
@@ -198,35 +223,37 @@ async def memory_set(ctx, data):
 @tool(
     name="memory_get",
     description=(
-        "Retrieve a stored memory by key. "
-        "namespace defaults to the calling user (network/nick). "
-        "Returns the value or a not-found message."
+        "Retrieve a stored memory by key. Searches everything this channel and "
+        "this user can see unless you name a scope. Returns the value or a "
+        "not-found message."
     ),
     schema={
         "type": "object",
         "properties": {
             "key": {"type": "string", "description": "Memory key to retrieve"},
-            "namespace": {
-                "type": "string",
-                "description": "Scope (default: calling user, i.e. network/nick)",
-            },
+            "scope": _SCOPE_PROPERTY,
         },
         "required": ["key"],
     },
 )
 async def memory_get(ctx, data):
     key = str(data.get("key") or "").strip()
-    ns = parse_namespace(data, ctx)
+    namespaces = memory_read_namespaces(ctx.context, parse_scope(data))
 
     if not key:
         return "(error: key required)"
+    if not namespaces:
+        return "(error: nothing here to read a memory from)"
 
     def _do_get() -> Any:
         db = database.Session()
         return db.execute(
-            _MEMORY_TABLE.select().where(
-                (_MEMORY_TABLE.c.namespace == ns) & (_MEMORY_TABLE.c.key == key)
+            _MEMORY_TABLE.select()
+            .where(
+                _MEMORY_TABLE.c.namespace.in_(namespaces)
+                & (_MEMORY_TABLE.c.key == key)
             )
+            .order_by(_MEMORY_TABLE.c.updated_at.desc())
         ).first()
 
     try:
@@ -234,15 +261,18 @@ async def memory_get(ctx, data):
     except SQLAlchemyError as e:
         return f"(error reading memory: {e})"
     if row is None:
-        return f"(not found: {ns}/{key})"
-    return f"{row['value']} [updated: {row['updated_at'][:16]}]"
+        return f"(not found: {key})"
+    return (
+        f"{row['value']} [about: {row['namespace']}, "
+        f"updated: {row['updated_at'][:16]}]"
+    )
 
 
 @tool(
     name="memory_search",
     description=(
-        "Search stored memories by keyword in key or value. "
-        "namespace defaults to the calling user (network/nick). "
+        "Search stored memories by keyword in key or value. Searches everything "
+        "this channel and this user can see unless you name a scope. "
         f"Returns up to {_MEMORY_SEARCH_LIMIT} matching entries."
     ),
     schema={
@@ -252,29 +282,28 @@ async def memory_get(ctx, data):
                 "type": "string",
                 "description": "Keyword to search for (case-insensitive)",
             },
-            "namespace": {
-                "type": "string",
-                "description": "Scope (default: calling user, i.e. network/nick)",
-            },
+            "scope": _SCOPE_PROPERTY,
         },
         "required": ["query"],
     },
 )
 async def memory_search(ctx, data):
     query = str(data.get("query") or "").strip()
-    ns = parse_namespace(data, ctx)
+    namespaces = memory_read_namespaces(ctx.context, parse_scope(data))
 
     if not query:
         return "(error: query required)"
+    if not namespaces:
+        return "(error: nothing here to search memories in)"
 
     def _do_search() -> list[tuple[str, str]]:
-        return fts_search(ns, query, _MEMORY_SEARCH_LIMIT)
+        return fts_search(namespaces, query, _MEMORY_SEARCH_LIMIT)
 
     try:
         matches = await run_in_executor(_do_search)
     except SQLAlchemyError as e:
         return f"(error searching memory: {e})"
     if not matches:
-        return f"(no memories found for '{query}' in {ns})"
+        return f"(no memories found for '{query}')"
     lines = [f"{key}: {(value or '')[:200]}" for key, value in matches]
     return "\n".join(lines)

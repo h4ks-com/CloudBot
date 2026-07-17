@@ -10,7 +10,7 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Literal
 
 import openai
 import requests
@@ -89,30 +89,56 @@ def parse_args(args_json: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def namespace_for(event) -> str:
-    """Default memory namespace for an event: per-nick-per-network.
+# Who a memory is about. Every scope carries its network, so one network's
+# memories can never answer another's.
+MemoryScope = Literal["network", "channel", "user"]
+_ALL_SCOPES: tuple[MemoryScope, ...] = ("user", "channel", "network")
+_NAMESPACE_MAX = 100
 
-    A user's memories follow them across channels on the same IRC network
-    without bleeding to other networks. Falls back to nick-only when the
-    connection name can't be read, then to "global".
+
+def memory_namespace(event: Any, scope: MemoryScope) -> str:
+    """Where a memory of this scope is written.
+
+    Empty when the event cannot supply what the scope needs — a nick for "user",
+    a channel for "channel", a network for any of them — which is the caller's
+    signal to refuse rather than invent an unscoped home for it.
     """
-    nick = (getattr(event, "nick", "") or "").strip()
     conn = getattr(event, "conn", None)
-    conn_name = (getattr(conn, "name", "") or "").strip()
-    if nick and conn_name:
-        ns = f"{conn_name}/{nick}"
-    elif nick:
-        ns = f"nick/{nick}"
-    else:
-        ns = "global"
-    return ns[:100]
+    network = (getattr(conn, "name", "") or "").strip()
+    if not network:
+        return ""
+    if scope == "network":
+        return network[:_NAMESPACE_MAX]
+    if scope == "channel":
+        chan = (getattr(event, "chan", "") or "").strip()
+        return f"{network}/{chan}"[:_NAMESPACE_MAX] if chan else ""
+    nick = (getattr(event, "nick", "") or "").strip()
+    return f"{network}/{nick}"[:_NAMESPACE_MAX] if nick else ""
 
 
-def parse_namespace(data: dict[str, Any], ctx: RunContextWrapper) -> str:
-    explicit = str(data.get("namespace") or "").strip()
-    if explicit:
-        return explicit[:100]
-    return namespace_for(ctx.context)
+def memory_read_namespaces(
+    event: Any, scope: MemoryScope | None = None
+) -> list[str]:
+    """Namespaces a read covers. ``scope`` of None means every scope at once,
+    which is what makes a saved fact come back on its own when it is relevant.
+    """
+    namespaces = [
+        memory_namespace(event, wanted)
+        for wanted in ((scope,) if scope else _ALL_SCOPES)
+    ]
+    return [n for n in dict.fromkeys(namespaces) if n]
+
+
+def parse_scope(data: dict[str, Any]) -> MemoryScope | None:
+    """The scope a tool call asked for, or None if it named none."""
+    raw = str(data.get("scope") or "").strip().lower()
+    if raw == "network":
+        return "network"
+    if raw == "channel":
+        return "channel"
+    if raw == "user":
+        return "user"
+    return None
 
 
 def split_repo(repo: str) -> tuple[str, str]:

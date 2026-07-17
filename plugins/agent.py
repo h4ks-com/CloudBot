@@ -37,7 +37,7 @@ from cloudbot.agent import (
     sanitise_err_message,
     upload_markdown_paste,
 )
-from cloudbot.agent.common import namespace_for, recent_chat_snippet
+from cloudbot.agent.common import memory_read_namespaces, recent_chat_snippet
 from cloudbot.agent.runs import recent_runs
 from cloudbot.agent.tools.kaggle import ensure_kaggle_table, notebook_context
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
@@ -941,18 +941,20 @@ def _build_gh_suffix(bot, cfg: dict) -> str:
 
 
 def _build_memory_recall(event) -> str:
-    """Inject an index of what the agent has saved for the calling user.
+    """Inject an index of what the agent has saved that bears on this moment.
 
-    Lists each memory's key with a short preview so the agent is aware of what
-    it knows without dumping full values; it reads the full value with
+    Covers every scope the caller can see — them, this channel, this network —
+    because a fact is only worth saving if it comes back on its own when it is
+    relevant. Lists each memory's key with a short preview so the agent is aware
+    of what it knows without dumping full values; it reads the full value with
     memory_get(key) or finds entries with memory_search(text) when it needs to.
     Newest first, capped by count and characters.
     """
-    ns = namespace_for(event)
-    if not ns:
+    namespaces = memory_read_namespaces(event)
+    if not namespaces:
         return ""
     try:
-        memories = all_memories(ns, _MEMORY_INDEX_MAX)
+        memories = all_memories(namespaces, _MEMORY_INDEX_MAX)
     except SQLAlchemyError:
         logger.exception("agent: memory recall failed")
         return ""
@@ -970,9 +972,9 @@ def _build_memory_recall(event) -> str:
     if not lines:
         return ""
     return (
-        "\n## Your Memory (saved facts for the calling user — previews shown; "
-        "call memory_get(key) for a full value, memory_search(text) to find by "
-        "content)\n" + "\n".join(lines)
+        "\n## Your Memory (saved facts about this user, this channel and this "
+        "network — previews shown; call memory_get(key) for a full value, "
+        "memory_search(text) to find by content)\n" + "\n".join(lines)
     )
 
 
