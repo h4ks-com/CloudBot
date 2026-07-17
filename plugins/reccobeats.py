@@ -69,7 +69,7 @@ def recco(text, reply):
         link = ""
         for off in track.get("offering", []):
             url = off.get("url")
-            if auto_url:
+            if url:
                 link = url
                 break
         line = f"  {i}. \x02{title}\x02 by \x02{artist}\x02"
