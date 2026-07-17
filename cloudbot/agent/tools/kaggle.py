@@ -630,7 +630,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             f"'{title}' was already launched and is {state} — ref "
             f"'{already.ref}'. Not pushing again (a run cannot be cancelled). "
             + (
-                await _result_text(token, already.ref, state, timeout_s)
+                await _result_text(event, token, already.ref, state, timeout_s)
                 if state in kaggle_client.TERMINAL_STATES
                 else "Wait for it with kaggle_wait_for_notebook."
             )
@@ -737,7 +737,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             + await _live_text(token, ref)
         )
     return f"Finished ({state}): {head}\n" + await _result_text(
-        token, ref, state, timeout_s
+        event, token, ref, state, timeout_s
     )
 
 
@@ -864,8 +864,50 @@ async def _live_text(token: str, ref: str) -> str:
     )
 
 
+async def _log_section(event: object, log: str) -> str:
+    """A long log, reduced to the parts that explain it.
+
+    A tail alone is close to useless on a big log: it is the end of the cascade,
+    so it shows the last thing to break rather than the thing that broke. The
+    first error is the cause, the tail is where it ended up, and the paste is
+    everything in between for when neither is enough.
+    """
+    if len(log) <= _LOG_TAIL_MAX:
+        return f"log:\n{log}"
+    parts = []
+    cause = kaggle_client.first_error(log)
+    if cause:
+        parts.append(
+            "FIRST error — later ones are usually fallout from this one:\n"
+            f"{cause}"
+        )
+    parts.append(
+        f"log tail (last {_LOG_TAIL_MAX} of {len(log)} chars):\n{log[-_LOG_TAIL_MAX:]}"
+    )
+    url = await _paste_log(event, log)
+    if url:
+        parts.append(f"full log: {url} — web_fetch it to read the rest")
+    return "\n".join(parts)
+
+
+async def _paste_log(event: object, log: str) -> str:
+    """A link to the whole log. Best-effort: it is a convenience, not the run."""
+    try:
+        url = await run_in_executor(
+            partial(
+                web.paste, log.encode("utf-8"), "txt", raise_on_no_paste=True
+            )
+        )
+    except (web.NoPasteException, OSError, ValueError, RuntimeError):
+        logger.warning("kaggle: log paste failed", exc_info=True)
+        return ""
+    link = _paste_url(url)
+    _remember_urls(event, link)
+    return link
+
+
 async def _result_text(
-    token: str, ref: str, state: str, timeout_s: int = 0
+    event: object, token: str, ref: str, state: str, timeout_s: int = 0
 ) -> str:
     try:
         files, log = await run_in_executor(kaggle_client.output, token, ref)
@@ -901,8 +943,7 @@ async def _result_text(
             )
         )
     if log:
-        tail = log[-_LOG_TAIL_MAX:]
-        parts.append(f"log:\n{tail}")
+        parts.append(await _log_section(event, log))
     return "\n".join(parts) or "(no output)"
 
 
@@ -955,7 +996,7 @@ async def kaggle_wait_for_notebook(ctx, data) -> str:
         )
     _mark_done(ref)
     return f"{ref} finished ({state}).\n" + await _result_text(
-        token, ref, state
+        event, token, ref, state
     )
 
 
@@ -1060,7 +1101,7 @@ async def kaggle_notebook_output(ctx, data) -> str:
         if len(files) > _ARTIFACT_LIST_MAX:
             lines.append(f"… and {len(files) - _ARTIFACT_LIST_MAX} more")
     if log:
-        lines.append(f"log:\n{log[-_LOG_TAIL_MAX:]}")
+        lines.append(await _log_section(event, log))
     return "\n".join(lines)
 
 

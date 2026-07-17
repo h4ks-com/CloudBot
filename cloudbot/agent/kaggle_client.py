@@ -420,6 +420,26 @@ def _is_platform_noise(text: str) -> bool:
     )
 
 
+# The last line of a traceback is the exception; the frames above it are noise
+# until you know which error you are reading. Warnings are not failures and are
+# excluded — a run's first line is often one.
+_EXCEPTION_RE = re.compile(r"^!?\s*[A-Za-z_.]*(?:Error|Exception)\b.*$", re.M)
+_ERROR_CONTEXT = 600
+
+
+def first_error(log: str) -> str:
+    """The earliest exception in a log, with the frames leading to it.
+
+    A failure cascades: a full disk fails the next download, which fails the
+    model load, which fails the export. So the last error is the least
+    informative one — and a tail shows only those. This shows the first.
+    """
+    match = _EXCEPTION_RE.search(log)
+    if match is None:
+        return ""
+    return log[max(0, match.start() - _ERROR_CONTEXT) : match.end()]
+
+
 def _render_log(raw: str) -> str:
     """Kaggle stores the run log as a JSON array of {stream_name, time, data}."""
     try:
