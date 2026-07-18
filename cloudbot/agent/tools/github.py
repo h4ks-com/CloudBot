@@ -23,11 +23,11 @@ from cloudbot.agent.github_client import (
     STALE_SHA_PATTERN,
     bump_budget,
     extract_file_sha,
-    extract_mcp_content,
     mcp_call,
     mcp_call_raw,
     wait_for_fork,
 )
+from cloudbot.agent.mcp_client import extract_mcp_content
 from cloudbot.agent.registry import tool
 
 logger = logging.getLogger("cloudbot")

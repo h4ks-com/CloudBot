@@ -5,7 +5,6 @@ Pure client code — no FunctionTool definitions. The github tools in
 """
 
 import asyncio
-import json
 import logging
 import re
 from typing import Any
@@ -13,10 +12,10 @@ from typing import Any
 import requests
 
 from cloudbot.agent.common import run_in_executor
+from cloudbot.agent.mcp_client import extract_mcp_content, parse_sse
 
 logger = logging.getLogger("cloudbot")
 
-_SSE_FIELDS = ("data:", "event:", "id:", "retry:")
 SHA_PATTERN = re.compile(r"\(SHA:\s*([0-9a-f]{6,64})\)")
 STALE_SHA_PATTERN = re.compile(r"Current file SHA is ([0-9a-f]{6,64})", re.I)
 
@@ -37,39 +36,6 @@ BUDGETS: dict[str, int] = {
 }
 
 
-def extract_mcp_content(result: dict) -> str:
-    """Extract meaningful text from a GitHub MCP tool result.
-
-    Prefers resource.text; falls back to text items. If isError=true the
-    output is wrapped in '(error: …)' so the agent and tracker treat it
-    as a failure (otherwise the model retries 'branch already exists' loops).
-    """
-    is_err = bool(result.get("isError"))
-    content = result.get("content", [])
-    if not isinstance(content, list):
-        body = json.dumps(result)[:8000]
-    else:
-        resource_parts = [
-            c["resource"]["text"]
-            for c in content
-            if c.get("type") == "resource"
-            and isinstance(c.get("resource"), dict)
-            and "text" in c["resource"]
-        ]
-        if resource_parts:
-            body = "\n".join(resource_parts)
-        else:
-            text_parts = [
-                c.get("text", "") for c in content if c.get("type") == "text"
-            ]
-            body = (
-                "\n".join(text_parts)
-                if text_parts
-                else json.dumps(result)[:8000]
-            )
-    return f"(error: {body})" if is_err else body
-
-
 def extract_file_sha(result: dict) -> str | None:
     """Pull blob SHA out of GitHub MCP get_file_contents text content."""
     content = result.get("content", [])
@@ -81,41 +47,6 @@ def extract_file_sha(result: dict) -> str | None:
         match = SHA_PATTERN.search(c.get("text") or "")
         if match:
             return match.group(1)
-    return None
-
-
-def parse_sse(text: str) -> dict | None:
-    """Parse an SSE response body and return the first JSON-RPC result dict.
-
-    GitHub MCP embeds literal newlines inside JSON string values, so one
-    SSE 'data:' event spans many physical lines. We collect continuation
-    lines and join with the JSON newline escape so json.loads can parse.
-    """
-    lines = text.splitlines()
-    i = 0
-    while i < len(lines):
-        if not lines[i].startswith("data:"):
-            i += 1
-            continue
-        chunk_parts = [lines[i][5:]]
-        j = i + 1
-        while j < len(lines):
-            ln = lines[j]
-            if not ln or any(ln.startswith(f) for f in _SSE_FIELDS):
-                break
-            chunk_parts.append(ln)
-            j += 1
-        chunk = "\\n".join(chunk_parts).strip()
-        i = j
-        if not chunk or chunk == "[DONE]":
-            continue
-        try:
-            parsed = json.loads(chunk)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict) and "result" in parsed:
-            result = parsed["result"]
-            return result if isinstance(result, dict) else {}
     return None
 
 

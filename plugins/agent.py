@@ -40,6 +40,7 @@ from cloudbot.agent import (
 from cloudbot.agent.common import memory_read_namespaces, recent_chat_snippet
 from cloudbot.agent.runs import recent_runs
 from cloudbot.agent.tools.kaggle import ensure_kaggle_table, notebook_context
+from cloudbot.agent.tools.mcp_servers import build_mcp_tools, discover
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
 from cloudbot.util.ai_common import wrap_reply_lines
@@ -905,12 +906,20 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
     custom = build_custom_tools()
     tools.extend(custom)
 
+    remote = build_mcp_tools(bot)
+    tools.extend(remote)
+
     bb_tool = _build_big_brain_tool(bot, cfg)
     if bb_tool:
         tools.append(bb_tool)
         logger.info("agent: big brain tool enabled")
 
-    logger.info("agent: built %d tools (%d custom)", len(tools), len(custom))
+    logger.info(
+        "agent: built %d tools (%d custom, %d mcp)",
+        len(tools),
+        len(custom),
+        len(remote),
+    )
     _TOOLS_CACHE[key] = tools
     return tools
 
@@ -1446,6 +1455,7 @@ def _init_agent_tables(bot):
         ensure_kaggle_table(bot.db_engine)
     except SQLAlchemyError:
         logger.exception("agent: kaggle table init failed")
+    discover(bot)
 
 
 @hook.command("agi", "agent", "ask", autohelp=False, allow_private=False)

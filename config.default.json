@@ -202,6 +202,13 @@
                 "github_token_config_path": "github",
                 "self_repo": "h4ks-com/CloudBot"
             },
+            "mcp_servers": {
+                "kinesthesia": {
+                    "enabled": true,
+                    "url": "https://kinesthesia.h4ks.com/api/mcp",
+                    "timeout_s": 30
+                }
+            },
             "max_turns": 40,
             "timeout_s": 900,
             "reply_max_chars": 420,
