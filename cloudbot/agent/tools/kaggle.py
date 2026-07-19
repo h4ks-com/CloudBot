@@ -792,6 +792,10 @@ class LastRun:
 
     url: str = ""
     ref: str = ""
+    # The artifact the user asked for (last kaggle_notebook_output share). It is
+    # the point of the run, so the reply leads with it even if the model buries
+    # it under prose.
+    shared_url: str = ""
     known_urls: set[str] = field(default_factory=set)
 
 
@@ -1088,6 +1092,7 @@ async def kaggle_notebook_output(ctx, data) -> str:
         ) as e:
             return f"(error sharing {share}: {e})"
         _remember_urls(event, url)
+        _run_state(event).shared_url = url
         return f"{share}: {url}"
 
     lines = []

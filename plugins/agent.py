@@ -39,6 +39,7 @@ from cloudbot.agent import (
 )
 from cloudbot.agent.common import memory_read_namespaces, recent_chat_snippet
 from cloudbot.agent.runs import recent_runs
+from cloudbot.agent.skills import skill_index
 from cloudbot.agent.tools.kaggle import ensure_kaggle_table, notebook_context
 from cloudbot.agent.tools.mcp_servers import build_mcp_tools, discover
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
@@ -1024,6 +1025,7 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
         parts = [
             base_instructions,
             gh_suffix,
+            skill_index(),
             "\n\n## Current Request Context",
             f"- Channel: {event.chan}",
             f"- User asking: {event.nick}",

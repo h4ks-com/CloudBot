@@ -28,6 +28,7 @@ from cloudbot.agent.kaggle_client import (
     token_from_bot,
 )
 from cloudbot.agent.registry import build_custom_tools
+from cloudbot.agent.skills import skill_index
 from cloudbot.agent.subagent import SubagentError, ToolStepSink, run_subagent
 from cloudbot.agent.tools.kaggle import (
     LastRun,
@@ -77,6 +78,7 @@ _TOOL_NAMES = frozenset(
         "kaggle_notebook_output",
         "kaggle_list_notebooks",
         "kaggle_delete_notebook",
+        "read_skill",
         "paste_markdown",
         # Writing code for a library it has not seen is most of this job. Without
         # these it burns GPU runs printing files to discover an API, which is
@@ -100,14 +102,18 @@ Kaggle's free compute, and report what actually happened. Follow each tool's des
 exactly — they carry the rules Kaggle imposes.
 
 How to work:
-1. Understand the request. Your existing notebooks are listed above with their state — update
-   one rather than making a near-duplicate, and never re-push one marked RUNNING NOW: wait for
-   it with kaggle_wait_for_notebook, since a run cannot be cancelled and a second one just
-   spends quota racing the first.
-2. If the code depends on a library or repo you are not sure about, look it up BEFORE running:
-   read_github_file / list_repo_files / search_github_code for its real source, context7_docs
-   for library docs, web_research for anything else. Never run a notebook just to discover an
-   API by printing files — that wastes a run, GPU quota and your turns.
+1. Check the Skills list at the end of this prompt FIRST. If one matches the request, call
+   read_skill(name) and follow it exactly — it is a proven, working recipe with the notebook
+   name and cells to use, so do NOT research an API or write your own version when a skill
+   covers the job. Then understand the rest: your existing notebooks are listed above with
+   their state — update one rather than making a near-duplicate, and never re-push one marked
+   RUNNING NOW (wait for it with kaggle_wait_for_notebook; a run cannot be cancelled and a
+   second one just spends quota racing the first).
+2. If NO skill covers it and the code depends on a library or repo you are not sure about,
+   look it up BEFORE running: read_github_file / list_repo_files / search_github_code for its
+   real source, context7_docs for library docs, web_research for anything else. Never run a
+   notebook just to discover an API by printing files — that wastes a run, GPU quota and your
+   turns.
 3. Write straightforward, self-contained Python. Print what matters — the log is how you and
    the user see results. Save real outputs (files, plots, JSON) where the tool tells you to.
 4. Budget for the fact that every run redoes its own setup from scratch. You only get a few
@@ -121,13 +127,15 @@ How to work:
 6. If it fails, read the log and fix the code — look the API up rather than guessing — then run
    again under the SAME title. A run marked complete only means the notebook's top-level script
    exited 0: if your code shelled out, read the log for the real outcome before calling it done.
-7. Report: one short summary of what it did and what it found, and share the file the user asked
-   for with kaggle_notebook_output(share=...).
+7. Deliver. Call kaggle_notebook_output(share=<the file the user asked for>) to get its link,
+   then make that link your reply. The link is the whole point of the run, so it comes FIRST,
+   on its own line, as plain text — no markdown, no brackets, no emoji, no bold. After it, add
+   AT MOST one short plain line only if it genuinely helps. Send nothing else: no "Done, your X
+   is ready", no style/lyrics/spec breakdown, no bullet lists, no recap of what you tried or why
+   an earlier attempt failed. If you have nothing useful to add, reply with only the link.
 
-You are answering in a chat channel, so keep it to a few short lines.
-
-Give a compact, factual answer. Do not invent results — only report what the log and artifacts
-actually show, and never write out a URL you did not get from a tool."""
+Do not invent results — only report what the log and artifacts actually show, and never write a
+URL you did not get from a tool."""
 
 
 class _AgentState:
@@ -142,7 +150,7 @@ def _get_agent() -> Agent:
         raise SubagentError("no kaggle tools registered")
     agent = Agent(
         name="KaggleRunner",
-        instructions=KAGGLE_INSTRUCTIONS,
+        instructions=KAGGLE_INSTRUCTIONS + skill_index("kaggle"),
         tools=tools,
     )
     _AgentState.agent = agent
@@ -243,27 +251,26 @@ def _failure_reply(err: str, last: LastRun | None) -> str:
 
 
 def _build_reply(text: str, last: LastRun | None) -> str:
-    """The model's answer, minus any URL it made up.
+    """The model's answer, led by the deliverable, minus any URL it made up.
 
     A link a tool emitted is real and passes through untouched; anything else is
-    invented, since the model cannot know a URL it was not given. The notebook
-    link is added only when the answer left it out — it is the point of the run,
-    so it must never be missing.
-
-    It leads because the reply is capped from the top, and a chatty answer
-    (ASCII art, a code block) would otherwise push it off the end.
+    invented, since the model cannot know a URL it was not given. The reply leads
+    with the artifact the user asked for (the last share), or the notebook link
+    when there is no artifact — it is the point of the run, so it must never be
+    missing or buried. Leading also survives the top-anchored line cap when the
+    model is chatty.
     """
-    if last is None or not last.url:
+    if last is None or not (last.shared_url or last.url):
         return text or "(no result)"
+    lead = last.shared_url or last.url
     answer = _URL_RE.sub(
         lambda m: m.group(0) if _is_known(m.group(0), last.known_urls) else "",
         text or "",
     ).strip()
-    if last.url in answer:
+    if lead in answer:
         return answer
-    return "\n".join(
-        [colors.parse(f"$(bold)notebook$(clear) {last.url}"), answer]
-    )
+    label = "output" if last.shared_url else "notebook"
+    return "\n".join([colors.parse(f"$(bold){label}$(clear) {lead}"), answer])
 
 
 @hook.command(
