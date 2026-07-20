@@ -43,7 +43,9 @@ def _parse(path: Path) -> Skill | None:
             meta[key.strip()] = value.strip()
     name = meta.get("name") or path.stem
     agents = tuple(
-        a.strip() for a in meta.get("agents", "").strip("[]").split(",") if a.strip()
+        a.strip()
+        for a in meta.get("agents", "").strip("[]").split(",")
+        if a.strip()
     )
     rel = path.relative_to(_SKILLS_DIR)
     group = rel.parts[0] if len(rel.parts) > 1 else ""
