@@ -10,16 +10,16 @@ audio). You do the MIDI prep here, then hand the finished page to the video agen
 (`create_video`) to record — it has the browser-recording tools; you just tell it the url, how
 long, and how to start it.
 
-1. **Find it.** `kinesthesia_search_midi(q="<song>")` → pick the best match; keep its `.mid`
-   url and `source`.
+1. **Find it.** `kinesthesia_search_midi(q="<song>")` → pick the best match; keep its `source`
+   and `id`.
 
-2. **Check length.** `kinesthesia_midi_info(url="<.mid url>")` → read `duration` (seconds).
-   The playback length is `duration / speed` (default speed 1). The recorder caps at 600s, so if
-   `duration / speed` > 570 tell the user it's too long and stop. (Its `tracks` list lets you
-   feature one part in step 3 — optional.)
+2. **Check length.** `kinesthesia_midi_info(source="<source>", id="<id>")` → read `duration`
+   (seconds). The playback length is `duration / speed` (default speed 1). The recorder caps at
+   600s, so if `duration / speed` > 570 tell the user it's too long and stop. (Its `tracks` list
+   lets you feature one part in step 3 — optional.)
 
-3. **Build the page.** `kinesthesia_player_link(url="<.mid url>", name="<song>",
-   source="<source>", mode="watch", focus=true)` → the `/watch` url. `focus=true` strips the
+3. **Build the page.** `kinesthesia_player_link(source="<source>", id="<id>", name="<song>",
+   mode="watch", focus=true)` → the `/watch` url. `focus=true` strips the
    page to just the keys and falling notes — the recordable view (watch only). Add `tracks=[n]`,
    `speed`, or `transpose` only if the user asked.
 
@@ -53,5 +53,5 @@ What matters:
 - `duration_seconds` = `ceil(duration / speed) + 8`, and under 600s — check before handing off.
 - One `video_record_website` call with `script` (Space at start), `settle_ms: 3000`, and
   `wait: true`. `wait` blocks for the whole song and returns the finished mp4 — never a separate
-  `video_record_stop`, which cuts it short.
+  it uses `video_record_stop`, which cuts it short.
 - Return the recording as-is; compose/edit only on explicit request (it re-encodes + upscales).
