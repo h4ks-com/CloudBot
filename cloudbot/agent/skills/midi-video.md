@@ -35,10 +35,17 @@ long, and how to start it.
 
    Example brief: *"Make one video_record_website call: url=<watch url>, duration_seconds=<N>,
    script=[{action:{type:'key',key:'Space'}}], settle_ms=3000, wait=true. It's a music player —
-   that fires Space at the start and blocks until the full song is recorded. Return the mp4."*
+   that fires Space at the start and blocks until the full song is recorded. Return the mp4 as the
+   final video, exactly as recorded. Do NOT add an intro/outro or run it through
+   video_render_timeline / video_compose / video_edit — those re-encode and upscale the recording,
+   which softens it and adds jitter."*
 
 `create_video` runs in the background and posts the finished mp4 itself, so you don't wait or
 reply with a link — it handles the sharing.
+
+The recording is the final video: return it untouched. Only add an intro/outro/title or any
+editing if the USER explicitly asked for it — and know it costs quality, because the compose/edit
+tools re-encode the 720p recording and upscale it to 1080p.
 
 What matters:
 - Your job is the url, the track, and the duration; the video agent does the recording.
@@ -47,3 +54,4 @@ What matters:
 - One `video_record_website` call with `script` (Space at start), `settle_ms: 3000`, and
   `wait: true`. `wait` blocks for the whole song and returns the finished mp4 — never a separate
   `video_record_stop`, which cuts it short.
+- Return the recording as-is; compose/edit only on explicit request (it re-encodes + upscales).
