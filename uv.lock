@@ -29,7 +29,6 @@ dependencies = [
     { name = "cachetools" },
     { name = "certifi" },
     { name = "chardet" },
-    { name = "chartlyrics" },
     { name = "cleverwrap" },
     { name = "click" },
     { name = "colorama" },
@@ -170,7 +169,6 @@ requires-dist = [
     { name = "cachetools", specifier = "==5.0.0" },
     { name = "certifi", specifier = "==2024.2.2" },
     { name = "chardet", specifier = "==4.0.0" },
-    { name = "chartlyrics", specifier = ">=0.1.5" },
     { name = "cleverwrap", specifier = "==0.3.0.2" },
     { name = "click", specifier = "==8.2.1" },
     { name = "colorama", specifier = "==0.4.6" },
@@ -565,20 +563,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/56/31/7bcaf657fafb3c6db8c787a865434290b726653c912085fbd371e9b92e1c/charset-normalizer-2.0.12.tar.gz", hash = "sha256:2857e29ff0d34db842cd7ca3230549d1a697f96ee6d3fb071cfa6c7393832597", size = 79105, upload-time = "2022-02-12T14:33:13.788Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/06/b3/24afc8868eba069a7f03650ac750a778862dc34941a4bebeb58706715726/charset_normalizer-2.0.12-py3-none-any.whl", hash = "sha256:6881edbebdb17b39b4eaaa821b438bf6eddffb4468cf344f09f89def34a8b1df", size = 39623, upload-time = "2022-02-12T14:33:12.294Z" },
-]
-
-[[package]]
-name = "chartlyrics"
-version = "0.1.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "click" },
-    { name = "lxml" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/61/ec/211bccdeb966c3ca2c6b60d6802820a55f60fb4e8007ca10e0681007b7aa/chartlyrics-0.1.5.tar.gz", hash = "sha256:6d738a5e17cdb81795e0415f2b77678237c27a60a658e20f5908fe87bde29098", size = 4424, upload-time = "2022-08-31T22:59:42.067Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/95/983993444f7525ec75c0844fa3752bb6b6630b94435744bb8f27a6b62264/chartlyrics-0.1.5-py3-none-any.whl", hash = "sha256:309d15f2def6fb6cc928e1cb2bb7c71b4668d83db42e2076054e78f552cbc166", size = 5101, upload-time = "2022-08-31T22:59:39.569Z" },
 ]
 
 [[package]]
