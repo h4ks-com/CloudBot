@@ -213,6 +213,7 @@ DEFAULT_INCLUDE = frozenset(
         "lyricsn",
         "lysearch",
         "next",
+        "man",
         "maps",
         "mars",
         "marslocations",
