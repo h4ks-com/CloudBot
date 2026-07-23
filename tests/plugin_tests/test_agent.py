@@ -1,9 +1,17 @@
 """Tests for the agent tool manifest, PR guard, and answer formatting."""
 
+import asyncio
+from collections import deque
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from openai import OpenAIError
+
+from plugins import agent as agent_plugin
 from plugins.agent import (
+    _MANIFEST_RE,
     _format_answer,
+    _guard_artifact_urls,
     _guard_pr_hallucination,
     _tool_manifest,
 )
@@ -79,6 +87,126 @@ class TestGuardPrHallucination:
         )
         assert "failed to open PR" in answer
         assert "<no-pr>" in answer
+
+
+class TestGuardArtifactUrls:
+    shown = {"https://s.h4ks.com/Aa.mp3"}
+
+    def test_invented_link_removed(self):
+        answer = _guard_artifact_urls(
+            "done! try it: https://s.h4ks.com/Aa.html", set(), self.shown
+        )
+        assert "<nothing-was-uploaded>" in answer
+        assert "Aa.html" not in answer
+
+    def test_own_upload_survives_a_retyped_extension(self):
+        produced = {"https://s.h4ks.com/Bb.html"}
+        answer = "grab https://s.h4ks.com/Bb.glb?download=true"
+        assert _guard_artifact_urls(answer, produced, set()) == answer
+
+    def test_link_already_on_screen_survives(self):
+        answer = "that mp3 is https://s.h4ks.com/Aa.mp3"
+        assert _guard_artifact_urls(answer, set(), self.shown) == answer
+
+    def test_shown_link_survives_markdown_wrapping(self):
+        answer = "app is `https://s.h4ks.com/Aa.mp3`!"
+        assert _guard_artifact_urls(answer, set(), self.shown) == answer
+
+    def test_relabelling_a_shown_id_is_still_caught(self):
+        answer = "now at https://s.h4ks.com/Aa.html"
+        assert "<nothing-was-uploaded>" in _guard_artifact_urls(
+            answer, set(), self.shown
+        )
+
+    def test_foreign_urls_untouched(self):
+        answer = "see https://example.com/x and http://localhost:8000/y"
+        assert _guard_artifact_urls(answer, set(), set()) == answer
+
+    def test_a_games_upload_survives_a_subpath(self):
+        produced = {"https://snake.games.h4ks.com/"}
+        answer = "play at https://snake.games.h4ks.com/index.html"
+        assert _guard_artifact_urls(answer, produced, set()) == answer
+
+    def test_invented_games_link_removed(self):
+        answer = "persisted at https://snake.games.h4ks.com/"
+        assert "<nothing-was-uploaded>" in _guard_artifact_urls(
+            answer, set(), set()
+        )
+
+
+def test_manifest_tag_written_by_the_model_is_stripped():
+    answer = "done!\n[tools used: web_app \u2192 https://s.h4ks.com/Bb.html]"
+    assert _MANIFEST_RE.sub("", answer).strip() == "done!"
+
+
+class TestBackendFallback:
+    cfg = {"reply_max_chars": 420, "reply_max_lines": 10}
+
+    def drive(self, *outcomes):
+        sent = []
+        event = SimpleNamespace(
+            nick="bob",
+            chan="#chan",
+            conn=None,
+            bot=None,
+            agent_context_urls=set(),
+            reply=lambda *lines, **kw: sent.extend(lines),
+        )
+        with (
+            patch.object(agent_plugin, "_make_run_config", return_value=None),
+            patch.object(agent_plugin.Runner, "run") as run,
+        ):
+            run.side_effect = [
+                (
+                    outcome
+                    if isinstance(outcome, BaseException)
+                    else SimpleNamespace(final_output=outcome)
+                )
+                for outcome in outcomes
+            ]
+            err = asyncio.run(
+                agent_plugin._try_backends(
+                    agent=None,
+                    agent_input=[{"role": "user", "content": "hi"}],
+                    event=event,
+                    backends_to_try=["z_ai", "openrouter"][: len(outcomes)],
+                    backends_tried=[],
+                    tracker=agent_plugin._RunTracker(),
+                    cfg=self.cfg,
+                    timeout=30,
+                    max_turns=8,
+                    bot=None,
+                    history=deque(),
+                    prompt="hi",
+                )
+            )
+        return sent, err
+
+    def test_refused_backend_falls_through_to_the_next(self):
+        sent, err = self.drive(OpenAIError("daily limit"), "here you go")
+        assert err is None
+        assert sent == [
+            "z_ai failed (OpenAIError), retrying on openrouter",
+            "here you go",
+        ]
+
+    def test_a_refusal_comes_back_as_a_value_to_report(self):
+        _, err = self.drive(OpenAIError("daily limit"))
+        assert isinstance(err, OpenAIError)
+
+
+def test_report_failure_always_replies():
+    sent = []
+    event = SimpleNamespace(reply=lambda *lines, **kw: sent.extend(lines))
+    tracker = agent_plugin._RunTracker()
+    tracker._calls = [("web_app", 1.0)]
+    with patch.object(
+        agent_plugin, "upload_markdown_paste", side_effect=OSError("no host")
+    ):
+        agent_plugin._report_failure(
+            event, tracker, asyncio.TimeoutError(), "hi", ["z_ai"]
+        )
+    assert sent == ["Agent failed: [TimeoutError] 1 tool calls: web_app"]
 
 
 class TestFormatAnswer:

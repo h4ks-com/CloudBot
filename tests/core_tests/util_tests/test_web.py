@@ -20,6 +20,30 @@ def test_paste(mock_requests):
     assert web.paste("test data", service="none") == "Unable to paste data"
 
 
+def test_girafiles_paste(mock_requests):
+    mock_requests.add(
+        "POST",
+        web.pastebins.get("girafiles").url,
+        body="https://s.h4ks.com/Ab.html",
+    )
+    assert (
+        web.paste("<h1>hi</h1>", ext="html", service="girafiles")
+        == "https://s.h4ks.com/Ab.html"
+    )
+
+
+def test_girafiles_paste_of_bytes_it_already_has(mock_requests):
+    mock_requests.add(
+        "POST",
+        web.pastebins.get("girafiles").url,
+        body="File already exists: https://s.h4ks.com/Ab.html",
+    )
+    assert (
+        web.paste("<h1>hi</h1>", ext="html", service="girafiles")
+        == "https://s.h4ks.com/Ab.html"
+    )
+
+
 def test_paste_try(mock_requests):
     web.pastebins.set_working()
     mock_requests.add(

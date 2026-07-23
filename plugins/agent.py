@@ -16,14 +16,15 @@ import time
 import uuid
 from collections import deque
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from agents import Agent, FunctionTool, RunContextWrapper, RunHooks, Runner
 from agents.agent import StopAtTools
-from agents.exceptions import MaxTurnsExceeded
+from agents.exceptions import AgentsException, MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_provider import OpenAIProvider
 from agents.run import RunConfig
-from openai import AsyncOpenAI, BadRequestError
+from openai import AsyncOpenAI, BadRequestError, OpenAIError
 from sqlalchemy.exc import SQLAlchemyError
 
 from cloudbot import hook
@@ -43,6 +44,7 @@ from cloudbot.agent.tools.kaggle import ensure_kaggle_table, notebook_context
 from cloudbot.agent.tools.mcp_servers import build_mcp_tools, discover
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
+from cloudbot.util import web
 from cloudbot.util.ai_common import wrap_reply_lines
 from cloudbot.util.typing import (
     start_typing_for_command,
@@ -394,6 +396,63 @@ _PR_CLAIM_RE = re.compile(
     r"\b(PR (?:opened|created)|pull request (?:opened|created))", re.I
 )
 
+# Hosts the bot publishes its own work to; a link to one is a claim it made the
+# thing. The paste host is read from the live config, not the default.
+_GAMES_HOST = "games.h4ks.com"
+_PASTE_HOST = urlsplit(web.pastebins.get("girafiles").url).netloc
+_ARTIFACT_HOSTS = (_PASTE_HOST, _GAMES_HOST)
+_ARTIFACT_URL_RE = re.compile(
+    r"https?://[\w.\-]*(?:%s)\S*"
+    % "|".join(re.escape(host) for host in _ARTIFACT_HOSTS)
+)
+_URL_TRAILERS = ".,;:!?*)]}>" + "\"'`"
+
+_MANIFEST_PREFIX = "[tools used:"
+# Only the harness may emit this; the model imitates it from history.
+_MANIFEST_RE = re.compile(re.escape(_MANIFEST_PREFIX) + r"[^\]]*\]")
+
+
+def _artifact_urls(text: str) -> set[str]:
+    return {
+        url.rstrip(_URL_TRAILERS)
+        for url in _ARTIFACT_URL_RE.findall(text or "")
+    }
+
+
+def _artifact_id(url: str) -> str:
+    """A games project owns its whole subdomain; a paste id owns its short name
+    regardless of the extension the host resolves it under."""
+    parts = urlsplit(url)
+    if parts.netloc.endswith(_GAMES_HOST):
+        return parts.netloc
+    stem = parts.path.rsplit("/", 1)[-1]
+    return f"{parts.netloc}/{stem.split('.', 1)[0]}"
+
+
+def _guard_artifact_urls(
+    answer: str, produced: set[str], shown: set[str]
+) -> str:
+    """Remove artifact links the run neither produced nor was shown.
+
+    An invented link still answers HTTP 200 because the host resolves a short id
+    ignoring the extension, so liveness proves nothing. A tool upload matches on
+    its id, since the model may retype the extension and still mean that file; a
+    link merely on screen matches exactly, or relabelling a stale id reads as new
+    work.
+    """
+    made = {_artifact_id(url) for url in produced}
+    invented = [
+        url
+        for url in sorted(_artifact_urls(answer))
+        if url not in shown and _artifact_id(url) not in made
+    ]
+    if not invented:
+        return answer
+    logger.warning("agent: invented artifact urls: %s", invented)
+    for url in invented:
+        answer = answer.replace(url, "<nothing-was-uploaded>")
+    return "(a link below was invented and removed)\n\n" + answer
+
 
 def _guard_pr_hallucination(
     answer: str, real_urls: list[str], pr_tool_called: bool
@@ -449,6 +508,7 @@ class _RunTracker(RunHooks):
         self._errors: set[int] = set()
         self._pr_urls: list[str] = []
         self._results: list[tuple[str, str]] = []
+        self._artifact_urls: set[str] = set()
         # Populated by _run_agent before the run; when set, tool start/end fan out draft/bot-tools steps.
         self._wf_conn = None
         self._wf_target: str = ""
@@ -498,6 +558,7 @@ class _RunTracker(RunHooks):
                     break
         else:
             self._results.append((tool.name, result_str[:120]))
+            self._artifact_urls |= _artifact_urls(result_str)
             if tool.name == "open_github_pr":
                 m = _PR_URL_RE.search(result_str)
                 if m:
@@ -995,7 +1056,10 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
                 "Do NOT react to them unless the current task explicitly references them.\n"
                 + snippet
             )
-        return "\n".join(parts)
+        built = "\n".join(parts)
+        # Links already on screen are fair for the model to repeat.
+        event.agent_context_urls = _artifact_urls(built)
+        return built
 
     return _instructions
 
@@ -1119,6 +1183,7 @@ async def _run_agent(event, prompt: str) -> None:
         len(history),
     )
     tracker = _RunTracker()
+    event.agent_context_urls = set()
 
     # Each .agi run is one draft/bot-tools workflow; its steps are the tool calls.
     workflow_id = None
@@ -1228,6 +1293,29 @@ async def _run_agent(event, prompt: str) -> None:
                 )
 
 
+# Backend failures that fall through to the next backend. Escaping here kills
+# the hook and the channel never hears back.
+_BACKEND_ERRORS = (
+    OpenAIError,
+    AgentsException,
+    KeyError,
+    AttributeError,
+    ValueError,
+    RuntimeError,
+)
+
+
+def _note_retry(
+    event, backend: str, err: BaseException, remaining: list[str]
+) -> None:
+    """Announce a fallback before it starts; each backend gets the full timeout,
+    so a silent retry reads as the bot ignoring you."""
+    if remaining:
+        event.reply(
+            f"{backend} failed ({type(err).__name__}), retrying on {remaining[0]}"
+        )
+
+
 async def _try_backends(
     agent,
     agent_input,
@@ -1246,8 +1334,9 @@ async def _try_backends(
     None on success — in which case we've already replied to IRC and the caller
     skips the failure path)."""
     last_err: BaseException | None = None
-    for backend in backends_to_try:
+    for index, backend in enumerate(backends_to_try):
         backends_tried.append(backend)
+        remaining = backends_to_try[index + 1 :]
         try:
             run_cfg = _make_run_config(cfg, bot, backend)
         except (KeyError, ValueError) as e:
@@ -1293,15 +1382,17 @@ async def _try_backends(
                     ),
                     timeout=timeout,
                 )
-            except (BadRequestError, asyncio.TimeoutError) as e2:
+            except (*_BACKEND_ERRORS, asyncio.TimeoutError) as e2:
                 logger.warning(
                     "agent: %s failed after history trim: %s", backend, e2
                 )
                 last_err = e2
+                _note_retry(event, backend, e2, remaining)
                 continue
         except asyncio.TimeoutError as e:
             logger.warning("agent: %s timed out after %ss", backend, timeout)
             last_err = e
+            _note_retry(event, backend, e, remaining)
             continue
         except MaxTurnsExceeded as e:
             logger.warning("agent: %s hit max turns (%s)", backend, max_turns)
@@ -1313,11 +1404,12 @@ async def _try_backends(
             )
             last_err = e
             break
-        except (KeyError, AttributeError, ValueError, RuntimeError) as e:
+        except _BACKEND_ERRORS as e:
             logger.warning(
                 "agent: %s failed: %s: %s", backend, type(e).__name__, e
             )
             last_err = e
+            _note_retry(event, backend, e, remaining)
             continue
 
         answer = str(result.final_output or "").strip() or "(no answer)"
@@ -1326,6 +1418,19 @@ async def _try_backends(
         )
         answer = _guard_pr_hallucination(
             answer, tracker._pr_urls, pr_tool_called
+        )
+        if _MANIFEST_RE.search(answer):
+            logger.warning("agent: model forged a [tools used:] tag")
+            answer = _MANIFEST_RE.sub("", answer).strip()
+        answer = _guard_artifact_urls(
+            answer,
+            tracker._artifact_urls,
+            event.agent_context_urls
+            | _artifact_urls(
+                " ".join(
+                    str(message.get("content") or "") for message in agent_input
+                )
+            ),
         )
 
         manifest = _tool_manifest(tracker)
@@ -1336,7 +1441,7 @@ async def _try_backends(
             history.append(
                 {
                     "role": "assistant",
-                    "content": f"{answer}\n[tools used: {manifest}]",
+                    "content": f"{answer}\n{_MANIFEST_PREFIX} {manifest}]",
                 }
             )
         else:

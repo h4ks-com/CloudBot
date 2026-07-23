@@ -461,9 +461,9 @@ class Girafiles(Pastebin):
         except RequestException as e:
             raise ServiceError(e.request, "Connection error occurred") from e
 
-        # Girafiles returns the URL directly in the response text
+        # A re-upload of stored bytes answers 200 with "File already exists: <url>".
         if r.status_code == requests.codes.ok:
-            return r.text.strip()
+            return r.text.strip().removeprefix("File already exists: ")
 
         raise ServiceHTTPError("Upload failed", r)
 
