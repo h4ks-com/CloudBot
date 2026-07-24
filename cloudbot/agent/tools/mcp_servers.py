@@ -145,6 +145,18 @@ def discover(bot) -> None:
         )
 
 
+def reload_servers(bot) -> tuple[int, int]:
+    """Re-poll every configured server, replacing the cached manifests.
+
+    Drops servers no longer in config and picks up ones just added. Returns the
+    live server count and total tool count. Blocking, so run it off the loop.
+    """
+    _MANIFESTS.clear()
+    discover(bot)
+    tool_count = sum(len(remotes) for _, remotes in _MANIFESTS.values())
+    return len(_MANIFESTS), tool_count
+
+
 def build_mcp_tools(bot) -> list[FunctionTool]:
     """Agent tools for whatever `discover` found."""
     tools: list[FunctionTool] = []

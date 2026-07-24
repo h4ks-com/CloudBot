@@ -37,11 +37,19 @@ from cloudbot.agent import (
     sanitise_err_message,
     upload_markdown_paste,
 )
-from cloudbot.agent.common import memory_read_namespaces, recent_chat_snippet
+from cloudbot.agent.common import (
+    memory_read_namespaces,
+    recent_chat_snippet,
+    run_in_executor,
+)
 from cloudbot.agent.runs import recent_runs
 from cloudbot.agent.skills import skill_index
 from cloudbot.agent.tools.kaggle import ensure_kaggle_table, notebook_context
-from cloudbot.agent.tools.mcp_servers import build_mcp_tools, discover
+from cloudbot.agent.tools.mcp_servers import (
+    build_mcp_tools,
+    discover,
+    reload_servers,
+)
 from cloudbot.agent.tools.memory import all_memories, ensure_fts
 from cloudbot.event import CommandEvent
 from cloudbot.util import web
@@ -1490,3 +1498,13 @@ async def agent_command(text, event):
         event.reply("usage: .agi <natural language prompt>")
         return
     await _run_agent(event, text)
+
+
+@hook.command("reloadmcp", permissions=["botcontrol"], autohelp=False)
+async def reload_mcp(bot) -> str:
+    """reloads config and re-polls the agent's MCP servers. Owner only."""
+    bot.config.load_config()
+    _TOOLS_CACHE.pop(id(bot), None)
+    _AGENT_CACHE.pop(id(bot), None)
+    servers, tools = await run_in_executor(reload_servers, bot)
+    return f"MCP reloaded: {servers} server(s), {tools} tool(s)."
