@@ -207,6 +207,19 @@
                     "enabled": true,
                     "url": "https://kinesthesia.h4ks.com/api/mcp",
                     "timeout_s": 30
+                },
+                "ytdl": {
+                    "enabled": true,
+                    "url": "https://ytdl.t3ks.com/mcp/",
+                    "api_key_config_path": "ytdl_mcp",
+                    "api_key_header": "x-api-key",
+                    "timeout_s": 900
+                },
+                "midifier": {
+                    "enabled": true,
+                    "url": "https://midifier.t3ks.com/mcp/",
+                    "bearer_token_config_path": "midifier_mcp",
+                    "timeout_s": 60
                 }
             },
             "max_turns": 40,
@@ -302,7 +315,9 @@
         "github_mcp_bot": "",
         "gemini": "",
         "pollinations": "",
-        "sketchfab": ""
+        "sketchfab": "",
+        "ytdl_mcp": "",
+        "midifier_mcp": ""
     },
     "z_ai_endpoint": "https://api.z.ai/api/coding/paas/v4/chat/completions",
     "z_ai_model": "glm-5",
