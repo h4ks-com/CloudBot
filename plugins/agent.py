@@ -284,6 +284,7 @@ DEFAULT_INCLUDE = frozenset(
         "rottentomatoes",
         "rss",
         "radio",
+        "remind",
         "req",
         "reqgse",
         "reqyt",
