@@ -41,9 +41,19 @@ tell the user if it is too long, rather than discovering it at the transcription
    Returns `{"job_id": "...", "state": "queued"}`. The link must be publicly reachable;
    the service refuses private addresses, so pass the URL ytdl gave you unchanged.
 
-4. **Check, then sleep, until it is done.**
+4. **Check the estimate, and decide whether it fits.**
    `midifier_transcription_status(job_id="<id>")` answers at once with `state`, `stage`,
-   `queue_ahead` and `eta_seconds`. Tell the user the first estimate, then repeat:
+   `queue_ahead`, `eta_seconds` and `segments_done`/`segments_total`.
+
+   **If `eta_seconds` is over 1200, do not wait.** You have roughly 40 minutes for the whole
+   run, and a job longer than about 20 minutes will outlast it — you would sleep through your
+   own budget and deliver nothing. Give the user the estimate and the job id, tell them to ask
+   again later, and stop there. The transcription keeps running without you.
+
+   Re-check this every time you come back: a queue ahead of you, or a denser song than the
+   first estimate assumed, can push it past the limit mid-way. When it does, hand off then.
+
+5. **Otherwise sleep until it is done.**
 
    - still running → `wait(seconds=<eta_seconds, at most 300>, reason="transcription")`,
      then check again
@@ -53,10 +63,10 @@ tell the user if it is too long, rather than discovering it at the transcription
 
    Always sleep between checks. Checking without waiting burns a model call for nothing.
 
-5. **Import it.** `kinesthesia_import_project(url="<midi_url>", name="<song>")`.
+6. **Import it.** `kinesthesia_import_project(url="<midi_url>", name="<song>")`.
    This gives the MIDI a permanent home in the library and returns the project.
 
-6. **Hand back the links.** `kinesthesia_player_link(...)` with the project, once per mode
+7. **Hand back the links.** `kinesthesia_player_link(...)` with the project, once per mode
    the user would want: `watch` to listen, `learn` to practise, `multiplayer` to play with
    someone. Include the raw MIDI URL too.
 
@@ -68,8 +78,8 @@ produces an identical file, because decoding is deterministic.
 
 Give the player links, and say what was actually found — the track list is the interesting
 part, since it shows which instruments were heard. If `dropped_instruments` is non-empty,
-mention it briefly: the service detected an instrument the model invented and re-ran
-without it, which is normal and a sign the result is cleaner, not worse.
+mention it briefly: those are lanes the service folded into another because they were one
+part the model had renamed partway through. Normal, and a sign the result is tidier.
 
 Be honest about quality. Transcription of a dense mix is imperfect: some notes will be
 wrong, and there is no expression or dynamics. It is a real transcription of the real
