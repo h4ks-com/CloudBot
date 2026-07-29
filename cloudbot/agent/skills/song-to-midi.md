@@ -17,12 +17,12 @@ here when there is no match, or the user explicitly asked for the real recording
 applies, either transcribe it or say plainly that you cannot. Placing notes by ear and
 presenting that as the song is misleading, however good the riff sounds.
 
-## Before you start: tell the user the wait
+## The wait
 
-Transcription runs at **roughly three times the length of the song** and **one job runs at
-a time**, so a 3-minute song takes about 10 minutes and longer if something is queued
-ahead. Say so up front, then go and do it — do not silently disappear for ten minutes, and
-do not abandon the job because it is slow.
+Transcription takes **several times the length of the song** and **one job runs at a time**,
+so expect many minutes, longer if something is queued ahead. Say so up front, then sleep
+through it with `wait` rather than checking over and over — every check costs a model call,
+sleeping costs one per wait.
 
 **Songs longer than 6 minutes are refused.** Check the duration before downloading and
 tell the user if it is too long, rather than discovering it at the transcription step.
@@ -41,24 +41,28 @@ tell the user if it is too long, rather than discovering it at the transcription
    Returns `{"job_id": "...", "state": "queued"}`. The link must be publicly reachable;
    the service refuses private addresses, so pass the URL ytdl gave you unchanged.
 
-4. **Wait for it.**
-   `midifier_transcription_status(job_id="<id>")`
-   This one waits for you: it holds the call open until something changes, then answers.
-   So when it returns, just call it again — do NOT sit in a tight loop firing it back to
-   back, and do not spend a turn on anything else in between.
-   While it runs you get `state`, `stage`, `queue_ahead` and `eta_seconds`, so you can
-   tell the user how long is left. When `state` is `succeeded` you get `midi_url`, a
-   `tracks` list and `dropped_instruments`.
-   If `state` is `failed`, read `error` and tell the user what it said. Do not retry
-   blindly: the same input usually fails the same way.
+4. **Check, then sleep, until it is done.**
+   `midifier_transcription_status(job_id="<id>")` answers at once with `state`, `stage`,
+   `queue_ahead` and `eta_seconds`. Tell the user the first estimate, then repeat:
 
-5. **Import it into kinesthesia.**
-   `kinesthesia_import_project(url="<midi_url>", name="<song>")`
+   - still running → `wait(seconds=<eta_seconds, at most 300>, reason="transcription")`,
+     then check again
+   - `succeeded` → you get `midi_url`, `tracks` and `dropped_instruments`
+   - `failed` → read `error` and say what it said; do not retry blindly, the same input
+     usually fails the same way
+
+   Always sleep between checks. Checking without waiting burns a model call for nothing.
+
+5. **Import it.** `kinesthesia_import_project(url="<midi_url>", name="<song>")`.
    This gives the MIDI a permanent home in the library and returns the project.
 
 6. **Hand back the links.** `kinesthesia_player_link(...)` with the project, once per mode
    the user would want: `watch` to listen, `learn` to practise, `multiplayer` to play with
    someone. Include the raw MIDI URL too.
+
+**If the run is cut short**, give the user the job id. The transcription keeps running on the
+service, so asking again later collects it — starting over costs the same many minutes and
+produces an identical file, because decoding is deterministic.
 
 ## Reporting the result
 

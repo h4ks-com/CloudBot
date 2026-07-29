@@ -223,7 +223,7 @@
                 }
             },
             "max_turns": 40,
-            "timeout_s": 900,
+            "timeout_s": 2400,
             "reply_max_chars": 420,
             "enabled_channels": [],
             "include": [],
