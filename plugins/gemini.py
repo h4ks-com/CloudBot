@@ -183,43 +183,42 @@ def gemedit_command(text, chan, nick, db):
     return _upload_image(images[0], chan or nick)
 
 
-# Disabled aimedia video path; .video is served by plugins/hyperframes.py.
-# @hook.command("video")
-# def video_command(text, chan, nick, conn, db):
-#     """<prompt> - Generate a video from a text prompt."""
-#     prompt = text.strip()
-#     if not prompt:
-#         return "Usage: .video <prompt>"
-#     try:
-#         api_url, key = aimedia.config_from_bot(bot)
-#     except aimedia.MediaGenNotConfigured as e:
-#         return str(e)
-#
-#     limit_msg = check(db, VID_BUCKET, VID_LIMITS)
-#     if limit_msg:
-#         return limit_msg
-#
-#     try:
-#         job_id = aimedia.submit_video(api_url, key, prompt)
-#     except aimedia.MediaGenError as e:
-#         return f"media error: {e}"
-#     record(db, VID_BUCKET)
-#     aimedia.watch_video(
-#         api_url, key, job_id, network=conn.name, chan=chan, nick=nick
-#     )
-#     return f"⏳ rendering video (job {job_id}) — I'll post the link here when it's ready (~3 min)."
-#
-#
-# @hook.periodic(15, initial_interval=15)
-# def video_watch_tick(bot):
-#     """Post finished video links for any submit that has rendered."""
-#
-#     def post(network, chan, message):
-#         conn = bot.connections.get(network)
-#         if conn and conn.ready:
-#             conn.message(chan, message)
-#
-#     aimedia.poll_watches(post)
+@hook.command("gemini_video", "gemiv", allow_private=False)
+def gemiv_command(text, chan, nick, conn, db):
+    """<prompt> - Generate a video with Gemini (Veo). Renders async; the link posts here when ready."""
+    prompt = text.strip()
+    if not prompt:
+        return "Usage: .gemiv <prompt>"
+    try:
+        api_url, key = aimedia.config_from_bot(bot)
+    except aimedia.MediaGenNotConfigured as e:
+        return str(e)
+
+    limit_msg = check(db, VID_BUCKET, VID_LIMITS)
+    if limit_msg:
+        return limit_msg
+
+    try:
+        job_id = aimedia.submit_video(api_url, key, prompt)
+    except aimedia.MediaGenError as e:
+        return f"media error: {e}"
+    record(db, VID_BUCKET)
+    aimedia.watch_video(
+        api_url, key, job_id, network=conn.name, chan=chan, nick=nick
+    )
+    return f"⏳ rendering video (job {job_id}) — I'll post the link here when it's ready (~4 min)."
+
+
+@hook.periodic(15, initial_interval=15)
+def gemiv_watch_tick(bot):
+    """Post finished Gemini video links for any submit that has rendered."""
+
+    def post(network, chan, message):
+        conn = bot.connections.get(network)
+        if conn and conn.ready:
+            conn.message(chan, message)
+
+    aimedia.poll_watches(post)
 
 
 @hook.command("gemt", "gai", "gae", allow_private=False)
