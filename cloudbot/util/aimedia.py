@@ -92,22 +92,28 @@ def generate_image(url: str, key: str, prompt: str) -> list[bytes]:
     return [base64.b64decode(b) for b in data.get("images", [])]
 
 
-def edit_image(url: str, key: str, prompt: str, image_b64: str) -> list[bytes]:
-    """POST /image with a source image — img2img edit. Returns the decoded result."""
+def edit_image(url: str, key: str, prompt: str, images_b64: list[str]) -> list[bytes]:
+    """POST /image with source image(s) — img2img edit. Returns the decoded result."""
     data = _request(
         "POST",
         url,
         key,
         "/image",
         timeout=EDIT_TIMEOUT,
-        json={"prompt": prompt, "image_b64": image_b64},
+        json={"prompt": prompt, "images_b64": images_b64},
     )
     return [base64.b64decode(b) for b in data.get("images", [])]
 
 
-def submit_video(url: str, key: str, prompt: str) -> str:
-    """POST /video — submit an async video render. Returns the job id."""
-    data = _request("POST", url, key, "/video", json={"prompt": prompt})
+def submit_video(url: str, key: str, prompt: str, images_b64: list[str] | None = None) -> str:
+    """POST /video — submit an async video render. Returns the job id.
+
+    With *images_b64* the source image(s) are animated (image->video); without them, text->video.
+    """
+    payload: dict[str, Any] = {"prompt": prompt}
+    if images_b64:
+        payload["images_b64"] = images_b64
+    data = _request("POST", url, key, "/video", json=payload)
     job_id = data.get("job_id")
     if not job_id:
         raise MediaGenError(f"no job_id in response: {data}")

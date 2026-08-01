@@ -1,7 +1,9 @@
 import base64
+import re
 import tempfile
 from typing import Deque
 
+import magic
 from requests import HTTPError, RequestException
 
 from cloudbot import hook
@@ -50,6 +52,8 @@ TEXT_LIMITS = [
 
 MAX_IMAGE_SIZE = 20 * 1024 * 1024
 MAX_TEXT_HISTORY_LENGTH = 32
+MEDIA_TIMEOUT = 15
+URL_RE = re.compile(r"https?://\S+")
 
 gemt_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
 
@@ -72,28 +76,52 @@ def _upload_image(image_bytes, target):
         return FileIrcResponseWrapper.upload_file(f.name, target)
 
 
-def _fetch_image(url):
-    """Download URL and validate it's an image."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; CloudBot/1.0)",
-        "Accept": "image/*,*/*;q=0.8",
-    }
+def _fetch_media(url):
+    """Fetch *url* if it resolves to an image within the size cap. Detection is content-based — a HEAD
+    Content-Type gate, a hard running size cap while streaming, then a libmagic sniff of the bytes —
+    never the URL extension. Returns (bytes, error); bytes is None (with an error) when not a usable
+    image or on failure."""
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; CloudBot/1.0)", "Accept": "image/*,*/*;q=0.8"}
     session = get_session()
     try:
-        resp = session.get(url, headers=headers, timeout=30)
+        head = session.head(url, headers=headers, timeout=MEDIA_TIMEOUT, allow_redirects=True)
+        ctype = head.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        if ctype and not ctype.startswith("image/"):
+            return None, f"not an image (Content-Type: {ctype})"
+        if int(head.headers.get("Content-Length") or 0) > MAX_IMAGE_SIZE:
+            return None, "image too large (max 20MB)"
+    except RequestException:
+        pass  # some hosts reject HEAD; the streamed GET below still enforces type + size
+
+    try:
+        resp = session.get(url, headers=headers, timeout=MEDIA_TIMEOUT, stream=True, allow_redirects=True)
         resp.raise_for_status()
     except RequestException as e:
-        return None, None, f"Failed to download image: {e}"
+        return None, f"failed to fetch: {e}"
 
-    content_type = resp.headers.get("Content-Type", "")
-    if not content_type.startswith("image/"):
-        return None, None, f"URL is not an image (Content-Type: {content_type})"
+    buf = bytearray()
+    for chunk in resp.iter_content(65536):
+        buf += chunk
+        if len(buf) > MAX_IMAGE_SIZE:
+            return None, "image too large (max 20MB)"
+    data = bytes(buf)
+    if not magic.from_buffer(data[:8192], mime=True).startswith("image/"):
+        return None, "URL is not an image"
+    return data, None
 
-    if len(resp.content) > MAX_IMAGE_SIZE:
-        return None, None, "Image too large (max 20MB)."
 
-    mime = content_type.split(";")[0].strip()
-    return resp.content, mime, None
+def _extract_media(text):
+    """Split *text* into (image_b64_list, prompt): every URL that resolves to an image is fetched and
+    attached (and removed from the prompt); non-image URLs are left in the prompt as plain text."""
+    prompt = text
+    images_b64 = []
+    for url in URL_RE.findall(text):
+        clean = url.rstrip(".,)>!\"'")
+        data, _err = _fetch_media(clean)
+        if data is not None:
+            images_b64.append(base64.b64encode(data).decode())
+            prompt = prompt.replace(url, " ")
+    return images_b64, prompt.strip()
 
 
 def _call_gemini_text(api_key, history):
@@ -124,12 +152,9 @@ def _call_gemini_text(api_key, history):
     return text, None
 
 
-@hook.command("gemimg", allow_private=False)
-def gemimg_command(text, chan, nick, db):
-    """<prompt> - Generate an image with Gemini."""
-    prompt = text.strip()
-    if not prompt:
-        return "Usage: .gemimg <prompt>"
+@hook.command("gemi", "gemimg", allow_private=False)
+def gemi_command(text, chan, nick, db):
+    """<prompt>  OR  <image_url(s)> <prompt> - Generate an image, or edit the linked image(s), with Gemini."""
     try:
         api_url, key = aimedia.config_from_bot(bot)
     except aimedia.MediaGenNotConfigured as e:
@@ -139,56 +164,29 @@ def gemimg_command(text, chan, nick, db):
     if limit_msg:
         return limit_msg
 
-    try:
-        images = aimedia.generate_image(api_url, key, prompt)
-    except aimedia.MediaGenError as e:
-        return f"media error: {e}"
-    if not images:
-        return "Gemini returned no image. Try a different prompt."
-    record(db, IMG_BUCKET)
-    return _upload_image(images[0], chan or nick)
-
-
-@hook.command("gemedit", allow_private=False)
-def gemedit_command(text, chan, nick, db):
-    """<url> <prompt> - Edit an image with Gemini."""
-    parts_text = text.strip().split(None, 1)
-    if len(parts_text) < 2:
-        return "Usage: .gemedit <image_url> <prompt>"
-    img_url, prompt = parts_text
-    if not img_url.startswith(("http://", "https://")):
-        return "First argument must be a URL."
-    try:
-        api_url, key = aimedia.config_from_bot(bot)
-    except aimedia.MediaGenNotConfigured as e:
-        return str(e)
-
-    limit_msg = check(db, IMG_BUCKET, IMG_LIMITS)
-    if limit_msg:
-        return limit_msg
-
-    image_data, _, err = _fetch_image(img_url)
-    if err:
-        return err
-
-    try:
-        images = aimedia.edit_image(
-            api_url, key, prompt, base64.b64encode(image_data).decode()
-        )
-    except aimedia.MediaGenError as e:
-        return f"media error: {e}"
-    if not images:
-        return "Gemini returned no image. Try a different prompt."
-    record(db, IMG_BUCKET)
-    return _upload_image(images[0], chan or nick)
-
-
-@hook.command("gemini_video", "gemiv", allow_private=False)
-def gemiv_command(text, chan, nick, conn, db):
-    """<prompt> - Generate a video with Gemini (Veo). Renders async; the link posts here when ready."""
-    prompt = text.strip()
+    images_b64, prompt = _extract_media(text.strip())
     if not prompt:
-        return "Usage: .gemiv <prompt>"
+        return "Usage: .gemi <prompt>  |  .gemi <image_url> <prompt> to edit an image"
+
+    try:
+        if images_b64:
+            images = aimedia.edit_image(api_url, key, prompt, images_b64)
+        else:
+            images = aimedia.generate_image(api_url, key, prompt)
+    except aimedia.MediaGenError as e:
+        return f"media error: {e}"
+    if not images:
+        return "Gemini returned no image. Try a different prompt."
+    record(db, IMG_BUCKET)
+    return _upload_image(images[0], chan or nick)
+
+
+@hook.command("gemv", "gemini_video", allow_private=False)
+def gemv_command(text, chan, nick, conn, db):
+    """<prompt>  OR  <image_url(s)> <prompt> - Generate a video with Gemini (Veo); with image(s), animate them.
+
+    Renders async; the link posts here when ready.
+    """
     try:
         api_url, key = aimedia.config_from_bot(bot)
     except aimedia.MediaGenNotConfigured as e:
@@ -198,19 +196,22 @@ def gemiv_command(text, chan, nick, conn, db):
     if limit_msg:
         return limit_msg
 
+    images_b64, prompt = _extract_media(text.strip())
+    if not prompt:
+        return "Usage: .gemv <prompt>  |  .gemv <image_url> <prompt> to animate an image"
+
     try:
-        job_id = aimedia.submit_video(api_url, key, prompt)
+        job_id = aimedia.submit_video(api_url, key, prompt, images_b64 or None)
     except aimedia.MediaGenError as e:
         return f"media error: {e}"
     record(db, VID_BUCKET)
-    aimedia.watch_video(
-        api_url, key, job_id, network=conn.name, chan=chan, nick=nick
-    )
-    return f"⏳ rendering video (job {job_id}) — I'll post the link here when it's ready (~4 min)."
+    aimedia.watch_video(api_url, key, job_id, network=conn.name, chan=chan, nick=nick)
+    kind = "animating your image" if images_b64 else "rendering video"
+    return f"⏳ {kind} (job {job_id}) — I'll post the link here when it's ready (~4 min)."
 
 
 @hook.periodic(15, initial_interval=15)
-def gemiv_watch_tick(bot):
+def gemv_watch_tick(bot):
     """Post finished Gemini video links for any submit that has rendered."""
 
     def post(network, chan, message):
