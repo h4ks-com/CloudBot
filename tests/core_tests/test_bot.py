@@ -279,7 +279,7 @@ class TestProcessing:
         run_hooks = []
 
         @hook.command("foob", "fooc")
-        async def coro(hook):  # pragma: no cover
+        async def coro(hook):
             run_hooks.append(hook)
 
         full_hook = CommandHook(plugin, hook._get_hook(coro, "command"))
@@ -289,12 +289,51 @@ class TestProcessing:
 
         await CloudBot.process(bot, event)
         assert sorted(run_hooks, key=id) == sorted(
-            [],
+            [
+                full_hook,
+            ],
             key=id,
         )
 
+        assert conn.notice.mock_calls == []
+
+    @pytest.mark.asyncio()
+    async def test_command_partial_ambiguous(
+        self, mock_bot_factory, event_loop
+    ) -> None:
+        bot = mock_bot_factory(loop=event_loop)
+        conn = MockConn(nick="bot")
+        event = Event(
+            irc_command="PRIVMSG",
+            event_type=EventType.message,
+            channel="#foo",
+            nick="bar",
+            conn=conn,
+            content=".foo bar",
+        )
+
+        plugin = MagicMock()
+
+        run_hooks = []
+
+        @hook.command("foob")
+        async def coro(hook):  # pragma: no cover
+            run_hooks.append(hook)
+
+        @hook.command("fooc")
+        async def coro1(hook):  # pragma: no cover
+            run_hooks.append(hook)
+
+        for func in (coro, coro1):
+            full_hook = CommandHook(plugin, hook._get_hook(func, "command"))
+            for cmd in full_hook.aliases:
+                bot.plugin_manager.commands[cmd] = full_hook
+
+        await CloudBot.process(bot, event)
+        assert run_hooks == []
+
         assert conn.notice.mock_calls == [
-            call("bar", "Possible matches: foob or fooc")
+            call("bar", "Possible matches: foob or fooc", tags=None)
         ]
 
     @pytest.mark.asyncio()

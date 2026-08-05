@@ -56,7 +56,7 @@ async def help_command(
             notice(f"Unknown command '{text}'")
             return
 
-        if len(cmds) > 1:
+        if len({cmd_hook for _, cmd_hook in cmds}) > 1:
             notice(
                 "Possible matches: {}".format(
                     formatting.get_text_list(
@@ -93,11 +93,11 @@ async def cmdinfo(text, bot, notice):
         notice(f"Unknown command: '{name}'")
         return
 
-    if len(cmds) > 1:
+    if len({cmd_hook for _, cmd_hook in cmds}) > 1:
         notice(
             "Possible matches: {}".format(
                 formatting.get_text_list(
-                    sorted([command for command, plugin in cmds])
+                    sorted([command for command, _ in cmds])
                 )
             )
         )

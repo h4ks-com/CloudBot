@@ -463,7 +463,7 @@ class CloudBot(AbstractBot):
 
                     if potential_matches:
                         matched_command = True
-                        if len(potential_matches) == 1:
+                        if len({h for _, h in potential_matches}) == 1:
                             dispatch_command(potential_matches[0][1])
                         else:
                             commands = sorted(
