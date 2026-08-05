@@ -37,6 +37,7 @@ from cloudbot.agent.tools.kaggle import (
     last_run,
     list_notebooks,
     notebook_context,
+    poll_unfinished,
 )
 from cloudbot.agent.tools.web import upload_markdown_paste
 from cloudbot.bot import CloudBot
@@ -381,3 +382,19 @@ async def kaggle_command(text, event):
         ping_own_line=True,
         extra_tags=bot_cmds.workflow_terminal_tag(workflow_id, "complete"),
     )
+
+
+@hook.periodic(30, initial_interval=60)
+def kaggle_watch_tick(bot: CloudBot) -> None:
+    """Announce runs that finish after the turn that pushed them has ended."""
+    try:
+        token = token_from_bot(bot)
+    except KaggleNotConfigured:
+        return
+
+    def post(network: str, chan: str, message: str) -> None:
+        conn = bot.connections.get(network)
+        if conn and conn.ready:
+            conn.message(chan, message)
+
+    poll_unfinished(token, post)

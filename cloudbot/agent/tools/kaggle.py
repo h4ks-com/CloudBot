@@ -15,11 +15,11 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import TypedDict, cast
 
-from sqlalchemy import Column, Integer, String, Table, Text
+from sqlalchemy import Column, Integer, String, Table, Text, inspect, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -44,6 +44,7 @@ _NOTEBOOKS_TABLE = Table(
     Column("gpu", Integer, server_default="0"),
     Column("last_status", String(40)),
     Column("last_version", Integer, server_default="0"),
+    Column("network", String(60)),
     Column("channel", String(100)),
     Column("nick", String(100)),
     Column("created_at", String(32)),
@@ -144,8 +145,26 @@ def _session() -> Iterator[Session]:
 
 
 def ensure_kaggle_table(engine: Engine) -> None:
-    """Create the kaggle_notebooks table if absent (idempotent, for fresh DBs)."""
+    """Create the kaggle_notebooks table if absent (idempotent, for fresh DBs).
+
+    `create` leaves an existing table untouched, so `network` -- added once
+    databases were already in the field -- arrives only through the ALTER.
+    There is no migration framework to hand: quote.py and tell.py each carry
+    their own too.
+    """
     _NOTEBOOKS_TABLE.create(bind=engine, checkfirst=True)
+    present = {
+        column["name"]
+        for column in inspect(engine).get_columns(_NOTEBOOKS_TABLE.name)
+    }
+    if "network" not in present:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE kaggle_notebooks ADD COLUMN network VARCHAR(60)"
+                )
+            )
+        logger.info("kaggle: added the network column")
 
 
 def _now() -> str:
@@ -159,6 +178,7 @@ def _record(
     url: str,
     gpu: bool,
     version: int,
+    network: str,
     channel: str,
     nick: str,
 ) -> None:
@@ -171,6 +191,7 @@ def _record(
         "gpu": 1 if gpu else 0,
         "last_status": kaggle_client.KernelState.QUEUED.value,
         "last_version": version,
+        "network": network,
         "channel": channel,
         "nick": nick,
         "created_at": now,
@@ -188,6 +209,8 @@ def _record(
                 "gpu": 1 if gpu else 0,
                 "last_status": kaggle_client.KernelState.QUEUED.value,
                 "last_version": version,
+                "network": network,
+                "channel": channel,
                 "updated_at": now,
             },
         )
@@ -220,6 +243,7 @@ class NotebookRow(TypedDict):
     gpu: int
     last_status: str
     last_version: int
+    network: str
     channel: str
     nick: str
     created_at: str
@@ -698,6 +722,7 @@ async def kaggle_run_notebook(ctx, data) -> str:
             pushed.url,
             gpu,
             pushed.version,
+            getattr(getattr(event, "conn", None), "name", "") or "",
             getattr(event, "chan", "") or "",
             nick,
         ),
@@ -832,16 +857,21 @@ def _paste_url(raw: str) -> str:
     return match.group(1) if match else raw
 
 
-async def _share_artifact(item: kaggle_client.OutputFile) -> str:
-    """Mirror one output file to the paste service and return its link."""
-    blob = await run_in_executor(kaggle_client.fetch_file, item.url)
+def _mirror_artifact(item: kaggle_client.OutputFile) -> str:
+    """Mirror one output file to the paste service and return its link.
+
+    A Kaggle output URL is signed and expires, so a link that outlives the run
+    has to point at our own copy.
+    """
+    blob = kaggle_client.fetch_file(item.url)
     ext = item.name.rsplit(".", 1)[-1] if "." in item.name else "txt"
     # Without raise_on_no_paste, web.paste returns its failure message as a
     # plain string, which would be reported as if it were a URL.
-    url = await run_in_executor(
-        partial(web.paste, blob, ext, raise_on_no_paste=True)
-    )
-    return _paste_url(url)
+    return _paste_url(web.paste(blob, ext, raise_on_no_paste=True))
+
+
+async def _share_artifact(item: kaggle_client.OutputFile) -> str:
+    return await run_in_executor(_mirror_artifact, item)
 
 
 _LIVE_SAMPLE_S = 20
@@ -1167,3 +1197,89 @@ async def kaggle_delete_notebook(ctx, data) -> str:
     _mark_done(ref)
     await run_in_executor(partial(_forget, ref))
     return f"Deleted {ref}."
+
+
+# A run outlives the agent turn that pushed it: a notebook may take half an hour
+# and the turn is capped in minutes, so whoever asked would otherwise be told the
+# agent failed while the work was still going. Everything below exists to close
+# that gap — poll the index out of band and say so in the channel that asked.
+
+_WATCH_MAX_AGE_H = 6
+_TERMINAL_VALUES = sorted(state.value for state in kaggle_client.TERMINAL_STATES)
+
+
+def unfinished_notebooks() -> list[NotebookRow]:
+    """Runs the index still believes are in flight.
+
+    Bounded by age because a row Kaggle has forgotten never reaches a terminal
+    state, and without the bound it would be polled on every tick forever.
+    """
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=_WATCH_MAX_AGE_H)
+    ).isoformat()
+    query = (
+        _NOTEBOOKS_TABLE.select()
+        .where(_NOTEBOOKS_TABLE.c.last_status.notin_(_TERMINAL_VALUES))
+        .where(_NOTEBOOKS_TABLE.c.updated_at >= cutoff)
+    )
+    with _session() as db:
+        rows = db.execute(query).mappings().fetchall()
+        return [cast(NotebookRow, dict(row)) for row in rows]
+
+
+def _finished_line(token: str, row: NotebookRow, state: str) -> str:
+    """One IRC line: what finished, and a link that still works tomorrow."""
+    head = f"{row['nick']}: kaggle '{row['title']}' {state} — {row['url']}"
+    try:
+        files, _ = kaggle_client.output(token, row["ref"])
+    except kaggle_client.KaggleError as e:
+        logger.warning("kaggle watch: output for %s failed: %s", row["ref"], e)
+        return head
+    if not files:
+        return head
+    try:
+        link = _mirror_artifact(files[0])
+    except (
+        kaggle_client.KaggleError,
+        web.NoPasteException,
+        OSError,
+        ValueError,
+    ):
+        logger.warning(
+            "kaggle watch: mirroring %s failed", files[0].name, exc_info=True
+        )
+        return f"{head} — {len(files)} file(s), fetch with kaggle_notebook_output"
+    rest = (
+        f" (+{len(files) - 1} more, kaggle_notebook_output)"
+        if len(files) > 1
+        else ""
+    )
+    return f"{head} — {files[0].name}: {link}{rest}"
+
+
+def poll_unfinished(
+    token: str, post: Callable[[str, str, str], None]
+) -> None:
+    """Advance every in-flight run and announce the ones that stopped.
+
+    `post` is called only on the transition into a terminal state, and the new
+    state is written first — so a failure to deliver the message loses the
+    message rather than repeating it on the next tick.
+    """
+    for row in unfinished_notebooks():
+        ref = row["ref"]
+        try:
+            state = kaggle_client.status(token, ref)
+        except kaggle_client.KaggleError as e:
+            logger.debug("kaggle watch: status for %s failed: %s", ref, e)
+            continue
+        if state == row["last_status"]:
+            continue
+        _mark_status(ref, state)
+        if state not in kaggle_client.TERMINAL_STATES:
+            continue
+        _mark_done(ref)
+        # Rows written before the network column existed cannot be routed back
+        # to a channel; advancing their status is all this can do for them.
+        if row["network"] and row["channel"]:
+            post(row["network"], row["channel"], _finished_line(token, row, state))
