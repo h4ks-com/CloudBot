@@ -78,23 +78,23 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 ### Cell 2 (code) — install the model, keeping Kaggle's CUDA torch
 
 ```python
+import torchaudio
+with open("/tmp/torch.txt", "w") as fh:
+    fh.write(f"torch=={torch.__version__}\ntorchaudio=={torchaudio.__version__}\n")
+
 t0 = time.time()
-r = subprocess.run([sys.executable, "-m", "pip", "install", "--no-deps", "muscriptor"],
+r = subprocess.run([sys.executable, "-m", "pip", "install", "-c", "/tmp/torch.txt",
+                    "muscriptor==0.3.0", "pydantic-settings", "pretty-midi"],
                    capture_output=True, text=True)
 print("muscriptor rc", r.returncode, f"({time.time()-t0:.0f}s)")
 if r.returncode: print(r.stderr[-1500:]); raise RuntimeError("muscriptor install failed")
-
-t0 = time.time()
-deps = ["einops", "huggingface-hub", "mido", "numpy", "packaging", "safetensors", "soundfile",
-        "typer", "pydantic-settings", "pretty-midi"]
-r = subprocess.run([sys.executable, "-m", "pip", "install", *deps], capture_output=True, text=True)
-print("deps rc", r.returncode, f"({time.time()-t0:.0f}s)")
-if r.returncode: print(r.stderr[-1500:]); raise RuntimeError("dependency install failed")
 print("torch still cuda:", torch.version.cuda)
 ```
 
-`--no-deps` matters: muscriptor pulls its own torch, which would replace Kaggle's CUDA build
-with a CPU one and drop the run to unusable speed.
+The constraint file matters: muscriptor pulls its own torch, which would replace Kaggle's CUDA
+build with a CPU one and drop the run to unusable speed. Pinning torch and torchaudio to what
+Kaggle already has lets every other dependency resolve normally. Listing them by hand instead
+breaks on the release that adds one, and muscriptor's CLI imports all of them at startup.
 
 ### Cell 3 (code) — the pipeline itself
 
