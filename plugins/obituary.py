@@ -1,5 +1,3 @@
-"""deaths.py - List recent notable deaths from Wikipedia's Deaths-in-YYYY article."""
-
 import datetime
 import re
 from dataclasses import dataclass
@@ -183,7 +181,7 @@ def format_deaths(deaths: list[Death]) -> list[str]:
     return lines
 
 
-@hook.command("deaths", autohelp=False)
+@hook.command("obituary", "obituaries", autohelp=False)
 def deaths(text: str) -> str | list[str]:
     """[count] - Show up to <count> (default 5, max 10) most recent notable deaths."""
     count = _parse_count(text)
