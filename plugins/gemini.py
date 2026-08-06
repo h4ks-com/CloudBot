@@ -81,11 +81,18 @@ def _fetch_media(url):
     Content-Type gate, a hard running size cap while streaming, then a libmagic sniff of the bytes —
     never the URL extension. Returns (bytes, error); bytes is None (with an error) when not a usable
     image or on failure."""
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; CloudBot/1.0)", "Accept": "image/*,*/*;q=0.8"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; CloudBot/1.0)",
+        "Accept": "image/*,*/*;q=0.8",
+    }
     session = get_session()
     try:
-        head = session.head(url, headers=headers, timeout=MEDIA_TIMEOUT, allow_redirects=True)
-        ctype = head.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        head = session.head(
+            url, headers=headers, timeout=MEDIA_TIMEOUT, allow_redirects=True
+        )
+        ctype = (
+            head.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        )
         if ctype and not ctype.startswith("image/"):
             return None, f"not an image (Content-Type: {ctype})"
         if int(head.headers.get("Content-Length") or 0) > MAX_IMAGE_SIZE:
@@ -94,7 +101,13 @@ def _fetch_media(url):
         pass  # some hosts reject HEAD; the streamed GET below still enforces type + size
 
     try:
-        resp = session.get(url, headers=headers, timeout=MEDIA_TIMEOUT, stream=True, allow_redirects=True)
+        resp = session.get(
+            url,
+            headers=headers,
+            timeout=MEDIA_TIMEOUT,
+            stream=True,
+            allow_redirects=True,
+        )
         resp.raise_for_status()
     except RequestException as e:
         return None, f"failed to fetch: {e}"
@@ -112,7 +125,8 @@ def _fetch_media(url):
 
 def _extract_media(text):
     """Split *text* into (image_b64_list, prompt): every URL that resolves to an image is fetched and
-    attached (and removed from the prompt); non-image URLs are left in the prompt as plain text."""
+    attached (and removed from the prompt); non-image URLs are left in the prompt as plain text.
+    """
     prompt = text
     images_b64 = []
     for url in URL_RE.findall(text):
@@ -205,7 +219,9 @@ def gemv_command(text, chan, nick, conn, db):
     except aimedia.MediaGenError as e:
         return f"media error: {e}"
     record(db, VID_BUCKET)
-    aimedia.watch_video(api_url, key, job_id, network=conn.name, chan=chan, nick=nick)
+    aimedia.watch_video(
+        api_url, key, job_id, network=conn.name, chan=chan, nick=nick
+    )
     kind = "animating your image" if images_b64 else "rendering video"
     return f"⏳ {kind} (job {job_id}) — I'll post the link here when it's ready (~4 min)."
 

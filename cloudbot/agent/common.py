@@ -10,7 +10,7 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 import openai
 import requests
@@ -18,6 +18,8 @@ from agents import RunContextWrapper
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger("cloudbot")
+
+_T = TypeVar("_T")
 
 # Boundary errors caught in tool wrappers. Anything else is a real bug —
 # let it propagate so we see it in logs instead of swallowing silently.
@@ -249,7 +251,13 @@ def safe_tool(fn: ToolInvoke) -> ToolInvoke:
     return wrapped
 
 
-async def run_in_executor(fn, *args, **kwargs) -> Any:
-    """Lift a sync callable into an async run via the default executor."""
+async def run_in_executor(
+    fn: Callable[..., _T], *args: Any, **kwargs: Any
+) -> _T:
+    """Lift a sync callable into an async run via the default executor.
+
+    Generic in the callable's return, so a caller keeps its own type. Untyped, every
+    awaited result is Any and quietly defeats the checks at the call site.
+    """
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))

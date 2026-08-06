@@ -420,6 +420,9 @@ _MANIFEST_PREFIX = "[tools used:"
 # Only the harness may emit this; the model imitates it from history.
 _MANIFEST_RE = re.compile(re.escape(_MANIFEST_PREFIX) + r"[^\]]*\]")
 
+# The whole answer, when a skill wants the turn to end without saying anything.
+SILENT_ANSWER = "<no-reply>"
+
 
 def _artifact_urls(text: str) -> set[str]:
     return {
@@ -1134,6 +1137,11 @@ def _format_answer(text: str, cfg: dict) -> tuple[list[str], bool]:
     the first line so it rides the nick ping (``(nick) full: <url>``) with the
     answer below; otherwise a multi-line answer puts the ping on its own line so
     markdown headings/lists render."""
+    # Work that reports itself later (a Kaggle run is announced when it lands) has nothing
+    # worth saying at the start, and "it started" is noise. A model will not reliably emit an
+    # empty answer, so a skill has it say this instead and the turn ends without a message.
+    if text.strip() == SILENT_ANSWER:
+        return [], False
     lines, url = wrap_reply_lines(
         text,
         max_lines=int(cfg.get("reply_max_lines", 10)),

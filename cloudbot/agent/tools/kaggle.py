@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import TypedDict, cast
+from urllib.parse import urlencode
 
 from sqlalchemy import Column, Integer, String, Table, Text, inspect, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -760,6 +761,11 @@ async def kaggle_run_notebook(ctx, data) -> str:
         return (
             f"Started: {head}\nStill {state} after {wait_s}s — ref '{ref}'.\n"
             + await _live_text(token, ref)
+            + "\n\nSTOP HERE. This run is watched and one message is posted to the "
+            "channel when it finishes, so anything you say now is noise the user "
+            "has asked not to receive. Your entire answer must be exactly "
+            "<no-reply> with no other text. Do not describe the run, do not "
+            "estimate a time, do not promise to post later."
         )
     return f"Finished ({state}): {head}\n" + await _result_text(
         event, token, ref, state, timeout_s
@@ -888,14 +894,8 @@ async def _live_text(token: str, ref: str) -> str:
         kaggle_client.stream_log, token, ref, _LIVE_SAMPLE_S
     )
     if not log.strip():
-        return (
-            "It has printed nothing yet. Call kaggle_wait_for_notebook again — "
-            "do not poll."
-        )
-    return (
-        f"Output so far — use it to judge whether it is progressing or stuck, "
-        f"then call kaggle_wait_for_notebook again:\n{log[-_LOG_TAIL_MAX:]}"
-    )
+        return "It has printed nothing yet, which is normal this early."
+    return f"Output so far, to judge whether the run is doing the right thing:\n{log[-_LOG_TAIL_MAX:]}"
 
 
 async def _log_section(event: object, log: str) -> str:
@@ -985,16 +985,13 @@ async def _result_text(
     name="kaggle_wait_for_notebook",
     description=(
         "BLOCK until a running notebook finishes, then return its outcome, files "
-        "and log — the same result kaggle_run_notebook gives when it finishes in "
-        "time.\n"
-        "Use this whenever a run is still going. Do NOT sit in a loop calling "
-        "kaggle_notebook_status: this waits for you in a single step, while "
-        "polling burns a turn every few seconds and will run you out of turns "
-        "before the notebook is done.\n"
-        "If the run is still going when the wait elapses you get what it has "
-        "PRINTED SO FAR — read it. That is how you tell a slow download from a "
-        "hang, and how you catch a run doing the wrong thing early. Then call "
-        "this again."
+        "and log.\n"
+        "AVOID THIS FOR A RUN YOU JUST STARTED. A notebook outlasts the time "
+        "budget of a turn, so waiting spends the budget and reports a failure for "
+        "a run that is working. Every run is watched and announced to the channel "
+        "when it finishes, so ending your turn loses nothing.\n"
+        "Use it only when the user is waiting on a run you know is nearly done, or "
+        "when you were explicitly told to wait. Pass a wait_s you can afford."
     ),
     schema={
         "type": "object",
@@ -1205,7 +1202,18 @@ async def kaggle_delete_notebook(ctx, data) -> str:
 # that gap — poll the index out of band and say so in the channel that asked.
 
 _WATCH_MAX_AGE_H = 6
-_TERMINAL_VALUES = sorted(state.value for state in kaggle_client.TERMINAL_STATES)
+_TERMINAL_VALUES = sorted(
+    state.value for state in kaggle_client.TERMINAL_STATES
+)
+# Built here rather than through the kinesthesia MCP: the announcement is the whole point of
+# the watcher, and it must not be lost to that service being down. The player takes any .mid
+# on an origin it trusts, and the paste service is one.
+_KINESTHESIA_WATCH = "https://kinesthesia.h4ks.com/watch"
+
+
+def _playable(link: str, title: str) -> str:
+    query = urlencode({"url": link, "name": title})
+    return f"{_KINESTHESIA_WATCH}?{query}"
 
 
 def unfinished_notebooks() -> list[NotebookRow]:
@@ -1248,18 +1256,32 @@ def _finished_line(token: str, row: NotebookRow, state: str) -> str:
         logger.warning(
             "kaggle watch: mirroring %s failed", files[0].name, exc_info=True
         )
-        return f"{head} — {len(files)} file(s), fetch with kaggle_notebook_output"
+        return (
+            f"{head} — {len(files)} file(s), fetch with kaggle_notebook_output"
+        )
     rest = (
         f" (+{len(files) - 1} more, kaggle_notebook_output)"
         if len(files) > 1
         else ""
     )
-    return f"{head} — {files[0].name}: {link}{rest}"
+    # The notebook title is fixed per pipeline ("midifier-transcribe"), so the artifact's own
+    # filename is the only thing here that names the song.
+    stem = (
+        files[0]
+        .name.rsplit(".", 1)[0]
+        .replace("_", " ")
+        .replace("-", " ")
+        .strip()
+    )
+    playable = (
+        f" — play: {_playable(link, stem)}"
+        if files[0].name.lower().endswith(".mid")
+        else ""
+    )
+    return f"{head} — {files[0].name}: {link}{playable}{rest}"
 
 
-def poll_unfinished(
-    token: str, post: Callable[[str, str, str], None]
-) -> None:
+def poll_unfinished(token: str, post: Callable[[str, str, str], None]) -> None:
     """Advance every in-flight run and announce the ones that stopped.
 
     `post` is called only on the transition into a terminal state, and the new
@@ -1282,4 +1304,8 @@ def poll_unfinished(
         # Rows written before the network column existed cannot be routed back
         # to a channel; advancing their status is all this can do for them.
         if row["network"] and row["channel"]:
-            post(row["network"], row["channel"], _finished_line(token, row, state))
+            post(
+                row["network"],
+                row["channel"],
+                _finished_line(token, row, state),
+            )

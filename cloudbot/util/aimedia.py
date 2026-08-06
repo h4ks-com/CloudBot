@@ -92,7 +92,9 @@ def generate_image(url: str, key: str, prompt: str) -> list[bytes]:
     return [base64.b64decode(b) for b in data.get("images", [])]
 
 
-def edit_image(url: str, key: str, prompt: str, images_b64: list[str]) -> list[bytes]:
+def edit_image(
+    url: str, key: str, prompt: str, images_b64: list[str]
+) -> list[bytes]:
     """POST /image with source image(s) — img2img edit. Returns the decoded result."""
     data = _request(
         "POST",
@@ -105,7 +107,9 @@ def edit_image(url: str, key: str, prompt: str, images_b64: list[str]) -> list[b
     return [base64.b64decode(b) for b in data.get("images", [])]
 
 
-def submit_video(url: str, key: str, prompt: str, images_b64: list[str] | None = None) -> str:
+def submit_video(
+    url: str, key: str, prompt: str, images_b64: list[str] | None = None
+) -> str:
     """POST /video — submit an async video render. Returns the job id.
 
     With *images_b64* the source image(s) are animated (image->video); without them, text->video.

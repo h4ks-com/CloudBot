@@ -1,6 +1,6 @@
 ---
 name: song-to-midi-gpu
-description: Transcribe a real recording into a multi-track MIDI on Kaggle's GPU, in roughly one to two times the length of the song. Use when the midifier service is down, backed up, or too slow; the song-to-midi skill is the normal path.
+description: Turn a real recording into a playable multi-track MIDI in kinesthesia, transcribed on a Kaggle GPU. THE DEFAULT for any "make this song a MIDI" request, and the one to use whenever Kaggle is named. Use song-to-midi instead only when the user asks for the midifier service, the MCP, or midifier by name.
 ---
 
 # Clone a real song into MIDI, on a Kaggle GPU
@@ -15,12 +15,12 @@ busy the song is: a full band mix measured **1.0x realtime** and a dense solo pi
 song lands near half the session cap, so `timeout_s=1800` is enough for anything under the
 six-minute limit.
 
-**Prefer `song-to-midi`.** That one posts to the midifier service and needs no GPU quota. Come
-here when the service is unreachable, its queue is long, or its ETA is past your budget — and
-say which, so the user knows why this path was taken.
+**This is the default path.** Use `song-to-midi` only when the user names the midifier service,
+the MCP or midifier, or when `kaggle_quota` shows no GPU left. Never start a job on both: that
+transcribes one song twice and holds the homelab card for a result nobody reads.
 
-**Check the library first.** `kinesthesia_search_midi(q="<song>")`. A human-made MIDI beats a
-transcription and is instant.
+**Check the library first.** One `kinesthesia_search_midi(q="<song>")`. A human-made MIDI beats
+a transcription and is instant. Empty results mean carry on; do not search again.
 
 ## Two fixed notebooks
 
@@ -51,8 +51,23 @@ plain HTTP GET with no credentials.
 
 Call `kaggle_run_notebook` with `title="midifier-transcribe"`, `gpu=true`, `internet=true`
 (pip install and the audio fetch need the network; the weights are mounted), `timeout_s=1800`,
-`kernel_sources=["h4kscom/midifier-setup"]`, and the cells below. The run outlasts one
-`wait_s`, so when you get a handle call `kaggle_wait_for_notebook`.
+`wait_s=0`, `kernel_sources=["h4kscom/midifier-setup"]`, and the cells below.
+
+**Then say nothing and stop.** Once the push is accepted, your whole answer is exactly:
+
+```
+<no-reply>
+```
+
+That ends the turn with no message at all. The bot watches every run of its own accord and
+posts one message when it lands — the MIDI, its kinesthesia link, or the failure. A running
+commentary adds nothing and the user does not want it.
+
+Do NOT call `kaggle_wait_for_notebook`: a run outlasts the whole time budget, so waiting only
+guarantees you run out before it lands and the user gets a failure for a run that worked.
+
+Speak up only when there is nothing to wait for: the push was refused, the song is too long,
+the audio would not download. Then say what went wrong instead of `<no-reply>`.
 
 Change **only** `AUDIO_URL` and `SONG` in cell 4. Everything else is verified as written.
 
@@ -180,27 +195,21 @@ print("MIDI_OK")
 print("=== DONE ===")
 ```
 
-## Check it worked
+## Delivery happens without you
 
-The log must end with `MIDI_OK` and `=== DONE ===`.
+The watcher posts the MIDI and its kinesthesia link to the channel when the run finishes. You do
+not need `kaggle_wait_for_notebook`, `kaggle_notebook_output` or `kinesthesia_import_project`
+for that: say it started and let the run land.
 
-Judge the track list against the recording, not against a number. One track is the right answer
-for a solo piano piece and the wrong one for a full band, so the check is whether the parts
-named match what the song actually has.
+Set expectations in the message you do send. Cost tracks notes produced, not seconds of audio,
+so a four-minute song is usually six to eight minutes end to end. Be honest about quality too: a
+dense mix transcribes imperfectly, there is no expression or dynamics, and some notes are wrong.
+It is a real transcription of the real recording, not an arrangement.
 
-## Deliver
-
-`kaggle_notebook_output(ref, share="<SONG>.mid")` returns an `s.h4ks.com` link. Then
-`kinesthesia_import_project(url="<that link>", name="<song>")`, and hand back
-`kinesthesia_player_link(...)` for the modes the user wants, plus the raw MIDI link.
-
-Report the track list — it shows which instruments were heard, which is the interesting part.
-If `folded lanes` appeared, mention it in a clause: those were one part the model renamed
-partway through, and folding them is the result being tidier.
-
-Be honest about quality. A dense mix transcribes imperfectly, there is no expression or
-dynamics, and some notes are wrong. It is a real transcription of the real recording, not an
-arrangement.
+If someone asks *afterwards* how a run went, `kaggle_notebook_status` and
+`kaggle_notebook_output` read it back without blocking. The log ends with `MIDI_OK` and
+`=== DONE ===` when it worked. Judge the track list against the recording rather than against a
+number: one track is right for solo piano and wrong for a full band.
 
 ## One-time setup notebook (only if `midifier-setup` is missing)
 

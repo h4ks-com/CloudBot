@@ -228,7 +228,7 @@ def test_text_usage_does_not_consume_image_quota(mock_bot, mock_requests, db):
 
 def test_gemimg_no_api_key(mock_bot, db):
     mock_bot.config["api_keys"] = {}
-    res = gemini.gemimg_command("draw a cat", "#chan", "nick", db)
+    res = gemini.gemi_command("draw a cat", "#chan", "nick", db)
     assert "Gemini API key not configured" in res
 
 
@@ -245,7 +245,7 @@ def test_gemimg_rpm_cap_blocks_next_call(mock_bot, db):
             )
         )
     db.commit()
-    res = gemini.gemimg_command("a prompt", "#chan", "nick", db)
+    res = gemini.gemi_command("a prompt", "#chan", "nick", db)
     assert "Rate limited" in res
 
 

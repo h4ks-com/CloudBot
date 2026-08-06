@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import freezegun
 import requests
 
-from plugins import deaths
+from plugins import obituary
 
 SAMPLE_WIKITEXT = """===3===
 *[[Paras Chandra Jain]], 76, Indian politician, [[Madhya Pradesh Legislative Assembly|Madhya Pradesh MLA]] (2003-2023).<ref>[https://theprint.in/india/former-madhya-pradesh-bjp-minister-paras-jain-dies/3003831/ Former Madhya Pradesh BJP minister Paras Jain dies]</ref>
@@ -58,11 +58,11 @@ def _run(text, sections=None, wikitext_by_index=None):
         sections = SAMPLE_SECTIONS
     if wikitext_by_index is None:
         wikitext_by_index = {"3": SAMPLE_WIKITEXT}
-    with patch("plugins.deaths.get_session") as mock_session:
+    with patch("plugins.obituary.get_session") as mock_session:
         mock_session.return_value.get.side_effect = _api_responses(
             sections, wikitext_by_index
         )
-        return deaths.deaths(text)
+        return obituary.deaths(text)
 
 
 def test_default_returns_list():
@@ -104,13 +104,13 @@ def test_future_day_section_is_skipped():
         "3": SAMPLE_WIKITEXT,
     }
     with (
-        patch("plugins.deaths.get_session") as mock_session,
+        patch("plugins.obituary.get_session") as mock_session,
         freezegun.freeze_time("2026-08-03"),
     ):
         mock_session.return_value.get.side_effect = _api_responses(
             SAMPLE_SECTIONS, wikitext_by_index
         )
-        result = deaths.deaths("")
+        result = obituary.deaths("")
     assert isinstance(result, list)
     assert all("Future Person" not in line for line in result)
     assert "Paras Chandra Jain" in result[0]
@@ -124,17 +124,17 @@ def test_empty_results():
 
 
 def test_network_error_returns_message():
-    with patch("plugins.deaths.get_session") as mock_session:
+    with patch("plugins.obituary.get_session") as mock_session:
         mock_session.return_value.get.side_effect = (
             requests.exceptions.ConnectionError("boom")
         )
-        result = deaths.deaths("")
+        result = obituary.deaths("")
     assert isinstance(result, str)
     assert "Failed" in result
 
 
 def test_wikitext_cleaning_strips_refs_and_templates():
-    entries = deaths._parse_entries(SAMPLE_WIKITEXT, 2026, 8, 3, 10)
+    entries = obituary._parse_entries(SAMPLE_WIKITEXT, 2026, 8, 3, 10)
     assert len(entries) == 4
     sel = next(e for e in entries if e.name == "Iván Szelényi")
     assert "in lang" not in sel.details
@@ -143,78 +143,80 @@ def test_wikitext_cleaning_strips_refs_and_templates():
 
 
 def test_wikitext_cleaning_unwraps_piped_links():
-    entries = deaths._parse_entries(SAMPLE_WIKITEXT, 2026, 8, 3, 10)
+    entries = obituary._parse_entries(SAMPLE_WIKITEXT, 2026, 8, 3, 10)
     jain = next(e for e in entries if e.name == "Paras Chandra Jain")
     assert "Madhya Pradesh Legislative Assembly|" not in jain.details
     assert "Madhya Pradesh MLA" in jain.details
 
 
 def test_parse_count_default():
-    assert deaths._parse_count("") == deaths.DEFAULT_LIMIT
-    assert deaths._parse_count("   ") == deaths.DEFAULT_LIMIT
+    assert obituary._parse_count("") == obituary.DEFAULT_LIMIT
+    assert obituary._parse_count("   ") == obituary.DEFAULT_LIMIT
 
 
 def test_parse_count_invalid():
-    result = deaths._parse_count("xyz")
+    result = obituary._parse_count("xyz")
     assert isinstance(result, str)
     assert "xyz" in result
 
 
 def test_parse_count_bounds():
-    assert deaths._parse_count("0") == 1
-    assert deaths._parse_count("100") == deaths.MAX_LIMIT
-    assert deaths._parse_count("3") == 3
+    assert obituary._parse_count("0") == 1
+    assert obituary._parse_count("100") == obituary.MAX_LIMIT
+    assert obituary._parse_count("3") == 3
 
 
 def test_format_bold_name_grey_date_cyan_link():
     entries = [
-        deaths.Death(
+        obituary.Death(
             name="Paras Chandra Jain",
             death_date="2026-08-03",
             link="https://en.wikipedia.org/wiki/Paras_Chandra_Jain",
             details="76, Indian politician",
         )
     ]
-    line = deaths.format_deaths(entries)[0]
-    assert line.startswith(deaths._BOLD + "Paras Chandra Jain" + deaths._CLEAR)
-    assert deaths._GREY + "2026-08-03" + deaths._CLEAR in line
+    line = obituary.format_deaths(entries)[0]
+    assert line.startswith(
+        obituary._BOLD + "Paras Chandra Jain" + obituary._CLEAR
+    )
+    assert obituary._GREY + "2026-08-03" + obituary._CLEAR in line
     assert (
-        deaths._CYAN
+        obituary._CYAN
         + "https://en.wikipedia.org/wiki/Paras_Chandra_Jain"
-        + deaths._CLEAR
+        + obituary._CLEAR
         in line
     )
 
 
 def test_format_strips_trailing_period_from_details():
     entries = [
-        deaths.Death(
+        obituary.Death(
             name="Test Person",
             death_date="2026-01-01",
             link="https://en.wikipedia.org/wiki/Test_Person",
             details="42, fictional character.",
         )
     ]
-    line = deaths.format_deaths(entries)[0]
+    line = obituary.format_deaths(entries)[0]
     assert "character." not in line
     assert "character" in line
 
 
 def test_format_omits_details_separator_when_empty():
     entries = [
-        deaths.Death(
+        obituary.Death(
             name="No Details",
             death_date="2026-01-01",
             link="https://en.wikipedia.org/wiki/No_Details",
             details="",
         )
     ]
-    line = deaths.format_deaths(entries)[0]
+    line = obituary.format_deaths(entries)[0]
     assert " - " not in line
 
 
 def test_clean_wikitext_strips_italic_markup():
-    cleaned = deaths._clean_wikitext(
+    cleaned = obituary._clean_wikitext(
         "93, Hong Kong actress (''Soldier of Fortune'', ''The Wild, Wild Rose'')."
     )
     assert "''" not in cleaned
@@ -223,7 +225,7 @@ def test_clean_wikitext_strips_italic_markup():
 
 
 def test_clean_wikitext_strips_bold_markup():
-    cleaned = deaths._clean_wikitext(
+    cleaned = obituary._clean_wikitext(
         "'''Bold name''', 50, regular description."
     )
     assert "'''" not in cleaned

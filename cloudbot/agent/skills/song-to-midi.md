@@ -1,13 +1,20 @@
 ---
 name: song-to-midi
-description: Turn a real recording into a playable multi-track MIDI in kinesthesia — download the audio, transcribe it, import it, hand back the player links. Use when someone wants a song "as MIDI", to learn/play a real track, or a MIDI of something not already in the library.
+description: Turn a recording into a multi-track MIDI on the self-hosted midifier service. Use ONLY when the user names the service, the MCP or midifier, or when Kaggle has no GPU quota left. It holds the homelab GPU for the whole job and is several times slower than song-to-midi-gpu, which is the default.
 ---
 
-# Clone a real song into MIDI
+# Clone a real song into MIDI, on the midifier service
 
 Takes an actual recording and produces a multi-track MIDI in kinesthesia: the instruments
-are identified, each is transcribed, and the tracks are named and assigned. Use this when
-someone wants a real song rather than a hand-built approximation.
+are identified, each is transcribed, and the tracks are named and assigned.
+
+**`song-to-midi-gpu` is the default path.** Come here only when the user asked for the
+service, the MCP or midifier by name, or when `kaggle_quota` shows no GPU left. This one
+occupies the homelab card for the whole job, and one job runs at a time.
+
+**Never run both.** Starting a job here and then switching to Kaggle transcribes the same
+song twice and keeps the card busy for a result nobody reads. If you do abandon a job,
+cancel it.
 
 **Check the library first.** `kinesthesia_search_midi(q="<song>")` — if there is a good
 match, use it. It is instant, and a human-made MIDI beats a transcription. Only continue

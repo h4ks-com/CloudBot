@@ -44,7 +44,11 @@ MIN_SECONDS = 1.0
     wrap_errors=True,
 )
 async def wait(ctx, data) -> str:
-    seconds = min(max(float(data.get("seconds", MIN_SECONDS)), MIN_SECONDS), MAX_SECONDS)
+    seconds = min(
+        max(float(data.get("seconds", MIN_SECONDS)), MIN_SECONDS), MAX_SECONDS
+    )
     await asyncio.sleep(seconds)
     reason = str(data.get("reason") or "").strip()
-    return f"Waited {seconds:.0f}s{f' for {reason}' if reason else ''}. Check now."
+    return (
+        f"Waited {seconds:.0f}s{f' for {reason}' if reason else ''}. Check now."
+    )
