@@ -35,6 +35,13 @@ def _set_key(mock_bot, key: str = "fakekey") -> None:
     mock_bot.config["api_keys"] = {"gemini": key, "google": key}
 
 
+def _set_media(mock_bot, key: str = "fakekey") -> None:
+    """Image and video generation read plugins.aimedia, not api_keys."""
+    _set_key(mock_bot, key)
+    plugins = mock_bot.config.setdefault("plugins", {})
+    plugins["aimedia"] = {"api_url": "https://media.invalid", "api_key": key}
+
+
 def _text_url() -> str:
     return gemini.GEMINI_BASE + gemini.GEMINI_TEXT_MODEL + ":generateContent"
 
@@ -226,17 +233,19 @@ def test_text_usage_does_not_consume_image_quota(mock_bot, mock_requests, db):
 # ---------- .gemimg: rate-limit smoke ----------
 
 
-def test_gemimg_no_api_key(mock_bot, db):
+def test_gemimg_without_media_config(mock_bot, db):
+    """Images go through aimedia, so its config is what gates the command — the
+    gemini api_keys entry is not consulted at all."""
     mock_bot.config["api_keys"] = {}
     res = gemini.gemi_command("draw a cat", "#chan", "nick", db)
-    assert "Gemini API key not configured" in res
+    assert "media generation not configured" in res
 
 
 def test_gemimg_rpm_cap_blocks_next_call(mock_bot, db):
     """Without mocking the upload pipeline we can't reach the success path,
     but the rate-limit check fires BEFORE any HTTP, so pre-seed and verify.
     """
-    _set_key(mock_bot)
+    _set_media(mock_bot)
     now = datetime.datetime.utcnow()
     for _ in range(gemini.IMG_MAX_RPM):
         db.execute(
