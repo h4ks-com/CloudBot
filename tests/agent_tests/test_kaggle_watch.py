@@ -21,7 +21,7 @@ def db(tmp_path):
     engine.dispose()
 
 
-def _record(ref, state, network="net", channel="#chan"):
+def _record(ref, state, network="net", channel="#chan", nick="nick"):
     kaggle._record(
         ref,
         "a title",
@@ -31,7 +31,7 @@ def _record(ref, state, network="net", channel="#chan"):
         1,
         network,
         channel,
-        "nick",
+        nick,
     )
     if state != kaggle_client.KernelState.QUEUED.value:
         kaggle._mark_status(ref, state)
@@ -117,6 +117,19 @@ class TestPoll:
         network, channel, message = posted[0]
         assert (network, channel) == ("net", "#chan")
         assert "complete" in message and "https://k/o/job" in message
+
+    def test_a_rerun_by_someone_else_is_announced_to_them(self, db):
+        _record("o/job", kaggle_client.KernelState.QUEUED.value, nick="first")
+        _record("o/job", kaggle_client.KernelState.QUEUED.value, nick="second")
+        posted = []
+        with (
+            patch.object(
+                kaggle.kaggle_client, "status", return_value="complete"
+            ),
+            patch.object(kaggle.kaggle_client, "output", return_value=([], "")),
+        ):
+            kaggle.poll_unfinished("tok", lambda n, c, m: posted.append(m))
+        assert posted[0].startswith("second:")
 
     def test_still_running_says_nothing_but_records_the_state(self, db):
         _record("o/job", kaggle_client.KernelState.QUEUED.value)

@@ -212,6 +212,7 @@ def _record(
                 "last_version": version,
                 "network": network,
                 "channel": channel,
+                "nick": nick,
                 "updated_at": now,
             },
         )
