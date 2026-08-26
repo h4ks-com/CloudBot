@@ -147,9 +147,11 @@ Do this however the run ended.
    `s.h4ks.com` link. Same again for `candidate1.safetensors`.
 2. Add `?download=true` to each link, or s.h4ks.com serves an HTML page and
    itplay refuses it for not being safetensors.
-3. `itplay_submit_weights` once per candidate, with the experiment name and the
-   link. Submit both and leave `episodes` alone: itplay plays them against what
-   it already holds, on the same seeded episodes, and keeps whichever is better.
+3. `itplay_submit_weights` once per candidate, with the experiment name, the
+   link, and `steps` from that candidate's `.json` file so the record knows how
+   far it was trained. Submit both and leave `episodes` alone: itplay plays them
+   against what it already holds, on the same seeded episodes, and keeps
+   whichever is better.
 
 ## 4. Put it on the stream
 
