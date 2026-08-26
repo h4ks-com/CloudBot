@@ -1,52 +1,71 @@
 ---
 name: itplay-train
-description: Continue an itplay game-training experiment on Kaggle's GPU. Use when asked to train a game faster, or to train an itplay experiment somewhere better than the homelab. The homelab manages ~90 steps/s on CPU; a Kaggle T4 is far quicker.
+description: Train an itplay game-training experiment on Kaggle's two T4 GPUs and put the result on the livestream. Use when asked to train a game, to train one faster, to improve an experiment, or to teach a game that has nothing trained on it yet.
 ---
 
-# Train an itplay experiment on Kaggle GPU
+# Train an itplay experiment on Kaggle
 
-itplay trains reinforcement-learning policies for retro games and streams them live.
-It runs on homelab CPU at roughly 90 steps a second, so a million steps is a few
-hours there. This moves one experiment onto a Kaggle T4 for the heavy part.
+itplay trains policies for retro games and streams them live. The homelab does
+about 64 steps a second; a Kaggle T4 does about 313, and there are two.
 
-The cells below are complete and verified. Use them AS-IS: do not research
-stable-baselines3 or ALE, do not rewrite them. The ONLY thing you change is
-the experiment name inside `BUNDLE_URL` in cell 1.
+**Use the four cells below verbatim.** Only `NAME` in cell 1 and `VARIANTS` in
+cell 4 are yours to change. The trainer itself is downloaded from itplay rather
+than written out here, because the two things that matter are easy to get wrong
+and both waste the whole session: it must save **safetensors** (itplay refuses
+pickles, so `model.save(...)` throws the run away) and it must train **against
+the clock** (the session is killed at a fixed wall time, so a step count is a
+guess that has never once been right).
 
-## What itplay hands over
+**This takes two invocations, and that is on purpose.** Training runs for half an
+hour and you do not get half an hour: waiting on the notebook guarantees a
+timeout. So decide which half you are doing before anything else.
 
-Every experiment is fetchable at a plain, public URL:
+Check with `kaggle_notebook_output` for `itplay-train-<experiment>`:
 
-    https://itplay.t3ks.com/experiments/<experiment>/bundle
+- **it errors, or there is no such notebook** — you are launching. Do steps 1 and
+  2, say which variants you raced and that the run has started, and stop. Do not
+  wait for it.
+- **it returns files** — the run is over, however it ended. Skip to step 3.
 
-It holds the experiment's declaration and whatever weights it has already reached
-— **data only, no code**. It is read-only and needs no key, so the notebook just
-downloads it.
+Never call `kaggle_wait_for_notebook` for this. The plugin announces the run in
+the channel when it finishes, which is the signal to come back and do step 3.
 
-You do not need a tool for this: build the URL from the experiment name. To see
-what experiments exist, fetch `https://itplay.t3ks.com/experiments` or ask the
-main agent, which has the itplay tools.
+Nothing here needs arithmetic: the trainer stops itself on the clock and saves
+after every chunk. **A cancelled session and a finished one are handled the same
+way** — the candidates exist either way.
 
-## Running it
+## 1. The experiment
 
-Call `kaggle_run_notebook` with:
+`itplay_experiments` lists what exists. If the one you were asked for is not
+there, create it with `itplay_new_experiment`: a name of lowercase letters and
+dashes, the ALE game id such as `ALE/Kaboom-v5`, and `algo` of `ppo`.
 
-- `title="itplay-train-<experiment>"` — one notebook per experiment. Do NOT use a
-  single fixed title: two experiments would collide and the second would read the
-  first's output.
-- `gpu=true`, `internet=true` (it pip-installs and fetches the bundle)
-- `timeout_s=1500`
+Then call `itplay_bundle` for it. That answers with two links, and **they are
+the only place these addresses come from** — do not write a host into the
+notebook from memory, and do not guess one:
 
-The run outlasts one `wait_s`, so when you get a handle call
-`kaggle_wait_for_notebook`.
+- `url` — the bundle: the declaration and whatever weights it has reached
+- `trainer` — the training script to run against it
 
-### Cell 1 (code) — fetch the experiment
+Both are public and read-only, so the notebook sends no key.
 
-REQUIRED: replace `NAME` with the experiment you were asked to train. The value
-below is a placeholder and trains the wrong thing.
+## 2. Run the notebook
+
+`kaggle_run_notebook` with `title="itplay-train-<experiment>"`, `gpu=true`,
+`internet=true`, `timeout_s=1800`. The session is capped at 1800 seconds however
+much is asked for, which is why the trainer works to a deadline instead of a step
+count.
+
+Then **stop and report that it started**. Do not wait for it.
+
+### Cell 1 — the experiment
+
+Replace `NAME`.
+
+Put the `url` from `itplay_bundle` in `BUNDLE_URL`.
 
 ```python
-BUNDLE_URL = "https://itplay.t3ks.com/experiments/NAME/bundle"
+BUNDLE_URL = "<the url itplay_bundle gave you>"
 
 import json, os, tarfile, urllib.request, glob
 os.makedirs("/kaggle/working/experiment", exist_ok=True)
@@ -57,60 +76,91 @@ with tarfile.open("/kaggle/working/bundle.tar.gz") as archive:
 spec_path = glob.glob("/kaggle/working/experiment/*/spec.json")[0]
 HOME = os.path.dirname(spec_path)
 SPEC = json.load(open(spec_path))
+RESUME = os.path.join(HOME, "policy.zip")
 print("experiment:", SPEC["name"], "| game:", SPEC["game"], "| algo:", SPEC["algo"])
-print("resuming from weights:", os.path.exists(os.path.join(HOME, "policy.zip")))
+print("resuming from weights:", os.path.exists(RESUME))
 ```
 
-### Cell 2 (code) — install what trains it
+### Cell 2 — install
 
 ```python
-!pip -q install "stable-baselines3[extra]==2.9.0" "ale-py==0.12.1" "gymnasium==1.3.0" 2>&1 | tail -2
+!pip -q install "stable-baselines3[extra]==2.9.0" "ale-py==0.12.1" "gymnasium==1.3.0" safetensors 2>&1 | tail -1
 import torch
-print("cuda:", torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else "")
+print("gpus:", torch.cuda.device_count())
 ```
 
-### Cell 3 (code) — train
+### Cell 3 — the trainer
 
-`STEPS` is how much further to train in this sitting. A T4 does roughly 1000 steps a
-second here, so 1,000,000 is about twenty minutes. Keep it inside the notebook's
-timeout.
+Downloaded, never written. This is the script that saves the format itplay
+accepts and stops before the session is killed, and both matter. Use the
+`trainer` link from `itplay_bundle`.
 
 ```python
-STEPS = 1_000_000
+TRAINER_URL = "<the trainer link itplay_bundle gave you>"
 
-import os, ale_py, gymnasium as gym
-gym.register_envs(ale_py)
-from stable_baselines3 import A2C, PPO
-from stable_baselines3.common.env_util import make_atari_env
-from stable_baselines3.common.vec_env import VecFrameStack, SubprocVecEnv
-
-BUILDER = {"ppo": PPO, "a2c": A2C}[SPEC["algo"]]
-WEIGHTS = os.path.join(HOME, "policy.zip")
-
-venv = VecFrameStack(
-    make_atari_env(SPEC["game"], n_envs=8, seed=0, vec_env_cls=SubprocVecEnv), n_stack=4
-)
-model = BUILDER.load(WEIGHTS, env=venv, device="cuda") if os.path.exists(WEIGHTS) \
-    else BUILDER("CnnPolicy", venv, device="cuda", verbose=0)
-
-model.learn(total_timesteps=STEPS, reset_num_timesteps=False, progress_bar=False)
-model.save("/kaggle/working/policy.zip")
-print("saved /kaggle/working/policy.zip")
+import urllib.request
+urllib.request.urlretrieve(TRAINER_URL, "/kaggle/working/train_one.py")
+print(open("/kaggle/working/train_one.py").read()[:200])
 ```
 
-### Cell 4 (code) — say how good it got
+### Cell 4 — both GPUs
+
+Two GPUs means two independent runs, not one run twice as fast. Race two seeds,
+two learning rates (2.5e-4 is the usual starting point), or ppo against a2c. Each
+drops to about 206 steps/s because four CPUs step the emulator for both.
 
 ```python
-from stable_baselines3.common.evaluation import evaluate_policy
-mean, std = evaluate_policy(model, venv, n_eval_episodes=10)
-print(f"mean reward over 10 episodes: {mean:.1f} +/- {std:.1f}")
-venv.close()
+VARIANTS = [
+    {"seed": 1, "learning_rate": 2.5e-4},
+    {"seed": 2, "learning_rate": 1e-4},
+]
+
+import subprocess, os, json
+
+procs = []
+for gpu, variant in enumerate(VARIANTS):
+    out = f"/kaggle/working/candidate{gpu}.safetensors"
+    cmd = ["python", "/kaggle/working/train_one.py",
+           "--game", SPEC["game"], "--algo", SPEC["algo"], "--seconds", "1400",
+           "--seed", str(variant["seed"]), "--learning-rate", str(variant["learning_rate"]),
+           "--out", out, "--device", "cuda", "--envs", "8"]
+    if os.path.exists(RESUME):
+        cmd += ["--resume", RESUME]
+    env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+    # Inherited, not captured: piping means every RESULT line sits in the parent
+    # until it finishes, and a cancelled session finishes never.
+    procs.append((out, subprocess.Popen(cmd, env=env)))
+
+for _out, proc in procs:
+    proc.wait()
+
+for out, _proc in procs:
+    if os.path.exists(out + ".json"):
+        print("trained:", json.load(open(out + ".json")))
 ```
 
-## Delivering the result
+## 3. Send it home
 
-Report the mean reward and the notebook output link. The trained `policy.zip` is in
-the notebook output — itplay does **not** accept uploads, so a human puts the
-weights back if they want them. Say that rather than implying it synced.
+Do this however the run ended.
 
-Do not invent an itplay tool for uploading weights. There isn't one.
+1. `kaggle_notebook_output(ref, share="candidate0.safetensors")` returns an
+   `s.h4ks.com` link. Same again for `candidate1.safetensors`.
+2. Add `?download=true` to each link, or s.h4ks.com serves an HTML page and
+   itplay refuses it for not being safetensors.
+3. `itplay_submit_weights` once per candidate, with the experiment name and the
+   link. Submit both and leave `episodes` alone: itplay plays them against what
+   it already holds, on the same seeded episodes, and keeps whichever is better.
+
+## 4. Put it on the stream
+
+`itplay_atari` with `options` of `{"experiment": "<name>"}` plays what the
+experiment now holds. Give back the `watch` url from the answer.
+
+## Report
+
+itplay's verdicts with their scored and beat numbers, which variants you raced,
+and the watch url. Never report the notebook's numbers: it does not measure
+anything.
+
+A refusal is a real result. It means the sitting did not beat what was there, so
+the next one should change something rather than repeat itself.
