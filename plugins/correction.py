@@ -176,6 +176,7 @@ def correction(match, conn, nick, chan, message):
                 if not exp:
                     continue
                 find, replace, flags = exp
+                replace = normalize_replacement(replace)
                 re_flags = get_flags(flags, message)
                 new = re.sub(
                     find,
