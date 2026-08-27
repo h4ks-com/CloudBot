@@ -83,11 +83,18 @@ def get_flags(flags, message):
     return re_flags
 
 
+def normalize_replacement(replace: str) -> str:
+    """Expand full-match aliases (\0, \&, \#) into re's canonical \\g<0>."""
+    for alias, canonical in FULLMATCH_ALIASES.items():
+        replace = replace.replace(alias, canonical)
+    return replace
+
+
 def paser_sed_exp(groups, message):
     find = groups[0]
     replace = groups[1] if groups[1] else ""
     flags = str(groups[2]) if groups[2] else ""
-    return find, replace, get_flags(flags, message)
+    return find, normalize_replacement(replace), get_flags(flags, message)
 
 
 def create_replacement_command(command_name: str):
