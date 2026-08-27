@@ -21,6 +21,16 @@ REFLAGS = {
     "x": re.VERBOSE,
 }
 
+# Replacement text used for an empty substitute (e.g. "s/foo//"). Users write
+# "\0", "\&" or "\#" as a full-match placeholder (sed uses "&"), but in Python
+# re, a bare backreference to the whole match in the replacement string is
+# "\g<0>". Map the convenient spellings to the canonical one.
+FULLMATCH_ALIASES = {
+    "\\0": "\\g<0>",
+    "\\&": "\\g<0>",
+    "\\#": "\\g<0>",
+}
+
 # Config-based replacement commands
 REPLACEMENT_COMMANDS = {
     "valware": {
