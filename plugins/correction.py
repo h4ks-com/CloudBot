@@ -168,6 +168,7 @@ def correction(match, conn, nick, chan, message):
                 if not exp:
                     continue
                 find, replace, flags = exp
+                replace = expand_full_match(replace)
                 re_flags = get_flags(flags, message)
                 new = re.sub(
                     find,
