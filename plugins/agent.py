@@ -18,7 +18,14 @@ from collections import deque
 from datetime import datetime
 from urllib.parse import urlsplit
 
-from agents import Agent, FunctionTool, RunContextWrapper, RunHooks, Runner
+from agents import (
+    Agent,
+    FunctionTool,
+    RunContextWrapper,
+    RunHooks,
+    Runner,
+    handoff,
+)
 from agents.agent import StopAtTools
 from agents.exceptions import AgentsException, MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
@@ -864,8 +871,9 @@ def _build_tool(cmd_name: str, cmd_hook) -> FunctionTool:
     )
 
 
-def _build_big_brain_tool(bot, cfg: dict):
-    """Build a think_hard tool backed by a more capable model as a sub-agent."""
+def _build_big_brain_agent(bot, cfg: dict) -> Agent | None:
+    """The escalation agent: a stronger model the main agent hands the whole
+    conversation to when it judges a task beyond it."""
     bb_cfg = cfg.get("big_brain") or {}
     if not bb_cfg.get("enabled"):
         return None
@@ -881,25 +889,54 @@ def _build_big_brain_tool(bot, cfg: dict):
     client = AsyncOpenAI(base_url=base_url, api_key=api_key)
     bb_model = OpenAIChatCompletionsModel(model=model, openai_client=client)
 
-    bb_agent = Agent(
+    return Agent(
         name="BigBrain",
         model=bb_model,
         instructions=(
-            "You are a deep reasoning assistant. Analyze the problem thoroughly. "
-            "Consider edge cases, provide step-by-step reasoning, and give a clear "
-            "conclusion. Be precise and technical. If the problem has multiple valid "
-            "approaches, explain the trade-offs and recommend the best one."
+            "You are the escalation path of an IRC bot. A smaller model judged "
+            "that this conversation needs stronger reasoning and handed it to "
+            "you, so you see every message and tool result so far. Analyze "
+            "thoroughly: consider edge cases, reason step by step, be precise "
+            "and technical, and where several approaches are valid, explain the "
+            "trade-offs and recommend one. Finish one of two ways. Either "
+            "answer the user directly; your reply ships to IRC as-is, so keep "
+            "it concise, plain text, no markdown, and lead with the answer. Or, "
+            "when finishing the task needs the bot's tools, hand back to "
+            "CloudBot and make your final message the conclusion it should "
+            "work from."
         ),
     )
-    return bb_agent.as_tool(
-        tool_name="think_hard",
-        tool_description=(
-            "Delegate a complex problem to a more capable reasoning model. "
-            "Use for: difficult math, multi-step logic, uncertain code architecture "
-            "decisions, debugging complex issues, or when you need a second opinion "
-            "on a tricky problem. Do NOT use for simple lookups or straightforward tasks."
-        ),
+
+
+def _wire_big_brain(agent: Agent, bb_agent: Agent) -> None:
+    """Register the escalation as a handoff on the main agent.
+
+    A handoff carries the whole conversation across, so the escalated model
+    sees every message and tool result instead of a one-shot summary, and can
+    hand control back when finishing needs the bot's tools.
+    """
+    agent.handoff_description = (
+        "Hand control back to CloudBot, the main agent with the bot's tools, "
+        "passing your conclusion as your final message."
     )
+    bb_agent.handoffs = [agent]
+    agent.handoffs = [
+        handoff(
+            bb_agent,
+            tool_name_override="think_hard",
+            tool_description_override=(
+                "Escalate the ENTIRE conversation to a more capable reasoning "
+                "model. It sees every message and tool result so far, so never "
+                "restate context, just escalate. It either answers the user "
+                "directly or hands control back to you with its conclusion so "
+                "you can finish with your tools. Use for: difficult math, "
+                "multi-step logic, uncertain architecture decisions, debugging "
+                "complex issues, or when you might get it wrong. Do NOT use "
+                "for simple lookups or straightforward tasks."
+            ),
+        )
+    ]
+    logger.info("agent: big brain handoff enabled")
 
 
 def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
@@ -927,11 +964,6 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
 
     remote = build_mcp_tools(bot)
     tools.extend(remote)
-
-    bb_tool = _build_big_brain_tool(bot, cfg)
-    if bb_tool:
-        tools.append(bb_tool)
-        logger.info("agent: big brain tool enabled")
 
     logger.info(
         "agent: built %d tools (%d custom, %d mcp)",
@@ -1095,6 +1127,9 @@ def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
             stop_at_tool_names=["create_video", "create_voice"]
         ),
     )
+    bb_agent = _build_big_brain_agent(bot, cfg)
+    if bb_agent is not None:
+        _wire_big_brain(agent, bb_agent)
     _AGENT_CACHE[key] = agent
     return agent
 
