@@ -38,6 +38,7 @@ from cloudbot import hook
 from cloudbot.agent import (
     AGENT_INSTRUCTIONS,
     build_custom_tools,
+    coding_plan,
     fetch_github_username,
     fetch_self_repo_push,
     resolve_config_path,
@@ -1542,6 +1543,24 @@ async def agent_command(text, event):
         event.reply("usage: .agi <natural language prompt>")
         return
     await _run_agent(event, text)
+
+
+@hook.command("agibalance", "agilimit", "agilimits", autohelp=False, allow_private=False)
+async def agilimit_command(bot) -> list[str] | str:
+    """- GLM Coding Plan usage: 5h window, weekly, and web-search meters."""
+    agent_cfg = (bot.config.get("plugins") or {}).get("agent") or {}
+    backend = agent_cfg.get("backend", "z_ai")
+    key_path = (
+        (agent_cfg.get("backends") or {})
+        .get(backend, {})
+        .get("api_key_config_path", "z_ai")
+    )
+    api_key = bot.config.get_api_key(key_path)
+    try:
+        usage = await run_in_executor(coding_plan.fetch, api_key)
+    except coding_plan.CodingPlanError as e:
+        return f"agilimit: {e}"
+    return coding_plan.render(usage)
 
 
 @hook.command("reloadmcp", permissions=["botcontrol"], autohelp=False)
