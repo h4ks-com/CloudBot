@@ -32,8 +32,12 @@ GENERATE_TIMEOUT = 420
 # doesn't leak a pending entry forever.
 TEXT_TIMEOUT = 360.0
 COVER_TIMEOUT = 720.0
-# Suno's own hosts are not linkable any more, so every public link comes from
-# our API's /download, which mirrors the clip to our bucket and redirects there.
+# Suno's own hosts are not linkable any more, so a playable link comes from our
+# API's /download, which mirrors the clip to our bucket and redirects there.
+# Songs made after Suno encrypted its audio have no playable file, so those link
+# to Suno's own page, which decrypts and plays in the browser.
+SUNO_SONG_URL = "https://suno.com/song/{clip_id}"
+PLAYABLE_SUFFIXES = (".mp3", ".wav", ".ogg")
 
 
 class SunoError(Exception):
@@ -181,8 +185,8 @@ def _b(text: str) -> str:
     return f"{BOLD}{text}{BOLD}"
 
 
-def final_url(url: str, key: str, clip_id: str) -> str:
-    """Where the API redirects this clip's audio to, or "" if it is unreachable."""
+def _download_location(url: str, key: str, clip_id: str) -> str:
+    """Where our API redirects this clip's audio to, or "" if it is unreachable."""
     try:
         resp = get_session().get(
             f"{url}/download/{clip_id}",
@@ -194,6 +198,14 @@ def final_url(url: str, key: str, clip_id: str) -> str:
         return ""
     location = resp.headers.get("Location", "")
     return location if resp.is_redirect else ""
+
+
+def final_url(url: str, key: str, clip_id: str) -> str:
+    """A link that actually plays: our own file when we have one, else Suno."""
+    location = _download_location(url, key, clip_id)
+    if location.endswith(PLAYABLE_SUFFIXES):
+        return location
+    return SUNO_SONG_URL.format(clip_id=clip_id)
 
 
 def final_links(url: str, key: str, clip_ids: list[str]) -> str:
@@ -209,8 +221,12 @@ def extract_clip_ids(resp: dict[str, Any]) -> list[str]:
 
 
 def clip_ready(url: str, key: str, clip_id: str) -> bool:
-    """True once the clip has been mirrored and its link serves audio."""
-    link = final_url(url, key, clip_id)
+    """True once the render has landed and our API can resolve the clip.
+
+    Checked against the mirrored file rather than the link we hand out, because
+    a Suno page answers 200 long before the song has finished rendering.
+    """
+    link = _download_location(url, key, clip_id)
     if not link:
         return False
     try:
