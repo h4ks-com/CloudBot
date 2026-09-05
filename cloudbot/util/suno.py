@@ -32,11 +32,8 @@ GENERATE_TIMEOUT = 420
 # doesn't leak a pending entry forever.
 TEXT_TIMEOUT = 360.0
 COVER_TIMEOUT = 720.0
-# Suno's public CDN — the finished MP3 for any clip id, no auth required.
-CDN_TEMPLATE = "https://cdn1.suno.ai/{clip_id}.mp3"
-# Suno's public live audio pipe — streams the clip progressively while it is
-# still rendering (empty once finished; switch to the CDN then). No auth.
-STREAM_TEMPLATE = "https://audiopipe.suno.ai/?item_id={clip_id}"
+# Suno's own hosts are not linkable any more, so every public link comes from
+# our API's /download, which mirrors the clip to our bucket and redirects there.
 
 
 class SunoError(Exception):
@@ -184,21 +181,8 @@ def _b(text: str) -> str:
     return f"{BOLD}{text}{BOLD}"
 
 
-def clip_cdn_url(clip_id: str) -> str:
-    """Public CDN URL for a finished clip (works in a browser, no auth)."""
-    return CDN_TEMPLATE.format(clip_id=clip_id)
-
-
-def clip_stream_url(clip_id: str) -> str:
-    """Public live-stream URL — plays the clip while it is still rendering."""
-    return STREAM_TEMPLATE.format(clip_id=clip_id)
-
-
 def final_url(url: str, key: str, clip_id: str) -> str:
-    """Public bucket URL for a finished clip. The API's /download mirrors the
-    clip to the bucket on first hit and 302s there, so this both stores it and
-    returns the stable link; falls back to Suno's CDN if the API is unreachable.
-    """
+    """Where the API redirects this clip's audio to, or "" if it is unreachable."""
     try:
         resp = get_session().get(
             f"{url}/download/{clip_id}",
@@ -207,9 +191,16 @@ def final_url(url: str, key: str, clip_id: str) -> str:
             allow_redirects=False,
         )
     except requests.RequestException:
-        return clip_cdn_url(clip_id)
+        return ""
     location = resp.headers.get("Location", "")
-    return location if resp.is_redirect and location else clip_cdn_url(clip_id)
+    return location if resp.is_redirect else ""
+
+
+def final_links(url: str, key: str, clip_ids: list[str]) -> str:
+    """Joined public links for these clips."""
+    return " | ".join(
+        link for link in (final_url(url, key, i) for i in clip_ids) if link
+    )
 
 
 def extract_clip_ids(resp: dict[str, Any]) -> list[str]:
@@ -217,16 +208,13 @@ def extract_clip_ids(resp: dict[str, Any]) -> list[str]:
     return [c["id"] for c in (resp.get("clips") or []) if c.get("id")]
 
 
-def clip_ready(clip_id: str) -> bool:
-    """True once the finished MP3 is live on the CDN.
-
-    The CDN serves a 403 XML stub while a clip is still rendering and the real
-    audio (200) once it lands, so a HEAD is enough to tell them apart.
-    """
+def clip_ready(url: str, key: str, clip_id: str) -> bool:
+    """True once the clip has been mirrored and its link serves audio."""
+    link = final_url(url, key, clip_id)
+    if not link:
+        return False
     try:
-        resp = get_session().head(
-            clip_cdn_url(clip_id), timeout=15, allow_redirects=True
-        )
+        resp = get_session().head(link, timeout=TIMEOUT, allow_redirects=True)
     except requests.RequestException:
         return False
     return resp.status_code == 200
@@ -235,9 +223,8 @@ def clip_ready(clip_id: str) -> bool:
 def format_generation(resp: dict[str, Any], url: str, key: str) -> str:
     """One-line summary of a /generate or /jobs response.
 
-    Once we have clip ids we return links immediately — no waiting for full
-    render. While the clip is still generating we hand back the live stream
-    URL; once complete we hand back the finished file from the bucket.
+    A finished clip gets its bucket link; a rendering one is reported as
+    rendering, and the watcher posts the link when it lands.
     """
     status = resp.get("status", "?")
     error = resp.get("error")
@@ -248,10 +235,10 @@ def format_generation(resp: dict[str, Any], url: str, key: str) -> str:
         job_id = resp.get("id", "?")
         return f"⏳ {status} — job {_b(job_id)} still rendering (.sunojob {job_id})"
     if status == "complete":
-        links = " | ".join(final_url(url, key, i) for i in ids)
-        return f"{_b('✅ complete')} → {links}"
-    links = " | ".join(clip_stream_url(i) for i in ids)
-    return f"🎵 {_b(status)} — ▶ live: {links}"
+        links = final_links(url, key, ids)
+        if links:
+            return f"{_b('✅ complete')} → {links}"
+    return f"🎵 {_b(status)} — rendering {len(ids)} clip(s), link(s) posted when ready"
 
 
 def format_credits(resp: dict[str, Any]) -> str:
@@ -279,7 +266,6 @@ class _Watch:
     deadline: float
     clip_ids: list[str] = field(default_factory=list)
     job_id: str = ""
-    stream_sent: bool = False
 
 
 _watches: list[_Watch] = []
@@ -339,20 +325,18 @@ def _tick(watch: _Watch) -> tuple[str | None, bool]:
     """Advance one watch.
 
     Returns ``(message, done)`` — ``message`` is posted to the channel when set,
-    ``done`` drops the watch. A cover emits two messages over its lifetime (a
-    live-stream link, then the finished file), so a posted message does not
-    always finish the watch.
+    ``done`` drops the watch.
     """
     timed_out = time.time() > watch.deadline
     if watch.kind == "text":
-        if all(clip_ready(i) for i in watch.clip_ids):
-            links = " | ".join(
-                final_url(watch.url, watch.key, i) for i in watch.clip_ids
-            )
+        if all(clip_ready(watch.url, watch.key, i) for i in watch.clip_ids):
+            links = final_links(watch.url, watch.key, watch.clip_ids)
             return f"{watch.nick}: {_b('✅ song ready')} → {links}", True
         if timed_out:
-            cdn = " | ".join(clip_cdn_url(i) for i in watch.clip_ids)
-            return f"{watch.nick}: ⏰ still rendering — try {cdn} shortly", True
+            return (
+                f"{watch.nick}: ⏰ song still rendering — give it another minute",
+                True,
+            )
         return None, False
     try:
         resp = get_job(watch.url, watch.key, watch.job_id)
@@ -365,21 +349,11 @@ def _tick(watch: _Watch) -> tuple[str | None, bool]:
         return None, False
     status = resp.get("status")
     if status == "complete":
-        links = " | ".join(
-            final_url(watch.url, watch.key, i) for i in extract_clip_ids(resp)
-        )
+        links = final_links(watch.url, watch.key, extract_clip_ids(resp))
         return f"{watch.nick}: {_b('✅ cover ready')} → {links}", True
     if status == "failed":
         err = resp.get("error") or "unknown error"
         return f"{watch.nick}: {_b('❌ cover failed')}: {err}", True
-    ids = extract_clip_ids(resp)
-    if ids and not watch.stream_sent:
-        watch.stream_sent = True
-        stream = " | ".join(clip_stream_url(i) for i in ids)
-        return (
-            f"{watch.nick}: 🎚️ cover {_b(watch.job_id)} → ▶ live: {stream}",
-            False,
-        )
     if timed_out:
         return (
             f"{watch.nick}: ⏰ cover {_b(watch.job_id)} still rendering",
@@ -426,16 +400,13 @@ def wait_for_song(
     key: str,
     ident: str,
     *,
-    mode: str = "final",
     timeout: float = WAIT_TIMEOUT,
     interval: float = WAIT_INTERVAL,
 ) -> str:
-    """Block until ``ident`` reaches ``mode`` and return its URL(s).
+    """Block until ``ident`` has playable audio and return its URL(s).
 
-    ``mode='stream'`` returns the live audiopipe URL as soon as clips exist
-    (text: instant; cover: ~80s). ``mode='final'`` polls until the finished CDN
-    mp3 lands (text: ~1-2min; cover: ~6min). On timeout, returns whatever URL is
-    available with a note; on a failed cover, returns the error.
+    Text lands in ~1-2min, a cover in ~6min. On timeout, says so; on a failed
+    cover, returns the error.
     """
     job = _job_or_none(url, key, ident)
     is_job = job is not None
@@ -443,26 +414,15 @@ def wait_for_song(
     while True:
         if is_job and job is not None:
             status = job.get("status")
-            ids = extract_clip_ids(job)
             if status == "failed":
                 return f"failed: {job.get('error') or 'unknown error'}"
             if status == "complete":
-                return " | ".join(final_url(url, key, i) for i in ids)
-            if mode == "stream" and ids:
-                return " | ".join(clip_stream_url(i) for i in ids)
-        elif mode == "stream":
-            return clip_stream_url(ident)
-        elif clip_ready(ident):
+                return final_links(url, key, extract_clip_ids(job))
+        elif clip_ready(url, key, ident):
             return final_url(url, key, ident)
 
         if time.time() > deadline:
-            if is_job:
-                live_ids = extract_clip_ids(job) if job is not None else []
-                if live_ids:
-                    live = " | ".join(clip_stream_url(i) for i in live_ids)
-                    return f"(timeout, still rendering) {live}"
-                return f"(timeout) job {ident} not ready yet"
-            return f"(timeout) {clip_stream_url(ident)}"
+            return f"(timeout) {ident} is still rendering"
         time.sleep(interval)
         if is_job:
             job = get_job(url, key, ident)

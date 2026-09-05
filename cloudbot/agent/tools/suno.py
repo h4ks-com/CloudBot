@@ -32,7 +32,7 @@ def _reply_target(ctx) -> tuple[str, str, str]:
     name="suno_generate_song",
     description=(
         "Generate an original song from a text prompt using Suno AI. Returns clip "
-        "ids and public CDN MP3 links (audio finishes rendering ~1-2 min after "
+        "ids and public audio links (audio finishes rendering ~1-2 min after "
         "submission). Use for 'make a song about X' style requests."
     ),
     schema={
@@ -145,10 +145,9 @@ async def suno_cover_from_url(ctx, data):
         "Block until a song/cover is ready and return its URL, so you can chain "
         "on the result (e.g. then hand the file to another tool). Pass a clip id "
         "(from suno_generate_song) or a job id (from suno_cover_from_url). "
-        "mode='stream' returns a playable live URL fast (text instant, cover "
-        "~80s); mode='final' waits for the finished CDN mp3 (text ~1-2min, cover "
-        "~6min). Only use when a later step needs the audio — plain 'make a song' "
-        "requests don't need it."
+        "Waits for the finished audio (text ~1-2min, cover ~6min); there is no "
+        "faster preview. Only use when a later step needs the audio — plain "
+        "'make a song' requests don't need it."
     ),
     schema={
         "type": "object",
@@ -156,11 +155,6 @@ async def suno_cover_from_url(ctx, data):
             "id": {
                 "type": "string",
                 "description": "Clip id (text) or job id (cover) to wait on",
-            },
-            "mode": {
-                "type": "string",
-                "enum": ["stream", "final"],
-                "description": "'stream' = fast live URL; 'final' = finished mp3 (slower)",
             },
         },
         "required": ["id"],
@@ -174,18 +168,15 @@ async def suno_wait_for_song(ctx, data):
     ident = str(data.get("id") or "").strip()
     if not ident:
         return "(error: id required)"
-    mode = "stream" if data.get("mode") == "stream" else "final"
     try:
-        return await run_in_executor(
-            suno.wait_for_song, url, key, ident, mode=mode
-        )
+        return await run_in_executor(suno.wait_for_song, url, key, ident)
     except suno.SunoError as e:
         return f"(error: {e})"
 
 
 @tool(
     name="suno_job_status",
-    description="Check an async Suno cover job by id; returns clip CDN links when complete.",
+    description="Check an async Suno cover job by id; returns clip audio links when complete.",
     schema={
         "type": "object",
         "properties": {

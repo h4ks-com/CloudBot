@@ -2,9 +2,8 @@
 
 Thin command layer over ``cloudbot.util.suno`` — the same shared client the
 agent's Suno tools use — so request logic and formatting stay in one place.
-Submits ack immediately with the live-stream link; a periodic watcher posts
-the finished MP3 link to the channel once it renders, so nobody has to poll
-``.sunojob`` by hand.
+Submits ack immediately; a periodic watcher posts the finished audio link to
+the channel once it renders, so nobody has to poll ``.sunojob`` by hand.
 
 Config (``config.json``)::
 
@@ -73,7 +72,7 @@ def suno_cover(text, bot, chan, nick, conn):
     suno.watch_cover(url, key, job_id, chan=chan, network=conn.name, nick=nick)
     return (
         f"🎚️ cover {suno.BOLD}{job_id or '?'}{suno.BOLD} submitted — "
-        "posting the live stream, then the final link, here"
+        "posting the link here once it finishes rendering"
     )
 
 
