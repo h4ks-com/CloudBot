@@ -108,11 +108,15 @@ async def test_start_plugin_reload(tmp_path):
     bot.config_reloading_enabled = True
     bot.connections = {}
     bot.plugin_dir = plugin_dir = tmp_path / "plugins"
+    # The config can sit outside the working directory (CLOUDBOT_RUN_PATH), so the
+    # watcher has to be pointed at the directory holding it.
+    config_dir = tmp_path / "run"
+    bot.config.path = config_dir / "config.json"
     await CloudBot._init_routine(bot)
     assert bot.mock_calls == [
         call.plugin_manager.load_all(plugin_dir),
         call.plugin_reloader.start(str(plugin_dir)),
-        call.config_reloader.start(),
+        call.config_reloader.start(str(config_dir)),
         call.observer.start(),
     ]
 

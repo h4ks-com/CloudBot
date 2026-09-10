@@ -116,7 +116,10 @@ async def create_video(ctx, data):
     if not (bot and conn and target):
         return "(error: no channel context available to post the video)"
     trigger = event.tag_value("msgid") if hasattr(event, "tag_value") else None
-    spawn_video(bot, conn, target, prompt, effort, trigger_msgid=trigger)
+    try:
+        spawn_video(bot, conn, target, prompt, effort, trigger_msgid=trigger)
+    except hyperframes.HyperframesNotConfigured:
+        return "(error: video tools not configured)"
     # create_video is a stop tool (see plugins/agent.py): the agent run ends here and
     # THIS string is posted verbatim as the reply — the model gets no turn to narrate a
     # video that does not exist yet. Keep it a fixed, honest dispatch acknowledgement.
@@ -173,7 +176,10 @@ async def create_voice(ctx, data):
     if not (bot and conn and target):
         return "(error: no channel context available to post the audio)"
     trigger = event.tag_value("msgid") if hasattr(event, "tag_value") else None
-    spawn_voice(bot, conn, target, prompt, trigger_msgid=trigger)
+    try:
+        spawn_voice(bot, conn, target, prompt, trigger_msgid=trigger)
+    except hyperframes.HyperframesNotConfigured:
+        return "(error: voice tools not configured)"
     return (
         "🎧 On it, generating the voice now; I'll post the audio here shortly."
     )

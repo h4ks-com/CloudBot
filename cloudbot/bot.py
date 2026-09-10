@@ -309,7 +309,9 @@ class CloudBot(AbstractBot):
             self.plugin_reloader.start(str(self.plugin_dir))
 
         if self.config_reloading_enabled:
-            self.config_reloader.start()
+            # Watch the directory the config actually lives in: CLOUDBOT_RUN_PATH puts it
+            # outside the working directory, and watchdog only sees the tree we hand it.
+            self.config_reloader.start(str(self.config.path.parent))
 
         self.observer.start()
 

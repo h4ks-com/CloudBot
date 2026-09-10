@@ -533,6 +533,8 @@ def spawn_video(
     effort: hyperframes.Effort | None = None,
     trigger_msgid: str | None = None,
 ) -> None:
+    # Raise before the task exists so a caller never announces a render we cannot start.
+    hyperframes.config_from_bot(bot)
     _spawn(_post("video", bot, conn, target, prompt, effort, trigger_msgid))
 
 
@@ -542,15 +544,19 @@ async def video_command(text, event):
     if not text:
         event.reply("usage: .video <what the video should be>")
         return
+    try:
+        spawn_video(
+            event.bot,
+            event.conn,
+            event.chan,
+            text,
+            trigger_msgid=event.tag_value("msgid"),
+        )
+    except hyperframes.HyperframesNotConfigured:
+        event.reply(f"{_KIND_NOUN['video']} not configured.")
+        return
     event.reply(
         "🎬 On it — putting your video together now; I'll post it here when it's ready (a few minutes)."
-    )
-    spawn_video(
-        event.bot,
-        event.conn,
-        event.chan,
-        text,
-        trigger_msgid=event.tag_value("msgid"),
     )
 
 
@@ -562,6 +568,8 @@ def spawn_voice(
     effort: hyperframes.Effort | None = None,
     trigger_msgid: str | None = None,
 ) -> None:
+    # Raise before the task exists so a caller never announces a clip we cannot start.
+    hyperframes.config_from_bot(bot)
     _spawn(_post("voice", bot, conn, target, prompt, effort, trigger_msgid))
 
 
@@ -573,13 +581,17 @@ async def speak_command(text, event):
             "usage: .speak <what to say> (add a direction like 'angrily' or 'terrified whisper', and paste a clip URL to clone that voice)"
         )
         return
+    try:
+        spawn_voice(
+            event.bot,
+            event.conn,
+            event.chan,
+            text,
+            trigger_msgid=event.tag_value("msgid"),
+        )
+    except hyperframes.HyperframesNotConfigured:
+        event.reply(f"{_KIND_NOUN['voice']} not configured.")
+        return
     event.reply(
         "🎧 On it, generating the voice now; I'll post the audio here shortly."
-    )
-    spawn_voice(
-        event.bot,
-        event.conn,
-        event.chan,
-        text,
-        trigger_msgid=event.tag_value("msgid"),
     )
