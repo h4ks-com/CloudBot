@@ -182,12 +182,12 @@ errored or says `NO`, read the log and fix before reporting success.
 ## Deliver
 
 The artifact is `turbo_output.glb`. Call
-`kaggle_notebook_output(ref, share="turbo_output.glb")` — it returns an `s.h4ks.com`
+`kaggle_notebook_output(ref, share="turbo_output.glb")` — it returns a paste-service
 link. Give the user that link.
 
 If you have the `web_app` tool, also build a viewer and return its URL — this is the nice
 result ("let me see"). Use the HTML below, substituting the shared GLB link for `GLB_URL`.
-Two gotchas baked in: the GLB must be loaded with `?download=true` (s.h4ks.com otherwise
+Two gotchas baked in: the GLB must be loaded with `?download=true` (the paste host otherwise
 returns an HTML redirect page), and the material metalness is forced to 0 with ACES
 tonemapping (Hunyuan exports a metallic material that renders near-black otherwise).
 

@@ -6,6 +6,7 @@ RUN \
   apt-get update && \
   apt-get install -y --no-install-recommends \
     enchant-2 \
+    git \
     libenchant-2-2
 
 COPY --from=ghcr.io/astral-sh/uv:0.7.17 /uv /uvx /bin/

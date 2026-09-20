@@ -334,4 +334,4 @@ the sharded language model talking to the flow-matching half.
 ## Deliver
 
 The artifact is `song.wav`. Call `kaggle_notebook_output(ref, share="song.wav")` - it
-returns an `s.h4ks.com` link. Give the user that link to listen or download.
+returns a paste-service link. Give the user that link to listen or download.

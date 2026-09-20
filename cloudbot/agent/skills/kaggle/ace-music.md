@@ -133,7 +133,7 @@ this look broken while the wav was fine. Use the `wave` check above.
 ## Deliver
 
 The artifact is `song.wav`. Call `kaggle_notebook_output(ref, share="song.wav")` — it
-returns an `s.h4ks.com` link. Give the user that link to listen/download.
+returns a paste-service link. Give the user that link to listen/download.
 
 ## One-time setup notebook (only if `ace-step-setup` is missing)
 

@@ -143,7 +143,13 @@ class _AgentState:
     agent: Agent | None = None
 
 
-def _get_agent() -> Agent:
+def reset_agent_cache() -> None:
+    """Drop the cached KaggleRunner so its next run rebuilds its prompt —
+    its skill index is baked in at build time."""
+    _AgentState.agent = None
+
+
+def _get_agent(bot: CloudBot) -> Agent:
     if _AgentState.agent is not None:
         return _AgentState.agent
     tools = [t for t in build_custom_tools() if t.name in _TOOL_NAMES]
@@ -151,7 +157,7 @@ def _get_agent() -> Agent:
         raise SubagentError("no kaggle tools registered")
     agent = Agent(
         name="KaggleRunner",
-        instructions=KAGGLE_INSTRUCTIONS + skill_index("kaggle"),
+        instructions=KAGGLE_INSTRUCTIONS + skill_index("kaggle", bot),
         tools=tools,
     )
     _AgentState.agent = agent
@@ -183,7 +189,7 @@ async def run_kaggle(
     model would then try to work around.
     """
     token_from_bot(bot)
-    agent = _get_agent()
+    agent = _get_agent(bot)
     max_turns, timeout_s = _run_limits(bot)
     text = await run_subagent(
         bot,

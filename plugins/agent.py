@@ -51,7 +51,12 @@ from cloudbot.agent.common import (
     run_in_executor,
 )
 from cloudbot.agent.runs import recent_runs
-from cloudbot.agent.skills import skill_index
+from cloudbot.agent.skills import (
+    install_from_git,
+    remove_skill,
+    skill_index,
+    skills_status,
+)
 from cloudbot.agent.tools.kaggle import ensure_kaggle_table, notebook_context
 from cloudbot.agent.tools.mcp_servers import (
     build_mcp_tools,
@@ -1076,7 +1081,7 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
         parts = [
             base_instructions,
             gh_suffix,
-            skill_index(),
+            skill_index(bot=event.bot),
             "\n\n## Current Request Context",
             f"- Channel: {event.chan}",
             f"- User asking: {event.nick}",
@@ -1545,7 +1550,9 @@ async def agent_command(text, event):
     await _run_agent(event, text)
 
 
-@hook.command("agibalance", "agilimit", "agilimits", autohelp=False, allow_private=False)
+@hook.command(
+    "agibalance", "agilimit", "agilimits", autohelp=False, allow_private=False
+)
 async def agilimit_command(bot) -> list[str] | str:
     """- GLM Coding Plan usage: 5h window, weekly, and web-search meters."""
     agent_cfg = (bot.config.get("plugins") or {}).get("agent") or {}
@@ -1561,6 +1568,46 @@ async def agilimit_command(bot) -> list[str] | str:
     except coding_plan.CodingPlanError as e:
         return f"agilimit: {e}"
     return coding_plan.render(usage)
+
+
+@hook.command("skills", "skilllist", autohelp=False, allow_private=False)
+def skills_command(bot) -> list[str]:
+    """- list loaded skills: packaged playbooks plus runtime-installed ones."""
+    return skills_status(bot)
+
+
+@hook.command(
+    "reloadskills", "skillreload", permissions=["botcontrol"], autohelp=False
+)
+def reload_skills(bot) -> list[str]:
+    """- rescans the skill catalogue: packaged skills plus the runtime skills dir. Owner only."""
+    # kaggle_agent pulls this module in through subagent, so importing it at
+    # module scope would be circular.
+    # pylint: disable=import-outside-toplevel
+    from plugins import kaggle_agent
+
+    kaggle_agent.reset_agent_cache()
+    return skills_status(bot)
+
+
+@hook.command("addskill", permissions=["botcontrol"], allow_private=False)
+async def add_skill(bot, text) -> str:
+    """<git-url> [ref] - install a skill repository into the runtime skills dir, pinned to ref (tag/branch) when given. Owner only."""
+    parts = text.split()
+    if not parts:
+        return "usage: .addskill <git-url> [tag-or-branch]"
+    url = parts[0]
+    ref = parts[1] if len(parts) > 1 else ""
+    return await run_in_executor(install_from_git, url, ref, bot)
+
+
+@hook.command("delskill", permissions=["botcontrol"], allow_private=False)
+async def del_skill(bot, text) -> str:
+    """<name> - remove an installed skill from the runtime skills dir. Owner only."""
+    name = text.strip()
+    if not name:
+        return "usage: .delskill <name>"
+    return await run_in_executor(remove_skill, name, bot)
 
 
 @hook.command("reloadmcp", permissions=["botcontrol"], autohelp=False)

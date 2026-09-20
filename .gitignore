@@ -55,6 +55,7 @@ target/
 persist/
 logs/
 config.json
+data/skills/
 *.db
 *.mmdb
 *.log

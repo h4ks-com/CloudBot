@@ -192,6 +192,9 @@
                 "model": "glm-4.6v-flash",
                 "api_key_config_path": "z_ai"
             },
+            "skills": {
+                "dir": ""
+            },
             "context7": {
                 "api_key_config_path": ""
             },

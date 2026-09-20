@@ -144,8 +144,8 @@ for out, _proc in procs:
 Do this however the run ended.
 
 1. `kaggle_notebook_output(ref, share="candidate0.safetensors")` returns an
-   `s.h4ks.com` link. Same again for `candidate1.safetensors`.
-2. Add `?download=true` to each link, or s.h4ks.com serves an HTML page and
+   paste-service link. Same again for `candidate1.safetensors`.
+2. Add `?download=true` to each link, or the paste host serves an HTML page and
    itplay refuses it for not being safetensors.
 3. `itplay_submit_weights` once per candidate, with the experiment name, the
    link, and `steps` from that candidate's `.json` file so the record knows how

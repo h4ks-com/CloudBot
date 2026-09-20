@@ -544,7 +544,7 @@ async def kaggle_quota(ctx, data) -> str:
         "CPU is free and unmetered; set gpu=true ONLY for real GPU work (it burns "
         "a 30h/week quota — check kaggle_quota first). Set internet=true if the "
         "code must reach the network: pip install, downloads, OR reading an input "
-        "file you already have a URL for (e.g. an s.h4ks.com paste) — without it "
+        "file you already have a URL for (e.g. a paste link) — without it "
         "the notebook has no network at all and those fetches fail.\n"
         "If the run is still going when the wait elapses you get a ref back plus "
         "whatever it has printed so far — wait for it with kaggle_wait_for_notebook, "
