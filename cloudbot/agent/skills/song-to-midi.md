@@ -63,8 +63,9 @@ tell the user if it is too long, rather than discovering it at the transcription
 
 5. **Otherwise sleep until it is done.**
 
-   - still running → `wait(seconds=<eta_seconds, at most 300>, reason="transcription")`,
-     then check again
+   - still running → `wait(seconds=<half of eta_seconds, at most 60>, reason="transcription")`,
+     then check again. A song takes a few minutes on the 3090 and the estimate can run
+     long, so sleeping the whole estimate at once leaves the user waiting on a finished job.
    - `succeeded` → you get `midi_url`, `tracks` and `dropped_instruments`
    - `failed` → read `error` and say what it said; do not retry blindly, the same input
      usually fails the same way
