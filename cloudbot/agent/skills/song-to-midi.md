@@ -1,6 +1,6 @@
 ---
 name: song-to-midi
-description: Turn a recording into a multi-track MIDI on the self-hosted midifier service. Use ONLY when the user names the service, the MCP or midifier, or when Kaggle has no GPU quota left. It holds the homelab GPU for the whole job and is several times slower than song-to-midi-gpu, which is the default.
+description: Turn a recording into a multi-track MIDI on the self-hosted midifier service. THE DEFAULT for any "make this song a MIDI" request. Use song-to-midi-gpu instead only when the user names Kaggle, or when the service is down or its estimate is over the limit below.
 ---
 
 # Clone a real song into MIDI, on the midifier service
@@ -8,9 +8,9 @@ description: Turn a recording into a multi-track MIDI on the self-hosted midifie
 Takes an actual recording and produces a multi-track MIDI in kinesthesia: the instruments
 are identified, each is transcribed, and the tracks are named and assigned.
 
-**`song-to-midi-gpu` is the default path.** Come here only when the user asked for the
-service, the MCP or midifier by name, or when `kaggle_quota` shows no GPU left. This one
-occupies the homelab card for the whole job, and one job runs at a time.
+**This is the default path.** It runs on the homelab RTX 3090, one job at a time. Use
+`song-to-midi-gpu` only when the user names Kaggle, when `midifier_transcribe_audio` fails
+to start a job, or when the estimate is over the limit in step 4.
 
 **Never run both.** Starting a job here and then switching to Kaggle transcribes the same
 song twice and keeps the card busy for a result nobody reads. If you do abandon a job,
@@ -26,8 +26,9 @@ presenting that as the song is misleading, however good the riff sounds.
 
 ## The wait
 
-Transcription takes **several times the length of the song** and **one job runs at a time**,
-so expect many minutes, longer if something is queued ahead. Say so up front, then sleep
+**One job runs at a time**, so a queue ahead of you adds its whole length. The
+`eta_seconds` the status call returns is measured from how fast this song is decoding, so
+quote that rather than guessing. Say so up front, then sleep
 through it with `wait` rather than checking over and over — every check costs a model call,
 sleeping costs one per wait.
 

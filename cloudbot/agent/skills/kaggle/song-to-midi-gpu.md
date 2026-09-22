@@ -1,13 +1,13 @@
 ---
 name: song-to-midi-gpu
-description: Turn a real recording into a playable multi-track MIDI in kinesthesia, transcribed on a Kaggle GPU. THE DEFAULT for any "make this song a MIDI" request, and the one to use whenever Kaggle is named. Use song-to-midi instead only when the user asks for the midifier service, the MCP, or midifier by name.
+description: Turn a real recording into a playable multi-track MIDI in kinesthesia, transcribed on a Kaggle GPU. The fallback for song-to-midi, which is the default. Use this one only when the user names Kaggle, or when the midifier service is down or its estimate is over its limit.
 ---
 
 # Clone a real song into MIDI, on a Kaggle GPU
 
-Runs the same midifier pipeline the service runs, on a Kaggle T4 instead of the self-hosted
-card: overlapping segment decode, lane identity carried across the joins, lanes that were one
-part under two names folded together, and the decoder's usual defects repaired.
+Runs the same midifier pipeline the service runs, on a Kaggle T4: overlapping segment decode,
+the song's instruments decided once from every segment, and the decoder's usual defects
+repaired.
 
 Cost tracks the number of notes produced, not the length of the audio, so speed depends on how
 busy the song is: a full band mix measured **1.0x realtime** and a dense solo piano piece
@@ -15,9 +15,9 @@ busy the song is: a full band mix measured **1.0x realtime** and a dense solo pi
 song lands near half the session cap, so `timeout_s=1800` is enough for anything under the
 six-minute limit.
 
-**This is the default path.** Use `song-to-midi` only when the user names the midifier service,
-the MCP or midifier, or when `kaggle_quota` shows no GPU left. Never start a job on both: that
-transcribes one song twice and holds the homelab card for a result nobody reads.
+**This is the fallback.** `song-to-midi` on the homelab 3090 is the default. Come here only when
+the user names Kaggle, or when the service is down or its estimate is over its limit. Never
+start a job on both: that transcribes one song twice for a result nobody reads.
 
 **Check the library first.** One `kinesthesia_search_midi(q="<song>")`. A human-made MIDI beats
 a transcription and is instant. Empty results mean carry on; do not search again.
