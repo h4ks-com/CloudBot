@@ -81,9 +81,18 @@ def get_flags(flags, message):
     return re_flags
 
 
+full_match_re = re.compile(r"(?<!\\)\\0")
+
+
+def expand_full_match(replace: str) -> str:
+    """Expand sed-style \\0 (full match) into python re's \\g<0>."""
+    return full_match_re.sub(r"\\g<0>", replace)
+
+
 def paser_sed_exp(groups, message):
     find = groups[0]
     replace = groups[1] if groups[1] else ""
+    replace = expand_full_match(replace)
     flags = str(groups[2]) if groups[2] else ""
     return find, replace, get_flags(flags, message)
 
@@ -165,6 +174,7 @@ def correction(match, conn, nick, chan, message):
                 if not exp:
                     continue
                 find, replace, flags = exp
+                replace = expand_full_match(replace)
                 re_flags = get_flags(flags, message)
                 new = re.sub(
                     find,
