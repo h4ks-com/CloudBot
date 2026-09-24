@@ -29,6 +29,16 @@ REFLAGS = {
     "x": re.VERBOSE,
 }
 
+# Replacement text used for an empty substitute (e.g. "s/foo//"). Users write
+# "\0", "\&" or "\#" as a full-match placeholder (sed uses "&"), but in Python
+# re, a bare backreference to the whole match in the replacement string is
+# "\g<0>". Map the convenient spellings to the canonical one.
+FULLMATCH_ALIASES = {
+    "\\0": "\\g<0>",
+    "\\&": "\\g<0>",
+    "\\#": "\\g<0>",
+}
+
 # Config-based replacement commands
 REPLACEMENT_COMMANDS: dict[str, ReplacementConfig] = {
     "valware": {
@@ -81,11 +91,18 @@ def get_flags(flags, message):
     return re_flags
 
 
+def normalize_replacement(replace: str) -> str:
+    """Expand full-match aliases (\0, \&, \#) into re's canonical \\g<0>."""
+    for alias, canonical in FULLMATCH_ALIASES.items():
+        replace = replace.replace(alias, canonical)
+    return replace
+
+
 def paser_sed_exp(groups, message):
     find = groups[0]
     replace = groups[1] if groups[1] else ""
     flags = str(groups[2]) if groups[2] else ""
-    return find, replace, get_flags(flags, message)
+    return find, normalize_replacement(replace), get_flags(flags, message)
 
 
 def create_replacement_command(command_name: str):
@@ -165,6 +182,7 @@ def correction(match, conn, nick, chan, message):
                 if not exp:
                     continue
                 find, replace, flags = exp
+                replace = normalize_replacement(replace)
                 re_flags = get_flags(flags, message)
                 new = re.sub(
                     find,
