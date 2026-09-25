@@ -123,7 +123,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "freezegun==1.4.0",
-    "pre-commit==3.3.3",
     "pytest==8.1.1",
     "pytest-asyncio==0.20.3",
     "pytest-cov==4.1.0",
@@ -135,6 +134,7 @@ dev = [
     "types-pytz>=2024.1",
     "types-cachetools>=7.0.0",
     "ty==0.0.84",
+    "prek==0.5.3",
 ]
 
 [tool.ruff]

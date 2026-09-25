@@ -1,4 +1,4 @@
-name: Pylint analysis
+name: Checks
 on:
   push:
     branches:
@@ -21,5 +21,5 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -qq -y libxml2-dev libxslt1-dev
     - name: Install dependencies
       run: uv sync --all-groups
-    - name: Run pylint
-      run: uv run pre-commit run pylint --all-files
+    - name: Run the prek hooks
+      run: uv run prek run --all-files --show-diff-on-failure
