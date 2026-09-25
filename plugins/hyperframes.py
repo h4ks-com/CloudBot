@@ -99,7 +99,7 @@ PREAMBLE = (
     "video_render / video_render_timeline / video_preview_frame, not another video_tts or "
     "video_add_audio, not a skill, not more downloads. It is finished; anything more just wastes "
     "minutes or rebuilds a slower, worse video.\n"
-    "- KARAOKE over a SONG or any audio you already have the exact words for (a suno song + its "
+    "- KARAOKE over a SONG or any audio you already have the exact words for (a generated song + its "
     "lyrics, a speech you have the transcript of): do NOT synthesize a voice and do NOT hand-build "
     "HTML. Use the same composition flow, but put that audio as the single `audio` clip at "
     "volume ~1.0 (it is the MAIN track, not a background bed) and set the composition's top-level "

@@ -95,6 +95,10 @@
         }
     ],
     "plugins": {
+        "workflows": {
+            "announce_channel": "",
+            "connection": "gobot"
+        },
         "duckhunt": {
             "minimum_messages": 10,
             "minimum_users": 5
@@ -104,10 +108,6 @@
         },
         "worldguess": {
             "api_url": "http://localhost:8000"
-        },
-        "suno": {
-            "api_url": "",
-            "api_key": ""
         },
         "aimedia": {
             "api_url": "",
@@ -230,6 +230,11 @@
                     "api_key_config_path": "itplay_mcp",
                     "api_key_header": "x-api-key",
                     "timeout_s": 30
+                },
+                "workflows": {
+                    "enabled": true,
+                    "url": "https://workflows.h4ks.com/mcp/",
+                    "timeout_s": 30
                 }
             },
             "max_turns": 40,
@@ -291,7 +296,15 @@
         "api_token": "your-browserless-token-here"
     },
     "webhooks": {
-        "base_url": "http://localhost:8080"
+        "base_url": "http://localhost:8080",
+        "subscriptions": [
+            {
+                "plugin": "workflows",
+                "url": "http://localhost:8080/webhooks/workflows",
+                "signing_key": "at-least-16-random-characters",
+                "description": "workflows job events"
+            }
+        ]
     },
     "api_keys": {
         "omdb": "",
@@ -328,7 +341,9 @@
         "sketchfab": "",
         "ytdl_mcp": "",
         "midifier_mcp": "",
-        "itplay_mcp": ""
+        "itplay_mcp": "",
+        "workflows_url": "https://workflows.h4ks.com",
+        "workflows_token": ""
     },
     "z_ai_endpoint": "https://api.z.ai/api/coding/paas/v4/chat/completions",
     "z_ai_model": "glm-5",

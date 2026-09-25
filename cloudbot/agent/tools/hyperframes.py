@@ -72,7 +72,7 @@ def _run_analysis(
         "`browser_screenshot` on the relevant URL FIRST, then include the screenshot URL in "
         "the prompt (e.g. 'use https://.../shot.png as bg for the intro').** The slideshow "
         "tool accepts images as backgrounds. Renders "
-        "run in the BACKGROUND like Suno: this returns immediately and the finished MP4 (or a "
+        "run in the BACKGROUND: this returns immediately and the finished MP4 (or a "
         "failure) is posted to the channel automatically when ready. Do NOT wait, do NOT "
         "invent a URL, and NEVER build a webpage or other substitute — a webpage is not a video."
     ),

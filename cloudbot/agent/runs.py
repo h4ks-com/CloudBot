@@ -33,8 +33,8 @@ class RunRecord:
 
 
 _RUNS: dict[str, deque[RunRecord]] = {}
-# Producers record from executor threads (e.g. the Suno poll hook) while readers run on the
-# event loop, and a deque mutated mid-iteration raises.
+# Producers record from executor threads (e.g. a media-generation poll hook) while readers
+# run on the event loop, and a deque mutated mid-iteration raises.
 _LOCK = threading.Lock()
 
 

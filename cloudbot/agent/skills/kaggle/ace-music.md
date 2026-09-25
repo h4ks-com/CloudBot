@@ -1,6 +1,6 @@
 ---
 name: ace-music
-description: Generate a song (wav) from lyrics + a style prompt using the open ACE-Step model on Kaggle GPU. Use for explicit ACE-Step requests or an open-model/self-hosted song; for a quick song the main path is Suno.
+description: Generate a song (wav) from lyrics + a style prompt using the open ACE-Step model on Kaggle GPU. Use for explicit ACE-Step requests or an open-model/self-hosted song; for a quick song the main path is a workflows_submit song job.
 ---
 
 # Song from lyrics + prompt (ACE-Step)

@@ -103,6 +103,10 @@
         }
     },
     "plugins": {
+        "workflows": {
+            "announce_channel": "",
+            "connection": "gobot"
+        },
         "duckhunt": {
             "minimum_messages": 10,
             "minimum_users": 5
@@ -117,10 +121,6 @@
             "api_url": "https://your-ollama-instance.com/api/chat",
             "api_key": "your_api_key_here",
             "model": "qwen:latest"
-        },
-        "suno": {
-            "api_url": "https://your-suno-instance.example",
-            "api_key": "your_suno_api_key_here"
         },
         "radio": {
             "api_url": "http://localhost:8383",
@@ -195,7 +195,9 @@
         "github": "",
         "google": "",
         "openrouter": "",
-        "pollinations": ""
+        "pollinations": "",
+        "workflows_url": "https://workflows.h4ks.com",
+        "workflows_token": "your_workflows_service_token_here"
     },
     "database": "sqlite:///cloudbot.db",
     "location_bias_cc": null,
@@ -224,6 +226,12 @@
                 "events": ["song_changed", "livestream_started", "livestream_ended"],
                 "signing_key": "your-signing-key-here",
                 "description": "Radio updates"
+            },
+            {
+                "plugin": "workflows",
+                "url": "http://localhost:8081/webhooks/workflows",
+                "signing_key": "at-least-16-random-characters",
+                "description": "workflows job events"
             }
         ]
     },

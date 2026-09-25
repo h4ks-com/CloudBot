@@ -22,7 +22,7 @@ from cloudbot.util.web import ServiceError
         "Compose/render a song from a natural-language description or Strudel code "
         "using the cheap code-based music renderer; returns a strudel.cc link and an "
         "audio URL. Use for simple/loopable tracks, explicit Strudel/code requests, or "
-        "when Suno is unavailable."
+        "when workflows_submit has no song job available."
     ),
     schema={
         "type": "object",
