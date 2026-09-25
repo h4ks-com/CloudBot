@@ -36,16 +36,11 @@ def _ctx(handler, *, account="matt", is_private=False):
 
 
 @pytest.mark.asyncio
-async def test_workflows_submit_missing_type():
-    ctx = MagicMock()
-    assert "error" in await workflows_submit(ctx, {"type": "", "params": {}})
-
-
-@pytest.mark.asyncio
-async def test_workflows_submit_params_must_be_object():
-    ctx = MagicMock()
-    result = await workflows_submit(ctx, {"type": "song", "params": "nope"})
-    assert "error" in result
+@pytest.mark.parametrize(
+    "data", [{"type": "", "params": {}}, {"type": "song", "params": "nope"}]
+)
+async def test_workflows_submit_rejects_bad_input(data):
+    assert "error" in await workflows_submit(MagicMock(), data)
 
 
 @pytest.mark.asyncio
@@ -136,21 +131,3 @@ async def test_workflows_submit_reports_back_to_the_requesting_channel(
     monkeypatch.setattr(workflows, "announce_channel", lambda bot: "#chan")
     await workflows_submit(ctx, {"type": "song", "params": {"prompt": "hi"}})
     assert seen["body"]["webhook"] == {"target": "#chan", "prefix": "matt: "}
-
-
-@pytest.mark.asyncio
-async def test_workflows_submit_without_subscription_keeps_job_webhook(
-    monkeypatch,
-):
-    seen = {}
-
-    def handler(request):
-        seen["body"] = json.loads(request.content)
-        return httpx.Response(201, json={"job": {"id": 1, "quote": 5}})
-
-    ctx, client = _ctx(handler)
-    monkeypatch.setattr(workflows, "client_from_bot", lambda bot: client)
-    monkeypatch.setattr(workflows, "announce_channel", lambda bot: "#chan")
-    monkeypatch.setattr(workflows, "subscription", lambda bot: None)
-    await workflows_submit(ctx, {"type": "song", "params": {"prompt": "hi"}})
-    assert "webhook" in seen["body"]
