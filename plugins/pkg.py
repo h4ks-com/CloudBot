@@ -258,7 +258,7 @@ def ubuntu_search(query: str) -> Generator[Package, None, None]:
     soup = BeautifulSoup(response.text, "html.parser")
     soup.select("h3")
     for name_tag, package in zip(soup.select("h3"), soup.select("h3+ul")):
-        name = name_tag.text.strip().lstrip("Package ")
+        name = name_tag.text.strip().removeprefix("Package ")
         ubuntus: list[str] = []
         link = ""
         li: Tag | None = None
@@ -332,7 +332,9 @@ def search_nuget(query: str) -> Generator[Package, None, None]:
         if package_list is None:
             continue
         version = (
-            package_list.select("li")[3].text.strip().lstrip("Latest version ")
+            package_list.select("li")[3]
+            .text.strip()
+            .removeprefix("Latest version ")
         )
         released = package_list.select("li")[2].text.strip()
         description = _tag_text(package.select_one("div.package-details"))

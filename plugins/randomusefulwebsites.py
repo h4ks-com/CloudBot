@@ -16,4 +16,4 @@ def randomusefulwebsite():
     """- Return a random useful website from discuvver.com"""
     response = get_session().head(url, headers=headers, allow_redirects=True)
     # response.raise_for_status()
-    return response.url.strip().rstrip("?ref=discuvver")
+    return response.url.strip().removesuffix("?ref=discuvver")
