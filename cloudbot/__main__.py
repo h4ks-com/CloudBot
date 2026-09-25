@@ -4,9 +4,7 @@ import os
 import signal
 import sys
 import time
-from collections.abc import Awaitable
 from pathlib import Path
-from typing import Any
 
 from uvicorn import Config, Server
 
@@ -65,19 +63,19 @@ async def async_main():
 
     signal.signal(signal.SIGINT, exit_gracefully)
 
-    server_task: Awaitable[Any]
+    server = None
+    server_task = None
     if is_enabled():
-        port = get_port()
-        config = Config(app=app, host="0.0.0.0", port=port)
-        server = Server(config)
-        server_task = server.serve()
-    else:
-        # Dummy awaitable that never completes
-        server_task = asyncio.create_task(asyncio.sleep(float("inf")))
+        server = Server(Config(app=app, host="0.0.0.0", port=get_port()))
+        server_task = asyncio.ensure_future(server.serve())
 
-    # start the bot and web server concurrently
-    # CloudBot.run() will return True if it should restart, False otherwise
-    restart, _ = await asyncio.gather(_bot.run(), server_task)
+    # CloudBot.run() returns True if it should restart, False otherwise
+    restart = await _bot.run()
+
+    # The web server runs until told to stop, so we stop it once the bot is done.
+    if server is not None and server_task is not None:
+        server.should_exit = True
+        await server_task
 
     # the bot has stopped, do we want to restart?
     if restart:
