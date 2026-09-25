@@ -16,7 +16,7 @@ V = TypeVar("V")
 T = TypeVar("T")
 
 
-# At type-check time, MapBase aliases to MutableMapping so mypy knows the
+# At type-check time, MapBase aliases to MutableMapping so the type checker knows the
 # super() dispatches in KeyFoldMixin reach concrete, non-abstract methods
 # (the abstract dict-like methods on MutableMapping are implemented by the
 # concrete dict / defaultdict / WeakValueDictionary sibling in each MRO).

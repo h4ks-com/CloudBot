@@ -11,7 +11,7 @@ class Bot(MagicMock):
         self.loop = loop
 
 
-class MockClient(Client):  # pylint: disable=abstract-method
+class MockClient(Client):
     _connected = False
 
     def __init__(self, bot, *args, **kwargs):
@@ -26,7 +26,7 @@ class MockClient(Client):  # pylint: disable=abstract-method
         self._connected = True
 
 
-class FailingMockClient(MockClient):  # pylint: disable=abstract-method
+class FailingMockClient(MockClient):
     def __init__(self, *args, fail_count=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fail_count = fail_count

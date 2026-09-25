@@ -348,7 +348,6 @@ def _limits(cfg: KaggleConfig, nick: str) -> str | None:
     """
     # plugins/ is the consumer layer; importing it at module scope would invert
     # the dependency and risk a cycle, so every cloudbot/ module defers it.
-    # pylint: disable=import-outside-toplevel
     from plugins.ratelimit import Limit, check
 
     active = _active_count()
@@ -375,7 +374,6 @@ def _limits(cfg: KaggleConfig, nick: str) -> str | None:
 
 
 def _record_usage(nick: str) -> None:
-    # pylint: disable=import-outside-toplevel
     from plugins.ratelimit import record
 
     with _session() as db:

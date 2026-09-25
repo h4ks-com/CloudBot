@@ -1586,7 +1586,6 @@ def reload_skills(bot) -> list[str]:
     """- rescans the skill catalogue: packaged skills plus the runtime skills dir. Owner only."""
     # kaggle_agent pulls this module in through subagent, so importing it at
     # module scope would be circular.
-    # pylint: disable=import-outside-toplevel
     from plugins import kaggle_agent
 
     kaggle_agent.reset_agent_cache()

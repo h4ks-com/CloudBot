@@ -7,7 +7,7 @@ from cloudbot.client import Client
 from plugins.core import core_misc
 
 
-class MockClient(Client):  # pylint: disable=abstract-method
+class MockClient(Client):
     def __init__(self, bot, *args, **kwargs):
         super().__init__(bot, "TestClient", *args, **kwargs)
         self.active = True

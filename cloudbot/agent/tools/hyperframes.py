@@ -106,7 +106,6 @@ async def create_video(ctx, data):
     effort = requested if requested in get_args(hyperframes.Effort) else None
     # Lazy import: plugins.hyperframes → plugins.agent → cloudbot.agent, which
     # eagerly imports this tools package; importing at module load cycles.
-    # pylint: disable=import-outside-toplevel
     from plugins.hyperframes import spawn_video
 
     event = ctx.context
@@ -166,7 +165,6 @@ async def create_voice(ctx, data):
     prompt = str(data.get("prompt") or "").strip()
     if not prompt:
         return "(error: prompt required)"
-    # pylint: disable=import-outside-toplevel
     from plugins.hyperframes import spawn_voice
 
     event = ctx.context

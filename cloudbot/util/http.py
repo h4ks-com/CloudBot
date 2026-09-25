@@ -145,7 +145,7 @@ def open(
     timeout=None,
     headers=None,
     **kwargs,
-):  # pylint: disable=locally-disabled, redefined-builtin  # pragma: no cover
+):  # pragma: no cover
     warnings.warn(
         "http.open() is deprecated, use http.open_request() instead.",
         DeprecationWarning,
