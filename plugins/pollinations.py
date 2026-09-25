@@ -1,6 +1,6 @@
+from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Deque
 
 import requests
 
@@ -164,7 +164,7 @@ class PollinationsClient:
         return response.json()
 
 
-pollinations_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
+pollinations_messages_cache: dict[tuple[str, str], deque[Message]] = {}
 user_models: dict[tuple[str, str], str] = {}
 
 

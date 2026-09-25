@@ -252,9 +252,7 @@ async def run_subagent(
             raise SubagentError(
                 f"agent hit the {max_turns}-turn limit before finishing"
             ) from e
-        except (
-            Exception
-        ) as e:  # noqa: BLE001 — backend failure must fall through to the next
+        except Exception as e:  # noqa: BLE001 — backend failure must fall through to the next
             logger.warning(
                 "subagent: %s failed: %s: %s", backend, type(e).__name__, e
             )

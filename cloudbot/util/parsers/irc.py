@@ -138,9 +138,7 @@ class MessageTag(Parseable):
 
     def __str__(self):
         if self.value:
-            return "{}{}{}".format(
-                self.name, TAG_VALUE_SEP, self.escape(self.value)
-            )
+            return f"{self.name}{TAG_VALUE_SEP}{self.escape(self.value)}"
 
         return self.name
 

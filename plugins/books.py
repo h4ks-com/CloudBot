@@ -79,6 +79,4 @@ def books(text, reply, bot, db):
 
     link = web.try_shorten(book["infoLink"])
 
-    return "\x02{}\x02 by \x02{}\x02 ({}){} - {} - {}".format(
-        title, author, year, pages, description, link
-    )
+    return f"\x02{title}\x02 by \x02{author}\x02 ({year}){pages} - {description} - {link}"

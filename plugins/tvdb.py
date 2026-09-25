@@ -3,7 +3,7 @@ import logging
 from collections.abc import Container, Iterable, Iterator, Sized
 from enum import Enum
 from functools import wraps
-from typing import Any, Generic, TypeVar, Union, cast, overload
+from typing import Any, Generic, TypeVar, cast, overload
 
 import requests
 
@@ -17,9 +17,9 @@ from cloudbot.util.web import get_session
 logger = logging.getLogger(__name__)
 token_lifetime = datetime.timedelta(hours=1)
 
-JsonPrimitive = Union[int, str, bool, None]
+JsonPrimitive = int | str | bool | None
 JsonObject = dict[
-    str, Union[JsonPrimitive, list[JsonPrimitive], dict[str, JsonPrimitive]]
+    str, JsonPrimitive | list[JsonPrimitive] | dict[str, JsonPrimitive]
 ]
 
 
@@ -522,13 +522,9 @@ def tv_last(text: str) -> str:
             break
 
     if not prev_ep:
-        return "There are no previously aired episodes for {}.".format(
-            series.name
-        )
+        return f"There are no previously aired episodes for {series.name}."
 
     if series.ended:
-        return "{} ended. The last episode aired {}.".format(
-            series.name, prev_ep
-        )
+        return f"{series.name} ended. The last episode aired {prev_ep}."
 
     return f"The last episode of {series.name} aired {prev_ep}."

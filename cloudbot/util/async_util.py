@@ -11,9 +11,9 @@ from typing import cast
 from cloudbot.util.func_utils import call_with_args
 
 try:
-    _asyncio_get_tasks = getattr(asyncio, "all_tasks")
+    _asyncio_get_tasks = asyncio.all_tasks
 except AttributeError:
-    _asyncio_get_tasks = getattr(Task, "all_tasks")
+    _asyncio_get_tasks = Task.all_tasks
 
 
 def wrap_future(fut, *, loop=None):

@@ -111,9 +111,7 @@ def lag_check(bot, admin_log):
             last_act = now - conn.memory.get("last_activity", 0)
             if lag > warning or last_act > warning:
                 admin_log(
-                    "[{}] Lag detected. {:.2f}s since last ping, {:.2f}s since last activity".format(
-                        conn.name, lag, last_act
-                    )
+                    f"[{conn.name}] Lag detected. {lag:.2f}s since last ping, {last_act:.2f}s since last activity"
                 )
 
             if lag > timeout and last_act > timeout:

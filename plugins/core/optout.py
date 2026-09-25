@@ -62,9 +62,7 @@ class OptOut:
         return NotImplemented
 
     def __repr__(self):
-        return "{}({}, {}, {})".format(
-            self.__class__.__name__, self.channel, self.hook, self.allow
-        )
+        return f"{self.__class__.__name__}({self.channel}, {self.hook}, {self.allow})"
 
     def match(self, channel, hook_name):
         return self.match_chan(channel) and match_mask(

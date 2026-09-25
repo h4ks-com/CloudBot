@@ -82,9 +82,9 @@ def dice(text, event):
         if _side.upper() == "F":  # fudge dice are basically 1d3-2
             for fudge in n_rolls(count, "F"):
                 if fudge == 1:
-                    rolls.append("\x033+\x0F")
+                    rolls.append("\x033+\x0f")
                 elif fudge == -1:
-                    rolls.append("\x034-\x0F")
+                    rolls.append("\x034-\x0f")
                 else:
                     rolls.append("0")
                 total += fudge
@@ -155,9 +155,5 @@ def coin(text, notice, action):
     n = random.normalvariate(mu, sigma)
     heads = clamp(int(round(n)), 0, amount)
     tails = amount - heads
-    action(
-        "flips {} coins and gets {} heads and {} tails.".format(
-            amount, heads, tails
-        )
-    )
+    action(f"flips {amount} coins and gets {heads} heads and {tails} tails.")
     return None

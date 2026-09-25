@@ -282,7 +282,7 @@ def new_guess_game(bot, chan, db) -> str:
 
     def get_random_land_location() -> GoogleLocation:
         with open("plugins/ISO3166-1.alpha2.json", encoding="utf-8") as fh:
-            countries: "dict[str, str]" = json.loads(fh.read())
+            countries: dict[str, str] = json.loads(fh.read())
         country_code = random.choice(list(countries.keys()))
         country_name = countries[country_code]
 

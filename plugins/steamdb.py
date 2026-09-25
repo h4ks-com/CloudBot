@@ -66,8 +66,8 @@ def get_data(user, currency="us"):
             raise SteamError(f"Could not get user info: {e}") from e
         else:
             raise SteamError(
-                "Could not get user info: {} (You may have been blocked by CloudFlare, try installing the "
-                "cfscrape module)".format(e)
+                f"Could not get user info: {e} (You may have been blocked by CloudFlare, try installing the "
+                "cfscrape module)"
             ) from e
 
     # parse that page!

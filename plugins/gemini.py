@@ -1,7 +1,7 @@
 import base64
 import re
 import tempfile
-from typing import Deque
+from collections import deque
 
 import magic
 from requests import HTTPError, RequestException
@@ -55,7 +55,7 @@ MAX_TEXT_HISTORY_LENGTH = 32
 MEDIA_TIMEOUT = 15
 URL_RE = re.compile(r"https?://\S+")
 
-gemt_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
+gemt_messages_cache: dict[tuple[str, str], deque[Message]] = {}
 
 
 def _get_api_key():

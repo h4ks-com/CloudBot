@@ -37,11 +37,11 @@ def spell(text):
         s_string = ", ".join(suggestions[:10])
         if is_correct:
             return (
-                '"{}" appears to be \x02valid\x02! '
-                "(suggestions: {})".format(text, s_string)
+                f'"{text}" appears to be \x02valid\x02! '
+                f"(suggestions: {s_string})"
             )
         else:
             return (
-                '"{}" appears to be \x02invalid\x02! '
-                "(suggestions: {})".format(text, s_string)
+                f'"{text}" appears to be \x02invalid\x02! '
+                f"(suggestions: {s_string})"
             )

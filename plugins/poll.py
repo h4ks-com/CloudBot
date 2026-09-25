@@ -76,9 +76,7 @@ def poll(text, conn, nick, chan, message, reply):
 
         p = polls.get(uid)
         reply(
-            'Your poll has been closed. Final results for \x02"{}"\x02:'.format(
-                p.question
-            )
+            f'Your poll has been closed. Final results for \x02"{p.question}"\x02:'
         )
         message(p.format_results())
         del polls[uid]
@@ -109,9 +107,7 @@ def poll(text, conn, nick, chan, message, reply):
 
     option_str = get_text_list(_poll.option_list, "and")
     message(
-        'Created poll \x02"{}"\x02 with the following options: {}'.format(
-            _poll.question, option_str
-        )
+        f'Created poll \x02"{_poll.question}"\x02 with the following options: {option_str}'
     )
     message(f"Use .vote {nick.lower()} <option> to vote on this poll!")
     return None

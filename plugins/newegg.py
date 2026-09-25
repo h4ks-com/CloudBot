@@ -75,13 +75,9 @@ def format_item(item, show_url=True):
     if show_url:
         # create the item URL and shorten it
         url = web.try_shorten(ITEM_URL.format(item["NeweggItemNumber"]))
-        return "\x02{}\x02 ({}) - {} - {} - {}".format(
-            title, price, rating, tag_text, url
-        )
+        return f"\x02{title}\x02 ({price}) - {rating} - {tag_text} - {url}"
     else:
-        return "\x02{}\x02 ({}) - {} - {}".format(
-            title, price, rating, tag_text
-        )
+        return f"\x02{title}\x02 ({price}) - {rating} - {tag_text}"
 
 
 # HOOK FUNCTIONS

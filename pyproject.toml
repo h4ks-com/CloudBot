@@ -122,14 +122,6 @@ dependencies = [
     "griffe>=1.5.6,<1.6",
 ]
 
-[tool.isort]
-line_length = 80
-multi_line_output = 3
-include_trailing_comma = true
-use_parentheses = true
-known_first_party = ["cloudbot", "plugins", "tests"]
-float_to_top = true
-
 [dependency-groups]
 dev = [
     "freezegun==1.4.0",
@@ -148,167 +140,33 @@ dev = [
     "types-cachetools>=7.0.0",
 ]
 
-[tool.black]
+[tool.ruff]
 line-length = 80
-target-version = ['py310']
-include = '\.pyi?$'
-exclude = '''
-(
-  /(
-      \.eggs         # exclude a few common directories in the
-    | \.git          # root of the project
-    | \.hg
-    | \.mypy_cache
-    | \.tox
-    | \.venv
-    | _build
-    | buck-out
-    | build
-    | dist
-    | venv
-  )/
-)
-'''
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "PGH", "B", "PLE"]
+# The older plugins trip these style rules; we keep them off rather than rewrite code that works.
+ignore = [
+    "B007",
+    "B008",
+    "B011",
+    "B024",
+    "B027",
+    "B028",
+    "B905",
+    "E731",
+    "E741",
+    "PGH003",
+    "UP031",
+    "UP032",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cloudbot", "plugins", "tests"]
 
 [tool.uv]
 package = false
-
-[tool.pylint.main]
-py-version = "3.10"
-extension-pkg-allow-list=["lxml"]
-max-module-lines = 2000
-ignored-modules = [
-  "agents",
-  "agents.exceptions",
-  "agents.models.openai_chatcompletions",
-  "agents.models.openai_provider",
-  "agents.run",
-  "asyncwhois",
-  "chatbot",
-  "cleverwrap",
-  "curl_cffi",
-  "dictcc",
-  "enchant",
-  "enchant.checker",
-  "enchant.tokenize",
-  "ety",
-  "feedparser",
-  "freezegun",
-  "fuzzywuzzy",
-  "gazpacho",
-  "github",
-  "google.transliteration",
-  "google.transliteration.numerals",
-  "google_play_scraper",
-  "googlemaps",
-  "googlemaps.exceptions",
-  "humanfriendly",
-  "imgurpython",
-  "irclib.parser",
-  "irclib.util.compare",
-  "isodate",
-  "lightstreamer.client",
-  "magic",
-  "markitdown",
-  "mcstatus",
-  "mcstatus.status_response",
-  "mediawiki",
-  "microdata",
-  "mwparserfromhell",
-  "natsort",
-  "newsapi",
-  "nltk",
-  "openai",
-  "openrouter",
-  "openrouter.components.model",
-  "openrouter.errors",
-  "pyocr.builders",
-  "pyproj",
-  "pypdf",
-  "pywikibot",
-  "pywikibot.exceptions",
-  "pyyoutube",
-  "responses",
-  "responses.matchers",
-  "streetview",
-  "timezonefinder",
-  "unidecode",
-  "uwuipy",
-  "validators",
-  "watchdog.events",
-  "watchdog.observers",
-  "youtube_search",
-  "youtube_transcript_api",
-]
-
-[tool.pylint.messages_control]
-disable = [
-  "raw-checker-failed",
-  "no-else-return",
-  "nested-min-max",
-  "bad-mcs-classmethod-argument",
-  "bad-inline-option",
-  "locally-disabled",
-  "file-ignored",
-  "suppressed-message",
-  "useless-suppression",
-  "deprecated-pragma",
-  "use-symbolic-message-instead",
-  "invalid-name",
-  "duplicate-string-formatting-argument",
-  "missing-module-docstring",
-  "missing-class-docstring",
-  "missing-function-docstring",
-  "consider-using-f-string",
-  "consider-using-dict-items",
-  "consider-using-with",
-  "consider-using-min-builtin",
-  "arguments-renamed",
-  "use-maxsplit-arg",
-  "consider-iterating-dictionary",
-  "redefined-outer-name",
-  "unused-argument",
-  "broad-except",
-  "ungrouped-imports",
-  "wrong-import-position",
-  "arguments-differ",
-  "too-many-arguments",
-  "too-many-locals",
-  "too-many-statements",
-  "too-many-branches",
-  "protected-access",
-  "duplicate-code",
-  "no-else-raise",
-  "arguments-out-of-order",
-  "redefined-builtin",
-  "no-else-continue",
-  "unnecessary-comprehension",
-  "no-value-for-parameter",
-  "too-few-public-methods",
-  "fixme",
-  "too-many-public-methods",
-  "missing-timeout",
-  "not-callable",
-  "unnecessary-lambda-assignment",
-  "abstract-method",
-  "abstract-class-instantiated",
-  "consider-using-generator",
-  "too-many-return-statements",
-  "line-too-long",
-  "too-many-instance-attributes",
-  "broad-exception-raised",
-  "use-implicit-booleaness-not-comparison",
-  # cloudbot/agent/subagent.py imports plugins.agent for _make_run_config, so
-  # cloudbot.agent <-> plugins.agent is cyclic by design and broken at runtime by
-  # deferred imports. pylint counts deferred imports too, and reports this at an
-  # arbitrary module, so it cannot be suppressed locally.
-  "cyclic-import",
-]
-
-enable = ["c-extension-no-member"]
-
-[tool.pylint.typecheck]
-generated-members = "(requests\\.)?codes\\.[a-zA-Z0-9_]+"
 
 [tool.mypy]
 namespace_packages = true

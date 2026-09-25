@@ -57,8 +57,7 @@ def searx_search(query, language="en"):
 def api_get(kind, query):
     """Use the RESTful Google Search API"""
     url = (
-        "http://ajax.googleapis.com/ajax/services/search/%s?"
-        "v=1.0&safe=moderate"
+        "http://ajax.googleapis.com/ajax/services/search/%s?v=1.0&safe=moderate"
     )
     return http.get_json(url % kind, q=query)
 
@@ -129,7 +128,7 @@ def g_next(text):
     if not last_results:
         return "No search results left"
     result = last_results.pop(0)
-    return f"{ result['text'] }   ---   \x02{result['url']}\x02"
+    return f"{result['text']}   ---   \x02{result['url']}\x02"
 
 
 @hook.command("ddg")
@@ -139,4 +138,4 @@ def ddg_search(text):
     if not results:
         return "No results found."
     result = results[0]
-    return f"{ result['text'] }   ---   \x02{result['url']}\x02"
+    return f"{result['text']}   ---   \x02{result['url']}\x02"

@@ -375,7 +375,9 @@ def fish_command(nick: str, db: Any) -> str | list[str]:
         rarity_desc = (
             "legendary"
             if caught_fish.rarity <= 0.05
-            else "rare" if caught_fish.rarity <= 0.15 else "common"
+            else "rare"
+            if caught_fish.rarity <= 0.15
+            else "common"
         )
 
         response.append(

@@ -52,9 +52,7 @@ def issue_cmd(text, event):
 
     if issue:
         r = get_session().get(
-            "https://api.github.com/repos/{}/{}/issues/{}".format(
-                owner, repo, issue
-            )
+            f"https://api.github.com/repos/{owner}/{repo}/issues/{issue}"
         )
 
         try:
@@ -79,9 +77,7 @@ def issue_cmd(text, event):
                 j["closed_by"]["login"]
             )
 
-        return "Issue #{} ({}): {} | {}: {}".format(
-            number, state, url, title, summary
-        )
+        return f"Issue #{number} ({state}): {url} | {title}: {summary}"
 
     r = get_session().get(f"https://api.github.com/repos/{owner}/{repo}/issues")
 
@@ -223,7 +219,6 @@ def ghn_cmd(chan, nick):
 
 @hook.command("gh", "github", autohelp=False)
 def gh_cmd(text, event, reply, bot, nick, chan):
-
     arguments = shlex.split(text)
     if not arguments:
         return "Usage: gh <subcommand> [args] <query>"

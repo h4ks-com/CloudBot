@@ -62,7 +62,6 @@ class CharacterNotFount(Exception):
 
 
 def text2morse(message):
-
     message = unidecode.unidecode(message.upper()).upper()
     cipher = ""
     for letter in message:
@@ -82,7 +81,6 @@ def text2morse(message):
 
 
 def morse2text(message):
-
     # extra space added at the end to access the
     # last morse code
     message += " "

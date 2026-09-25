@@ -3,7 +3,7 @@ import logging
 import logging.config
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 version = (1, 3, 0)
 __version__ = ".".join(str(i) for i in version)

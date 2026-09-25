@@ -44,11 +44,11 @@ def goog_trans(db, text, source, target):
     record(db, TRANSLATE_BUCKET, weight=len(text))
 
     if not source:
-        return "(%(detectedSourceLanguage)s) %(translatedText)s" % (
-            parsed["data"]["translations"][0]
+        return "({detectedSourceLanguage}) {translatedText}".format(
+            **parsed["data"]["translations"][0]
         )
 
-    return "%(translatedText)s" % parsed["data"]["translations"][0]
+    return "{translatedText}".format(**parsed["data"]["translations"][0])
 
 
 def match_language(fragment):

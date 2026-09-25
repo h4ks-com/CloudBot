@@ -34,19 +34,10 @@ def penis(text, message):
     """[nick] - much dongs, very ween, add a user nick as an arguement for slightly different 'output'"""
     if not text:
         message(
-            "{}{}{}".format(
-                random.choice(balls), random.choice(shaft), random.choice(head)
-            )
+            f"{random.choice(balls)}{random.choice(shaft)}{random.choice(head)}"
         )
     else:
         person = text.split(" ")[0]
         message(
-            "{}{}{}{} all over {}'s {}".format(
-                random.choice(balls),
-                random.choice(shaft),
-                random.choice(head),
-                random.choice(emission),
-                person,
-                random.choice(bodypart),
-            )
+            f"{random.choice(balls)}{random.choice(shaft)}{random.choice(head)}{random.choice(emission)} all over {person}'s {random.choice(bodypart)}"
         )

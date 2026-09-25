@@ -56,9 +56,7 @@ DAY_CLOCK = (
 )
 
 OPT = lambda x: rf"(?:{x})?"
-OPT_SEP = lambda x: r"(?:{x}\s*(?:{SEPARATORS}\s*)?)?".format(
-    x=x, SEPARATORS=SEPARATORS
-)
+OPT_SEP = lambda x: rf"(?:{x}\s*(?:{SEPARATORS}\s*)?)?"
 
 TIME_FORMATS = [
     r"{WEEKS}\s*{DAYS}\s*{HOURS}\s*{MINS}\s*{SECS}".format(
@@ -71,9 +69,7 @@ TIME_FORMATS = [
         SECS=OPT(SECS),
     ),
     rf"{MIN_CLOCK}",
-    r"{WEEKS}\s*{DAYS}\s*{HOUR_CLOCK}".format(
-        WEEKS=OPT_SEP(WEEKS), DAYS=OPT_SEP(DAYS), HOUR_CLOCK=HOUR_CLOCK
-    ),
+    rf"{OPT_SEP(WEEKS)}\s*{OPT_SEP(DAYS)}\s*{HOUR_CLOCK}",
     rf"{DAY_CLOCK}",
     rf"{SEC_CLOCK}",
 ]

@@ -105,9 +105,7 @@ def remove_user_from_group(user, group, event):
     mask_list = formatting.get_text_list(changed_masks, "and")
     event.reply(f"Removed {mask_list} from {group}")
     event.admin_log(
-        "{} used deluser remove {} from {}.".format(
-            event.nick, mask_list, group
-        )
+        f"{event.nick} used deluser remove {mask_list} from {group}."
     )
 
     return bool(changed_masks)
@@ -187,9 +185,7 @@ async def add_permissions_user(text, nick, conn, bot, notice, reply, admin_log):
     else:
         reply(f"Group {group} created with user {user}")
         admin_log(
-            "{} used adduser to create group {} and add {} to it.".format(
-                nick, group, user
-            )
+            f"{nick} used adduser to create group {group} and add {user} to it."
         )
 
     bot.config.save_config()

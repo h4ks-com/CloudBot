@@ -79,7 +79,7 @@ class PermissionManager:
             if match_mask(user_mask.lower(), backdoor.lower()):
                 return True
 
-        if not perm.lower() in self.perm_users:
+        if perm.lower() not in self.perm_users:
             # no one has access
             return False
 

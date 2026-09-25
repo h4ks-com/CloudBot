@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Deque, Literal
+from typing import Literal
 
 from cloudbot.util import web
 from cloudbot.util.multiline import split_long_line
@@ -43,11 +43,11 @@ def detect_code_blocks(markdown_text: str) -> list[str]:
 
 
 def get_or_create_history(
-    cache: dict[tuple[str, str], Deque[Message]],
+    cache: dict[tuple[str, str], deque[Message]],
     chan: str,
     nick: str,
     maxlen: int,
-) -> Deque[Message]:
+) -> deque[Message]:
     channick = (chan, nick)
     if channick not in cache:
         cache[channick] = deque(maxlen=maxlen)
@@ -55,7 +55,7 @@ def get_or_create_history(
 
 
 def clear_history(
-    cache: dict[tuple[str, str], Deque[Message]],
+    cache: dict[tuple[str, str], deque[Message]],
     chan: str,
     nick: str,
 ) -> str:
@@ -67,7 +67,7 @@ def clear_history(
 
 
 def copy_history(
-    cache: dict[tuple[str, str], Deque[Message]],
+    cache: dict[tuple[str, str], deque[Message]],
     chan: str,
     nick: str,
     target: str,

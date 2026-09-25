@@ -80,9 +80,7 @@ def urban(text, reply):
 
         url = definition["permalink"]
 
-        output = "[{}/{}] {} - {}".format(
-            id_num, len(definitions), def_text, url
-        )
+        output = f"[{id_num}/{len(definitions)}] {def_text} - {url}"
 
     else:
         definition = random.choice(definitions)

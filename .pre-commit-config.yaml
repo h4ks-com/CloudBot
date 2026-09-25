@@ -2,7 +2,6 @@ default_language_version:
   python: python3.12
 ci:
   skip:
-  - pylint
   - mypy
 exclude: ^\.vscode/.*$
 repos:
@@ -37,45 +36,18 @@ repos:
   - id: fix-encoding-pragma
     args:
     - --remove
-- repo: https://github.com/psf/black
-  rev: 6fdf8a4af28071ed1d079c01122b34c5d587207a  # frozen: 24.2.0
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.14.2
   hooks:
-  - id: black
-- repo: https://github.com/pycqa/isort
-  rev: c235f5e450b4b84e58d114ed4c589cbf454175a3  # frozen: 5.13.2
-  hooks:
-  - id: isort
-- repo: https://github.com/pre-commit/pygrep-hooks
-  rev: 3a6eb0fadf60b3cccfd80bad9dbb6fae7e47b316  # frozen: v1.10.0
-  hooks:
-  - id: python-no-eval
-  - id: python-no-log-warn
-- repo: https://github.com/asottile/pyupgrade
-  rev: df17dfa3911b81b4a27190b0eea5b1debc7ffa0a  # frozen: v3.15.1
-  hooks:
-  - id: pyupgrade
-    args:
-    - "--py310-plus"
-
+  - id: ruff-check
+    args: [--fix]
+  - id: ruff-format
 - repo: local
   hooks:
   - id: mypy
     name: mypy
     entry: uv run mypy
     args:
-    - cloudbot
-    - plugins
-    - tests
-    language: system
-    types: [python]
-    pass_filenames: false
-    always_run: true
-  - id: pylint
-    name: pylint
-    entry: uv run pylint
-    args:
-    - '-s'
-    - 'no'
     - cloudbot
     - plugins
     - tests

@@ -45,7 +45,7 @@ def load_cache(db):
 
 def format_profile(nick, category, text):
     # Add zwsp to avoid pinging users
-    nick = "{}{}{}".format(nick[0], "\u200B", nick[1:])
+    nick = "{}{}{}".format(nick[0], "\u200b", nick[1:])
     msg = f"{nick}->{category}: {text}"
     return msg
 
@@ -109,9 +109,7 @@ def profile(text, chan, notice, nick):
     cat_cf = category.casefold()
     if cat_cf not in user_profile:
         notice(
-            "User {} has no profile data for category {} in this channel".format(
-                pnick, category
-            )
+            f"User {pnick} has no profile data for category {category} in this channel"
         )
         return None
 
@@ -223,8 +221,6 @@ def profileclear(nick, chan, text, notice, db):
     )
     confirm_keys[chan.casefold()][nick.casefold()] = key
     notice(
-        'Are you sure you want to clear all of your profile data in {}? use ".profileclear {}" to confirm'.format(
-            chan, key
-        )
+        f'Are you sure you want to clear all of your profile data in {chan}? use ".profileclear {key}" to confirm'
     )
     return None

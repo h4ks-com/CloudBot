@@ -176,12 +176,8 @@ def points_cmd(text, chan, db):
                 pos += int(k[0])
             score += int(k[0])
         if thing:
-            return "{} has a total score of {} (+{}/{}) across all channels I know about.".format(
-                thing, score, pos, neg
-            )
-        return "{} has a total score of {} (+{}/{}) in {}.".format(
-            text, score, pos, neg, chan
-        )
+            return f"{thing} has a total score of {score} (+{pos}/{neg}) across all channels I know about."
+        return f"{text} has a total score of {score} (+{pos}/{neg}) in {chan}."
 
     return f"I couldn't find {text} in the database."
 

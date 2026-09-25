@@ -100,9 +100,7 @@ def remember(text, nick, db, chan, notice, event):
         notice(f"Appending \x02{new_data}\x02 to \x02{old_data}\x02")
     else:
         notice(
-            "Remembering \x02{0}\x02 for \x02{1}\x02. Type {2}{1} to see it.".format(
-                data, word, FACTOID_CHAR
-            )
+            f"Remembering \x02{data}\x02 for \x02{word}\x02. Type {FACTOID_CHAR}{word} to see it."
         )
         if old_data:
             notice(f"Previous data was \x02{old_data}\x02")

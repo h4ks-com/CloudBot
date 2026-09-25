@@ -835,7 +835,7 @@ def _run_state(event: object) -> LastRun:
     last: LastRun | None = last_run(event)
     if last is None:
         last = LastRun()
-        setattr(event, "_kaggle_last", last)
+        event._kaggle_last = last
     return last
 
 

@@ -1,6 +1,6 @@
 import base64
 import time
-from typing import Deque
+from collections import deque
 
 import requests
 
@@ -296,7 +296,7 @@ def get_completion(
     return response.json()["choices"][0]["message"]["content"]
 
 
-ollama_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
+ollama_messages_cache: dict[tuple[str, str], deque[Message]] = {}
 user_models: dict[tuple[str, str], str] = {}
 
 
@@ -346,7 +346,7 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str | list[str]:
 
 def create_web_app(
     text: str,
-    history: list[Message] | Deque[Message],
+    history: list[Message] | deque[Message],
     bot,
     api_url: str,
     api_key: str,

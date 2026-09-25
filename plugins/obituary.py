@@ -12,8 +12,7 @@ from cloudbot.util.web import get_session
 
 API_URL = "https://en.wikipedia.org/w/api.php"
 USER_AGENT = (
-    "Cloudbot/DEV (https://github.com/TotallyNotRobots/CloudBot; "
-    "deaths plugin)"
+    "Cloudbot/DEV (https://github.com/TotallyNotRobots/CloudBot; deaths plugin)"
 )
 DEFAULT_LIMIT = 5
 MAX_LIMIT = 10
@@ -173,7 +172,7 @@ def format_deaths(deaths: list[Death]) -> list[str]:
         details = (
             truncate(d.details.rstrip("."), MAX_DESC_LEN) if d.details else ""
         )
-        line = f"{_BOLD}{name}{_CLEAR} " f"{_GREY}{d.death_date}{_CLEAR}"
+        line = f"{_BOLD}{name}{_CLEAR} {_GREY}{d.death_date}{_CLEAR}"
         if details:
             line += f" - {details}"
         line += f" :: {_CYAN}{d.link}{_CLEAR}"

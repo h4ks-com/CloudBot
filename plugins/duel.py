@@ -553,12 +553,8 @@ def display_scores(score_type: ScoreType, event, text, chan, conn, db):
     if is_opt_out(conn.name, chan):
         return None
 
-    global_pfx = "duel {noun} scores across the network: ".format(
-        noun=score_type.noun
-    )
-    chan_pfx = "duel {noun} scores in {chan}: ".format(
-        noun=score_type.noun, chan=chan
-    )
+    global_pfx = f"duel {score_type.noun} scores across the network: "
+    chan_pfx = f"duel {score_type.noun} scores in {chan}: "
     no_duels = "It appears no one has {verb} any duels yet."
 
     out = global_pfx if text else chan_pfx
@@ -602,13 +598,9 @@ def hunt_opt_out(text, chan, db, conn):
     """
     if not text:
         if is_opt_out(conn.name, chan):
-            return "duel is disabled in {}. To re-enable it run .hunt_opt_out remove #channel".format(
-                chan
-            )
+            return f"duel is disabled in {chan}. To re-enable it run .hunt_opt_out remove #channel"
 
-        return "duel is enabled in {}. To disable it run .hunt_opt_out add #channel".format(
-            chan
-        )
+        return f"duel is enabled in {chan}. To disable it run .hunt_opt_out add #channel"
 
     if text == "list":
         return ", ".join(opt_out)
@@ -629,9 +621,7 @@ def hunt_opt_out(text, chan, db, conn):
         db.execute(query)
         db.commit()
         load_optout(db)
-        return "The duelhunt has been successfully disabled in {}.".format(
-            channel
-        )
+        return f"The duelhunt has been successfully disabled in {channel}."
 
     if command.lower() == "remove":
         if not is_opt_out(conn.name, channel):

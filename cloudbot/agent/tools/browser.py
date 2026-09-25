@@ -7,9 +7,12 @@ import requests
 from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
 from cloudbot.util import web
-from cloudbot.util.browserless import evaluate_in_page, fetch_console_logs
+from cloudbot.util.browserless import (
+    evaluate_in_page,
+    fetch_console_logs,
+    take_screenshot,
+)
 from cloudbot.util.browserless import is_configured as browserless_configured
-from cloudbot.util.browserless import take_screenshot
 
 
 def _normalize_url(url: str) -> str:

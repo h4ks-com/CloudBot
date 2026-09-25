@@ -3,7 +3,6 @@ import importlib
 import re
 import time
 from collections import deque
-from typing import Deque
 from urllib.parse import urlparse
 
 import jwt
@@ -127,7 +126,7 @@ def get_completion(messages: list[Message]) -> str:
         return response.json()["completion"]
 
 
-gpt_messages_cache: dict[tuple[str, str], Deque[Message]] = {}
+gpt_messages_cache: dict[tuple[str, str], deque[Message]] = {}
 
 
 @hook.command("gpt")
@@ -151,7 +150,7 @@ def gpt_command(text: str, nick: str, chan: str) -> str | list[str]:
     )
 
 
-def create_web_app(text: str, history: list[Message] | Deque[Message]) -> str:
+def create_web_app(text: str, history: list[Message] | deque[Message]) -> str:
     history.append(Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX))
     try:
         response = get_completion(list(history))
@@ -348,7 +347,7 @@ def sumsum(
     )
 
 
-agi_messages_cache: Deque[tuple[float, str]] = deque(maxlen=AGI_HISTORY_LENGTH)
+agi_messages_cache: deque[tuple[float, str]] = deque(maxlen=AGI_HISTORY_LENGTH)
 
 
 def generate_agi_history(conn, chan: str) -> list[Message]:
@@ -473,7 +472,7 @@ def edit_wiki(
     chan: str,
     nick: str,
     prompt: str,
-    history: Deque[Message] | list[Message],
+    history: deque[Message] | list[Message],
 ) -> str:
     user = bot.config.get_api_key("wiki_username")
     history.append(

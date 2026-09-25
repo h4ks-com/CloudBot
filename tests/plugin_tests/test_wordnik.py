@@ -230,9 +230,7 @@ class TestUsage(WordTestBase):
 
     @classmethod
     def get_not_found_msg(cls, word):
-        return "I could not find any usage examples for \x02{}\x02.".format(
-            word
-        )
+        return f"I could not find any usage examples for \x02{word}\x02."
 
     def test_search(self, mock_requests, mock_api_keys):
         mock_requests.add(
@@ -410,9 +408,7 @@ class TestSynonym(WordTestBase):
 
     @classmethod
     def get_not_found_msg(cls, word):
-        return "Sorry, I couldn't find any synonyms for \x02{}\x02.".format(
-            word
-        )
+        return f"Sorry, I couldn't find any synonyms for \x02{word}\x02."
 
     def test_search(self, mock_requests, mock_api_keys):
         mock_requests.add(
@@ -464,9 +460,7 @@ class TestAntonym(WordTestBase):
 
     @classmethod
     def get_not_found_msg(cls, word):
-        return "Sorry, I couldn't find any antonyms for \x02{}\x02.".format(
-            word
-        )
+        return f"Sorry, I couldn't find any antonyms for \x02{word}\x02."
 
     def test_search(self, mock_requests, mock_api_keys):
         mock_requests.add(

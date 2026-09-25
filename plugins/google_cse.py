@@ -120,8 +120,4 @@ def gse_gis(text):
 
     # SearXNG does not reliably provide byte size / dimensions,
     # so we display best available info.
-    return "{} -- \x02{}\x02: {}".format(
-        image_url,
-        formatting.truncate_str(title, 60),
-        formatting.truncate_str(content, 120),
-    )
+    return f"{image_url} -- \x02{formatting.truncate_str(title, 60)}\x02: {formatting.truncate_str(content, 120)}"

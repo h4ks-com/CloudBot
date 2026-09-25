@@ -86,9 +86,7 @@ def migrate_table(db, logger):
 def format_quote(q, num, n_quotes):
     """Returns a formatted string of a quote"""
     _, nick, msg = q
-    return "[{}/{}] <{}\u200B{}> {}".format(
-        num, n_quotes, nick[:1], nick[1:], msg
-    )
+    return f"[{num}/{n_quotes}] <{nick[:1]}\u200b{nick[1:]}> {msg}"
 
 
 def add_quote(db, chan, target, sender, message):

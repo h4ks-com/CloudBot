@@ -58,10 +58,10 @@ def jamdate(reply):
         reply("Jam has already begun.")
     else:
         reply(
-            f"Next Jam starts in {start_time_left.days} days {start_time_left.seconds//3600} hours {(start_time_left.seconds//60)%60} minutes."
+            f"Next Jam starts in {start_time_left.days} days {start_time_left.seconds // 3600} hours {(start_time_left.seconds // 60) % 60} minutes."
         )
     reply(
-        f"Jam ends in {end_time_left.days} days {end_time_left.seconds//3600} hours {(end_time_left.seconds//60)%60} minutes."
+        f"Jam ends in {end_time_left.days} days {end_time_left.seconds // 3600} hours {(end_time_left.seconds // 60) % 60} minutes."
     )
 
 

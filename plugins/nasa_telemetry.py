@@ -28,7 +28,7 @@ class TelemetryEntry(TypedDict):
 TELEMETRY_CONFIG: dict[str, TelemetryEntry] = {
     "temp": {
         "node": "USLAB000059",
-        "format": lambda x: f"🌡️ ISS Cabin Temperature: {bold(f'{x:.1f}°C')} ({bold(f'{(x * 9/5) + 32:.1f}°F')})",
+        "format": lambda x: f"🌡️ ISS Cabin Temperature: {bold(f'{x:.1f}°C')} ({bold(f'{(x * 9 / 5) + 32:.1f}°F')})",
         "error": "❌ Unable to retrieve temperature data",
     },
     "pressure": {

@@ -40,7 +40,7 @@ def test_mcping(mock_mcserver):
 @pytest.mark.parametrize(
     "error,reply",
     [
-        (IOError("Some IOError"), "Some IOError"),
+        (OSError("Some IOError"), "Some IOError"),
         (ValueError("Some other ValueError"), "Some other ValueError"),
     ],
 )
@@ -55,10 +55,10 @@ def test_mcping_lookup_errors(error, reply, mock_mcserver):
     "error,reply",
     [
         (socket.gaierror(2, "Foo"), "Invalid hostname"),
-        (socket.timeout(), "Request timed out"),
+        (TimeoutError(), "Request timed out"),
         (ConnectionRefusedError(), "Connection refused"),
         (ConnectionError(), "Connection error"),
-        (IOError("Some IOError"), "Error pinging server: Some IOError"),
+        (OSError("Some IOError"), "Error pinging server: Some IOError"),
         (
             ValueError("Some other ValueError"),
             "Error pinging server: Some other ValueError",

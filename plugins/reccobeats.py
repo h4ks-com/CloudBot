@@ -2,6 +2,7 @@
 ReccoBeats plugin - Free music recommendation API
 https://reccobeats.com
 """
+
 from cloudbot import hook
 from cloudbot.util.web import get_session
 
@@ -57,7 +58,9 @@ def recco(text, reply):
     if not tracks:
         return f"No recommendations found for '{seed_label}'."
 
-    lines = [f"Similar to \x02{seed_label}\x02 - {len(tracks)} recommendations:"]
+    lines = [
+        f"Similar to \x02{seed_label}\x02 - {len(tracks)} recommendations:"
+    ]
     for i, track in enumerate(tracks, 1):
         title = track.get("trackTitle", "Unknown")
         artist = track.get("mainArtists", "Unknown")

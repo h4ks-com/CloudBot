@@ -469,13 +469,9 @@ class CommandEvent(Event):
             raise ValueError("Triggered command not set on this event")
 
         if self.hook.doc is None:
-            message = "{}{} requires additional arguments.".format(
-                self.triggered_prefix, self.triggered_command
-            )
+            message = f"{self.triggered_prefix}{self.triggered_command} requires additional arguments."
         else:
-            message = "{}{} {}".format(
-                self.triggered_prefix, self.triggered_command, self.hook.doc
-            )
+            message = f"{self.triggered_prefix}{self.triggered_command} {self.hook.doc}"
 
         self.notice(message, target=target)
 

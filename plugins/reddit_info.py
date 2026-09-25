@@ -178,9 +178,7 @@ def reddit(text, reply):
         except IndexError:
             length = len(data)
             return (
-                "Invalid post number. Number must be between 1 and {}.".format(
-                    length
-                )
+                f"Invalid post number. Number must be between 1 and {length}."
             )
     else:
         item = random.choice(data)
@@ -285,9 +283,7 @@ def cake_day(text, reply):
     if age > 365:
         age //= 365
         age_unit = "year"
-    out += "they have been a redditor for {}.".format(
-        pluralize_auto(age, age_unit)
-    )
+    out += f"they have been a redditor for {pluralize_auto(age, age_unit)}."
     return out
 
 
@@ -367,9 +363,9 @@ def subinfo(text, reply):
     sub_age = datetime.now() - datetime.fromtimestamp(data["data"]["created"])
     age, age_unit = time_format(sub_age.days)
     out = (
-        "/r/$(b){}$(clear) - {} - a community for {}{}, there are {:,} subscribers and {:,} people online "
+        f"/r/$(b){name}$(clear) - {title} - a community for {age}{age_unit}, there are {subscribers:,} subscribers and {active:,} people online "
         "now."
-    ).format(name, title, age, age_unit, subscribers, active)
+    )
     if nsfw:
         out += " $(red)NSFW$(clear)"
     return colors.parse(out)

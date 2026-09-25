@@ -34,9 +34,7 @@ def help_flood(bot, chan, notice, message, has_permission, triggered_prefix):
             message(line)
 
     notice(
-        "For detailed help, use {}help <command>, without the brackets.".format(
-            triggered_prefix
-        )
+        f"For detailed help, use {triggered_prefix}help <command>, without the brackets."
     )
 
 
@@ -71,11 +69,7 @@ async def help_command(
         if doc:
             notice(f"{triggered_prefix}{searching_for} {doc}")
         else:
-            notice(
-                "Command {} has no additional documentation.".format(
-                    searching_for
-                )
-            )
+            notice(f"Command {searching_for} has no additional documentation.")
     else:
         webhooks_config = bot.config.get("webhooks", {})
         base_url = webhooks_config.get("base_url")

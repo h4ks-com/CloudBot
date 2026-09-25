@@ -106,7 +106,7 @@ def blackbeard(text, reply):
             "\n", " "
         )
         if len(show["Metadata"]["Description"]) > 512:
-            msg += f' -->  {pastebin(show["Metadata"]["Description"])}'
+            msg += f" -->  {pastebin(show['Metadata']['Description'])}"
         reply(msg)
         return None
 
@@ -132,7 +132,7 @@ def blackbeard(text, reply):
         "\n", " "
     )
     if len(ep["Metadata"]["Description"]) > 512:
-        msg += f' -->  {pastebin(ep["Metadata"]["Description"])}'
+        msg += f" -->  {pastebin(ep['Metadata']['Description'])}"
     reply(msg)
 
     video = getJson("video", {"provider": show["provider"], "epurl": ep["Url"]})

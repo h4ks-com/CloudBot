@@ -118,7 +118,7 @@ class Registry:
             return False
 
     def __init__(self):
-        self._items: dict[str, "Registry.Item"] = {}
+        self._items: dict[str, Registry.Item] = {}
 
     def register(self, name, item):
         if name in self._items:

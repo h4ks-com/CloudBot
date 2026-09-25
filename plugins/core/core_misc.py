@@ -77,11 +77,7 @@ async def onjoin(conn, bot):
             if nickserv_account_name:
                 conn.message(
                     nickserv_name,
-                    "{} {} {}".format(
-                        nickserv_command,
-                        nickserv_account_name,
-                        nickserv_password,
-                    ),
+                    f"{nickserv_command} {nickserv_account_name} {nickserv_password}",
                 )
             else:
                 conn.message(

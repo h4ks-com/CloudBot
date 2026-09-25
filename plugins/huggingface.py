@@ -346,7 +346,7 @@ def hfn(text: str, chan: str, nick: str):
     except IndexError:
         return "No results found for " + nick
     return [
-        f"{i+1})  {str(c)}" for i, c in enumerate(current_queue[chan][nick])
+        f"{i + 1})  {str(c)}" for i, c in enumerate(current_queue[chan][nick])
     ]
 
 

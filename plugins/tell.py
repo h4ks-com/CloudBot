@@ -45,8 +45,8 @@ class TellMessage(database.Base):
         if now is None:
             now = datetime.now()
 
-        setattr(self, "is_read", True)
-        setattr(self, "time_read", now)
+        self.is_read = True
+        self.time_read = now
 
 
 disable_table = Table(
@@ -365,9 +365,7 @@ def tell_cmd(text, nick, db, conn, mask, event):
 
     add_tell(db, conn.name, sender, target.lower(), message)
     event.notice(
-        "Your message has been saved, and {} will be notified once they are active.".format(
-            target
-        )
+        f"Your message has been saved, and {target} will be notified once they are active."
     )
 
 

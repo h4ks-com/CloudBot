@@ -106,12 +106,12 @@ class TextGenerator:
                 elif _part == replacement:
                     _parts[required_part].remove(_part)
 
-            text = text.replace("{%s}" % required_part, replacement, 1)
+            text = text.replace(f"{{{required_part}}}", replacement, 1)
 
         # replace static variables in the template with provided values
         if self.variables:
             for key, value in list(self.variables.items()):
-                text = text.replace("{%s}" % key, value)
+                text = text.replace(f"{{{key}}}", value)
 
         return text
 

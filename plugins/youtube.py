@@ -2,7 +2,6 @@ import logging
 import re
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
-from typing import Union
 from urllib.parse import parse_qs, urlparse
 
 import isodate
@@ -237,7 +236,7 @@ def make_short_url(video_id: str) -> str:
     return f"http://youtu.be/{video_id}"
 
 
-ParamValues = Union[int, str]
+ParamValues = int | str
 ParamMap = Mapping[str, ParamValues]
 Parts = Iterable[str]
 
@@ -294,9 +293,7 @@ def get_video_description(video_id: str) -> str:
         return out
 
     length = isodate.parse_duration(content_details["duration"])
-    out += " - length \x02{}\x02".format(
-        timeformat.format_time(int(length.total_seconds()), simple=True)
-    )
+    out += f" - length \x02{timeformat.format_time(int(length.total_seconds()), simple=True)}\x02"
     try:
         total_votes = float(statistics["likeCount"]) + float(
             statistics["dislikeCount"]

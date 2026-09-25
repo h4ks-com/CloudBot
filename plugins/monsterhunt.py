@@ -303,9 +303,7 @@ def bang(nick, chan, message, db, conn, notice):
         if nick.lower() in scripters:
             if scripters[nick.lower()] > shoot:
                 notice(
-                    "You are in a cool down period, you can try again in {} seconds.".format(
-                        str(scripters[nick.lower()] - shoot)
-                    )
+                    f"You are in a cool down period, you can try again in {str(scripters[nick.lower()] - shoot)} seconds."
                 )
                 return None
         chance = hit_or_miss(deploy, shoot)
@@ -314,9 +312,7 @@ def bang(nick, chan, message, db, conn, notice):
             scripters[nick.lower()] = shoot + 7
             return out
         if chance == 0.05:
-            out += "You pulled the trigger in {} seconds, that's mighty fast. Are you sure you aren't a script? Take a 2 hour cool down.".format(
-                str(shoot - deploy)
-            )
+            out += f"You pulled the trigger in {str(shoot - deploy)} seconds, that's mighty fast. Are you sure you aren't a script? Take a 2 hour cool down."
             scripters[nick.lower()] = shoot + 7200
             if not random.random() <= chance:
                 return random.choice(miss) + " " + out
@@ -338,9 +334,7 @@ def bang(nick, chan, message, db, conn, notice):
         timer = f"{shoot - deploy:.3f}"
         duck = "monster" if score == 1 else "monsters"
         message(
-            "{} you shot a monster and saved a human in {} seconds! You have killed {} {} in {}.".format(
-                nick, timer, score, duck, chan
-            )
+            f"{nick} you shot a monster and saved a human in {timer} seconds! You have killed {score} {duck} in {chan}."
         )
         set_ducktime(chan, conn)
         return None
@@ -375,9 +369,7 @@ def befriend(nick, chan, message, db, conn, notice):
         if nick.lower() in scripters:
             if scripters[nick.lower()] > shoot:
                 notice(
-                    "You are in a cool down period, you can try again in {} seconds.".format(
-                        str(scripters[nick.lower()] - shoot)
-                    )
+                    f"You are in a cool down period, you can try again in {str(scripters[nick.lower()] - shoot)} seconds."
                 )
                 return None
         chance = hit_or_miss(deploy, shoot)
@@ -386,9 +378,7 @@ def befriend(nick, chan, message, db, conn, notice):
             scripters[nick.lower()] = shoot + 7
             return out
         if chance == 0.05:
-            out += "You tried friending that monster in {} seconds, that's mighty fast. Are you sure you aren't a script? Take a 2 hour cool down.".format(
-                str(shoot - deploy)
-            )
+            out += f"You tried friending that monster in {str(shoot - deploy)} seconds, that's mighty fast. Are you sure you aren't a script? Take a 2 hour cool down."
             scripters[nick.lower()] = shoot + 7200
             if not random.random() <= chance:
                 return random.choice(miss) + " " + out
@@ -411,9 +401,7 @@ def befriend(nick, chan, message, db, conn, notice):
         duck = "monster" if score == 1 else "monsters"
         timer = f"{shoot - deploy:.3f}"
         message(
-            "{} you befriended a monster in {} seconds! You have made friends with {} {} in {}.".format(
-                nick, timer, score, duck, chan
-            )
+            f"{nick} you befriended a monster in {timer} seconds! You have made friends with {score} {duck} in {chan}."
         )
         set_ducktime(chan, conn)
         return None
@@ -657,9 +645,7 @@ def duck_merge(text, conn, db, message):
         db.execute(query)
         db.commit()
         message(
-            "Migrated {} monster kills and {} monster friends from {} to {}".format(
-                total_kills, total_friends, oldnick, newnick
-            )
+            f"Migrated {total_kills} monster kills and {total_friends} monster friends from {oldnick} to {newnick}"
         )
     else:
         return f"There are no monster scores to migrate from {oldnick}"

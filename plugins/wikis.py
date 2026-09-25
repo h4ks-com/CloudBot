@@ -92,7 +92,7 @@ def on_start():
     state.clear()
     for wiki in WIKI_APIS:
         state[wiki] = Queue()
-        setattr(state[wiki].metadata, "get_wiki", wiki_builder(WIKI_APIS[wiki]))
+        state[wiki].metadata.get_wiki = wiki_builder(WIKI_APIS[wiki])
 
 
 def summary_from_page(text: str) -> str:

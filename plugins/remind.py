@@ -126,9 +126,7 @@ async def check_reminders(bot, async_call, db):
 
             remind_text = colors.parse(time_since(added_time, count=2))
             alert = colors.parse(
-                "{}, you have a reminder from $(b){}$(clear) ago!".format(
-                    user, remind_text
-                )
+                f"{user}, you have a reminder from $(b){remind_text}$(clear) ago!"
             )
 
             conn.message(user, alert)
@@ -138,10 +136,8 @@ async def check_reminders(bot, async_call, db):
             if delta > timedelta(minutes=30):
                 late_time = time_since(remind_time, count=2)
                 late = (
-                    "(I'm sorry for delivering this message $(b){}$(clear) late,"
-                    " it seems I was unable to deliver it on time)".format(
-                        late_time
-                    )
+                    f"(I'm sorry for delivering this message $(b){late_time}$(clear) late,"
+                    " it seems I was unable to deliver it on time)"
                 )
                 conn.message(user, colors.parse(late))
 
@@ -218,8 +214,8 @@ async def remind(text, nick, chan, db, conn, event, async_call):
     await load_cache(async_call, db)
 
     remind_text = format_time(seconds, count=2)
-    output = 'Alright, I\'ll remind you "{}" in $(b){}$(clear)!'.format(
-        message, remind_text
+    output = (
+        f'Alright, I\'ll remind you "{message}" in $(b){remind_text}$(clear)!'
     )
 
     return colors.parse(output)

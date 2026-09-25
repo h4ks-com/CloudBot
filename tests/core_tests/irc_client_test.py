@@ -13,7 +13,6 @@ from tests.util.async_mock import AsyncMock
 
 if TYPE_CHECKING:
     from asyncio import Future
-    from typing import Tuple
 
 
 def make_mock_conn(event_loop, *, name="testconn"):
@@ -799,7 +798,7 @@ class TestConnect:
     async def test_create_socket(self, caplog_bot, event_loop):
         client = await self.make_client(event_loop)
         client.loop.create_connection = mock = MagicMock()
-        fut: "Future[Tuple[None, None]]" = asyncio.Future(loop=client.loop)
+        fut: Future[tuple[None, None]] = asyncio.Future(loop=client.loop)
         fut.set_result((None, None))
         mock.return_value = fut
 

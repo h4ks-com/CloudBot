@@ -82,9 +82,7 @@ def handle_chainallow_add(args, notice_doc, hook_name, db):
     db.commit()
     load_cache(db)
     if updated:
-        return "Updated state of '{}' in chainallow to allowed={}".format(
-            hook_name, allow_cache.get(hook_name)
-        )
+        return f"Updated state of '{hook_name}' in chainallow to allowed={allow_cache.get(hook_name)}"
 
     if allow_cache.get(hook_name):
         return f"Added '{hook_name}' as an allowed command"
@@ -168,9 +166,7 @@ async def chain(text, bot, event):
 
         if not is_hook_allowed(_hook):
             event.notice(
-                "'{}' may not be used in command piping".format(
-                    format_hook_name(_hook)
-                )
+                f"'{format_hook_name(_hook)}' may not be used in command piping"
             )
             return
 
@@ -178,9 +174,7 @@ async def chain(text, bot, event):
             allowed = await event.check_permissions(_hook.permissions)
             if not allowed:
                 event.notice(
-                    "Sorry, you are not allowed to use '{}'.".format(
-                        format_hook_name(_hook)
-                    )
+                    f"Sorry, you are not allowed to use '{format_hook_name(_hook)}'."
                 )
                 return
 
@@ -197,9 +191,7 @@ async def chain(text, bot, event):
             buffer += (" " if buffer else "") + " ".join(text)
         else:
             raise TypeError(
-                "Expected str, list, or tuple, got {}".format(
-                    type(text).__name__
-                )
+                f"Expected str, list, or tuple, got {type(text).__name__}"
             )
 
     def message(msg, target=None):

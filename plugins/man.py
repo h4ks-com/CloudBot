@@ -60,10 +60,7 @@ def man(text: str) -> str:
         return f"man.archlinux.org error: {e}"
 
     if not body:
-        return (
-            f"No man page for '{page}'. "
-            f"Search: {SEARCH_URL}?q={quote(page)}"
-        )
+        return f"No man page for '{page}'. Search: {SEARCH_URL}?q={quote(page)}"
 
     title = body.split("\n", 1)[0].split("  ")[0].strip() or page
     summary = section(body, "NAME") or section(body, "DESCRIPTION")

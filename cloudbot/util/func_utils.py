@@ -4,9 +4,7 @@ import inspect
 class ParameterError(Exception):
     def __init__(self, name, valid_args):
         super().__init__(
-            "{!r} is not a valid parameter, valid parameters are: {}".format(
-                name, list(valid_args)
-            )
+            f"{name!r} is not a valid parameter, valid parameters are: {list(valid_args)}"
         )
         self.name = name
         self.valid_args = list(valid_args)

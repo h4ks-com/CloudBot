@@ -478,9 +478,7 @@ def attack(event, nick, chan, db, conn, attack_type):
     if nick.lower() in scripters:
         if scripters[nick.lower()] > shoot:
             event.notice(
-                "You are in a cool down period, you can try again in {:.3f} seconds.".format(
-                    scripters[nick.lower()] - shoot
-                )
+                f"You are in a cool down period, you can try again in {scripters[nick.lower()] - shoot:.3f} seconds."
             )
             return None
 
@@ -635,12 +633,8 @@ def display_scores(score_type: ScoreType, event, text, chan, conn, db):
     if is_opt_out(conn.name, chan):
         return None
 
-    global_pfx = "Duck {noun} scores across the network: ".format(
-        noun=score_type.noun
-    )
-    chan_pfx = "Duck {noun} scores in {chan}: ".format(
-        noun=score_type.noun, chan=chan
-    )
+    global_pfx = f"Duck {score_type.noun} scores across the network: "
+    chan_pfx = f"Duck {score_type.noun} scores in {chan}: "
     no_ducks = "It appears no one has {verb} any ducks yet."
 
     out = global_pfx if text else chan_pfx
@@ -690,9 +684,7 @@ def duckforgive(text):
     """<nick> - Allows people to be removed from the mandatory cooldown period."""
     if text.lower() in scripters and scripters[text.lower()] > time():
         scripters[text.lower()] = 0
-        return "{} has been removed from the mandatory cooldown period.".format(
-            text
-        )
+        return f"{text} has been removed from the mandatory cooldown period."
 
     return "I couldn't find anyone banned from the hunt by that nick"
 
@@ -705,13 +697,9 @@ def hunt_opt_out(text, chan, db, conn):
     """
     if not text:
         if is_opt_out(conn.name, chan):
-            return "Duck hunt is disabled in {}. To re-enable it run .hunt_opt_out remove #channel".format(
-                chan
-            )
+            return f"Duck hunt is disabled in {chan}. To re-enable it run .hunt_opt_out remove #channel"
 
-        return "Duck hunt is enabled in {}. To disable it run .hunt_opt_out add #channel".format(
-            chan
-        )
+        return f"Duck hunt is enabled in {chan}. To disable it run .hunt_opt_out add #channel"
 
     if text == "list":
         return ", ".join(opt_out)
@@ -732,9 +720,7 @@ def hunt_opt_out(text, chan, db, conn):
         db.execute(query)
         db.commit()
         load_optout(db)
-        return "The duckhunt has been successfully disabled in {}.".format(
-            channel
-        )
+        return f"The duckhunt has been successfully disabled in {channel}."
 
     if command.lower() == "remove":
         if not is_opt_out(conn.name, channel):

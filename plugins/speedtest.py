@@ -41,6 +41,4 @@ def speedtest_url(match):
         .title()
     )
 
-    return "\x02{}\x02 - Download: \x02{}\x02, Upload: \x02{}\x02, Ping: \x02{}\x02".format(
-        isp, download, upload, ping
-    )
+    return f"\x02{isp}\x02 - Download: \x02{download}\x02, Upload: \x02{upload}\x02, Ping: \x02{ping}\x02"

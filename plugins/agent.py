@@ -424,8 +424,9 @@ _GAMES_HOST = "games.h4ks.com"
 _PASTE_HOST = urlsplit(web.pastebins.get("girafiles").url).netloc
 _ARTIFACT_HOSTS = (_PASTE_HOST, _GAMES_HOST)
 _ARTIFACT_URL_RE = re.compile(
-    r"https?://[\w.\-]*(?:%s)\S*"
-    % "|".join(re.escape(host) for host in _ARTIFACT_HOSTS)
+    r"https?://[\w.\-]*(?:{})\S*".format(
+        "|".join(re.escape(host) for host in _ARTIFACT_HOSTS)
+    )
 )
 _URL_TRAILERS = ".,;:!?*)]}>" + "\"'`"
 
@@ -1303,9 +1304,9 @@ async def _run_agent(event, prompt: str) -> None:
             run_task.cancel()
 
     if workflow_id:
-        event.conn.memory.setdefault("bot_tools_actions", {})[
-            workflow_id
-        ] = on_action
+        event.conn.memory.setdefault("bot_tools_actions", {})[workflow_id] = (
+            on_action
+        )
 
     try:
         last_err = await run_task
@@ -1336,7 +1337,9 @@ async def _run_agent(event, prompt: str) -> None:
                 state = (
                     "cancelled"
                     if run_cancelled
-                    else "failed" if last_err else "complete"
+                    else "failed"
+                    if last_err
+                    else "complete"
                 )
                 bot_cmds.emit_workflow(
                     event.conn,

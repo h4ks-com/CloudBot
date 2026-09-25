@@ -98,14 +98,10 @@ def grab(text, nick, chan, db, conn):
     with grab_lock:
         name, timestamp, msg = get_latest_line(conn, chan, text)
         if not msg:
-            return "I couldn't find anything from {} in recent history.".format(
-                text
-            )
+            return f"I couldn't find anything from {text} in recent history."
 
         if check_grabs(text.casefold(), msg, chan):
-            return "I already have that quote from {} in the database".format(
-                text
-            )
+            return f"I already have that quote from {text} in the database"
 
         try:
             grab_add(name.casefold(), timestamp, msg, chan, db)
@@ -123,7 +119,7 @@ def grab(text, nick, chan, db, conn):
 
 def format_grab(name, quote):
     # add nonbreaking space to nicks to avoid highlighting people with printed grabs
-    name = "{}{}{}".format(name[0], "\u200B", name[1:])
+    name = "{}{}{}".format(name[0], "\u200b", name[1:])
     if quote.startswith("\x01ACTION") or quote.startswith("*"):
         quote = quote.replace("\x01ACTION", "").replace("\x01", "")
         out = f"* {name}{quote}"

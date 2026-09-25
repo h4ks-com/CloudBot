@@ -46,8 +46,8 @@ def test_grab_duplicate(mock_db):
     db = mock_db.session()
     grab.load_cache(db)
     res = grab.grab(target_nick, nick, chan, db, conn)
-    assert res == "I already have that quote from {} in the database".format(
-        target_nick
+    assert (
+        res == f"I already have that quote from {target_nick} in the database"
     )
 
 

@@ -173,9 +173,9 @@ async def read_github_file(ctx, data):
             lo = max(0, center - 30)
             hi = min(len(lines), center + 120)
             excerpt = "\n".join(
-                f"{lo+i+1}: {l}" for i, l in enumerate(lines[lo:hi])
+                f"{lo + i + 1}: {l}" for i, l in enumerate(lines[lo:hi])
             )
-            return f"{sha_line}(lines {lo+1}-{hi} of {len(lines)})\n{excerpt}"
+            return f"{sha_line}(lines {lo + 1}-{hi} of {len(lines)})\n{excerpt}"
         except (ValueError, AttributeError):
             pass
     try:

@@ -49,8 +49,8 @@ def isup(text):
     content = soup.find("div", id="domain-main-content").text.strip()
 
     if "not just you" in content:
-        return "It's not just you. {} looks \x02\x034down\x02\x0f from here!".format(
-            url
+        return (
+            f"It's not just you. {url} looks \x02\x034down\x02\x0f from here!"
         )
 
     if "is up" in content:

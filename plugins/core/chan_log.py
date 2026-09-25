@@ -180,9 +180,7 @@ def on_hook_end(error, launched_hook, launched_event, admin_log):
 
     should_broadcast = True
     messages = [
-        "Error occurred in {}.{}".format(
-            launched_hook.plugin.title, launched_hook.function_name
-        )
+        f"Error occurred in {launched_hook.plugin.title}.{launched_hook.function_name}"
     ]
 
     try:

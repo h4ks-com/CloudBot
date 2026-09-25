@@ -40,8 +40,8 @@ class WordnikAPIError(Exception):
         self.message = message
 
     def user_msg(self):
-        return "There was a problem contacting the Wordnik API ({})".format(
-            self.message
+        return (
+            f"There was a problem contacting the Wordnik API ({self.message})"
         )
 
 

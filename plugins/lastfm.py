@@ -26,7 +26,7 @@ def format_user(user):
     >>> format_user('someuser')
     's\u200bomeuser'
     """
-    return "\u200B".join((user[:1], user[1:]))
+    return "\u200b".join((user[:1], user[1:]))
 
 
 def filter_tags(tags, artist, limit=4):
@@ -348,9 +348,7 @@ def getuserartistplaycount(event, text, nick):
 
     playcount = artist_info["artist"]["stats"]["userplaycount"]
 
-    out = '"{}" has {:,} {} plays.'.format(
-        format_user(user), int(playcount), text
-    )
+    out = f'"{format_user(user)}" has {int(playcount):,} {text} plays.'
 
     return out
 
@@ -419,9 +417,7 @@ def lastfmcompare(text, nick):
     score = float(data["comparison"]["result"]["score"])
     score = float(f"{score * 100:.3f}")
     if score == 0:
-        return "{} and {} have no common listening history.".format(
-            format_user(user2), format_user(user1)
-        )
+        return f"{format_user(user2)} and {format_user(user1)} have no common listening history."
     levels = (
         ("Super", 95),
         ("Very High", 80),
@@ -452,9 +448,7 @@ def lastfmcompare(text, nick):
         "\x02In Common:\x02 " + ", ".join(artists) if artists else ""
     )
 
-    return "Musical compatibility between \x02{}\x02 and \x02{}\x02: {} (\x02{}%\x02) {}".format(
-        format_user(user1), format_user(user2), level, score, artist_string
-    )
+    return f"Musical compatibility between \x02{format_user(user1)}\x02 and \x02{format_user(user2)}\x02: {level} (\x02{score}%\x02) {artist_string}"
 
 
 @hook.command("ltop", "ltt", autohelp=False)
@@ -474,9 +468,7 @@ def toptrack(text, nick):
         track_name = song["name"]
         artist_name = song["artist"]["name"]
         play_count = song["playcount"]
-        out += "{} by {} listened to {:,} times. ".format(
-            track_name, artist_name, int(play_count)
-        )
+        out += f"{track_name} by {artist_name} listened to {int(play_count):,} times. "
     return out
 
 

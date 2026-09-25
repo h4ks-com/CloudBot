@@ -114,8 +114,8 @@ REPLACEMENTS = {
 
 IRC_TAGS = {
     "b": "\x02",  # Bold
-    "i": "\x1D",  # Italic
-    "u": "\x1F",  # Underline
+    "i": "\x1d",  # Italic
+    "u": "\x1f",  # Underline
 }
 # Classes
 

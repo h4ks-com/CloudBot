@@ -18,7 +18,7 @@ from decimal import Decimal
 from numbers import Real
 from operator import itemgetter
 from threading import RLock
-from typing import Any, TypeVar, Union, cast
+from typing import Any, TypeVar, cast
 
 from requests import Response
 from yarl import URL
@@ -91,7 +91,7 @@ class SchemaMeta(type):
                 if not getattr(base, "_abstract", False) and isinstance(
                     base, cls
                 ):
-                    super_fields = getattr(base, "_fields")
+                    super_fields = base._fields
                     break
 
             members["_fields"] = super_fields
@@ -292,10 +292,10 @@ BAD_FIELD_TYPE_MSG = (
 
 def sentinel(name: str):
     try:
-        storage = getattr(sentinel, "_sentinels")
+        storage = sentinel._sentinels
     except AttributeError:
         storage = {}
-        setattr(sentinel, "_sentinels", storage)
+        sentinel._sentinels = storage
 
     try:
         return storage[name]
@@ -429,9 +429,7 @@ def read_data(data: dict, schema_cls: type[T]) -> T:
 
     if obj.unknown_fields:
         warnings.warn(
-            "Unknown fields: {} while parsing schema {!r}".format(
-                list(obj.unknown_fields.keys()), schema_cls.__name__
-            )
+            f"Unknown fields: {list(obj.unknown_fields.keys())} while parsing schema {schema_cls.__name__!r}"
         )
 
     return obj
@@ -642,7 +640,7 @@ def crypto_command(text, event):
         raise
 
     quote = data.quote[currency]
-    change = cast(Union[int, float], quote.percent_change_24h)
+    change = cast(int | float, quote.percent_change_24h)
     if change > 0:
         change_str = colors.parse("$(dark_green)+{}%$(clear)").format(change)
     elif change < 0:

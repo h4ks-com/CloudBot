@@ -104,18 +104,14 @@ def boobies(text):
     out = text.strip()
     out = out.replace("o", boob).replace("O", boob).replace("0", boob)
     if out == text.strip():
-        return (
-            "Sorry I couldn't turn anything in '{}' into boobs for you.".format(
-                out
-            )
-        )
+        return f"Sorry I couldn't turn anything in '{out}' into boobs for you."
     return out
 
 
 @hook.command(autohelp=False)
 def zombs():
     """- Prints some fucked up shit."""
-    out = "\u2299\u2299\u0505\u0F0D\u0020\u0E88\u0020\u25DE\u0C6A\u25DF\u0E88\u0020\u0F0D\u0648"
+    out = "\u2299\u2299\u0505\u0f0d\u0020\u0e88\u0020\u25de\u0c6a\u25df\u0e88\u0020\u0f0d\u0648"
     return out
 
 
@@ -128,9 +124,7 @@ def awesome(text, is_nick_valid):
     if not is_nick_valid(target):
         return f"Sorry I can't tell {target} how awesome they are."
     link = f"http://{target}.is-awesome.cool/"
-    return "{}: I am blown away by your recent awesome action(s). Please read \x02{}\x02".format(
-        target, link
-    )
+    return f"{target}: I am blown away by your recent awesome action(s). Please read \x02{link}\x02"
 
 
 @hook.command(autohelp=False)

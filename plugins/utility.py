@@ -147,7 +147,7 @@ def base64_decode(text, notice):
     if repr(decoded)[1:-1] != decoded:
         return (
             "Non printable characters detected in output, "
-            "escaped output: {!r}".format(decoded)
+            f"escaped output: {decoded!r}"
         )
 
     return decoded

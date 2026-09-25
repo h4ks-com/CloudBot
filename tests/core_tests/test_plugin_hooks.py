@@ -160,10 +160,8 @@ def test_doc_re_no_match(text):
 
 
 def test_hook_kwargs(hook):
-    assert (
-        not hook.func_hook.kwargs
-    ), "Unknown arguments '{}' passed during registration of hook '{}'".format(
-        hook.func_hook.kwargs, hook.function_name
+    assert not hook.func_hook.kwargs, (
+        f"Unknown arguments '{hook.func_hook.kwargs}' passed during registration of hook '{hook.function_name}'"
     )
 
     for name, types in HOOK_ATTR_TYPES.items():
@@ -172,10 +170,8 @@ def test_hook_kwargs(hook):
         except AttributeError:
             continue
         else:
-            assert isinstance(
-                attr, types
-            ), "Unexpected type '{}' for hook attribute '{}'".format(
-                type(attr).__name__, name
+            assert isinstance(attr, types), (
+                f"Unexpected type '{type(attr).__name__}' for hook attribute '{name}'"
             )
 
 
@@ -183,9 +179,9 @@ def test_hook_doc(hook):
     if hook.type == "command":
         assert hook.doc
 
-        assert DOC_RE.match(
-            hook.doc
-        ), f"Invalid docstring '{hook.doc}' format for command hook"
+        assert DOC_RE.match(hook.doc), (
+            f"Invalid docstring '{hook.doc}' format for command hook"
+        )
 
         found_blank = False
         for line in hook.function.__doc__.strip().splitlines():
@@ -226,9 +222,9 @@ def test_hook_args(hook, mock_bot):
         assert False, f"Unhandled hook type '{hook.type}' in tests"
 
     for arg in hook.required_args:
-        assert hasattr(
-            event, arg
-        ), f"Undefined parameter '{arg}' for hook function"
+        assert hasattr(event, arg), (
+            f"Undefined parameter '{arg}' for hook function"
+        )
 
 
 def test_coroutine_hooks(hook):

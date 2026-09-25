@@ -125,7 +125,7 @@ def stack(text):
             stream=True,
         )
     except requests.exceptions.RequestException:
-        return "Couldn't reach {}.".format(url)
+        return f"Couldn't reach {url}."
 
     try:
         try:
@@ -168,6 +168,6 @@ def stack(text):
         parts.append("detected: " + ", ".join(found[:8]))
 
     if not parts:
-        return "No obvious stack signals from {} (plain, static or obfuscated).".format(host)
+        return f"No obvious stack signals from {host} (plain, static or obfuscated)."
 
     return "{} \u2192 {}".format(host, " | ".join(parts))

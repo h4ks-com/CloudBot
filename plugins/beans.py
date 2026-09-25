@@ -598,7 +598,7 @@ def _generate_top_beans_response(top_n: int, bot) -> str:
     ]
 
     beans_list = [
-        f"{i+1}. {user['username']} 🫘 ({user['bean_amount']:,} beans)"
+        f"{i + 1}. {user['username']} 🫘 ({user['bean_amount']:,} beans)"
         for i, user in enumerate(sorted_users)
     ]
     return f"🏆 Top {top_n} Bean Holders: " + "\n".join(beans_list)
@@ -1158,7 +1158,7 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
         result = ["🎯 Latest Trivia Questions 🎯"]
         for t in trivias:
             result.append(
-                f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans (by {t['creator']})"
+                f'#{t["id"]}: "{t["question"]}" - Prize: 🫘 {t["prize"]} beans (by {t["creator"]})'
             )
 
         return result
@@ -1172,7 +1172,7 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
         result = [f"🧩 Trivia Questions by {target} 🧩"]
         for t in trivias:
             result.append(
-                f"#{t['id']}: \"{t['question']}\" - Prize: 🫘 {t['prize']} beans"
+                f'#{t["id"]}: "{t["question"]}" - Prize: 🫘 {t["prize"]} beans'
             )
 
         return result
@@ -1330,7 +1330,7 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
                 continue
 
             result.append(
-                f"Trivia #{bet_summary['trivia_id']}: \"{trivia['question'][:30]}...\" - "
+                f'Trivia #{bet_summary["trivia_id"]}: "{trivia["question"][:30]}..." - '
                 f"{bet_summary['bet_count']} bets, 🫘 {bet_summary['total_bet_amount']} beans total"
             )
 

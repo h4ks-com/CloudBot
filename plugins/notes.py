@@ -111,9 +111,7 @@ def format_note(data):
     # format timestamp
     added_string = added.strftime("%d %b, %Y")
 
-    return "\x02Note #{}:\x02 {} - \x02{}\x02".format(
-        note_id, note_text, added_string
-    )
+    return f"\x02Note #{note_id}:\x02 {note_text} - \x02{added_string}\x02"
 
 
 @hook.command("note", "notes", "todo")

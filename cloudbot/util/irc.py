@@ -1,7 +1,6 @@
 import logging
 from collections.abc import Mapping
 from enum import Enum
-from typing import Optional
 
 import attr
 
@@ -50,7 +49,7 @@ class ModeChange:
 
     char = attr.ib(type=str)
     adding = attr.ib(type=bool)
-    param = attr.ib(type=Optional[str])
+    param = attr.ib(type=str | None)
     info = attr.ib(type=ChannelMode)
 
     @property

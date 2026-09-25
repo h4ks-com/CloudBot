@@ -152,11 +152,7 @@ def ignore(text, db, chan, conn, notice, admin_log, nick):
     if ignore_in_cache(conn.name, chan, target):
         notice(f"{target} is already ignored in {chan}.")
     else:
-        admin_log(
-            "{} used IGNORE to make me ignore {} in {}".format(
-                nick, target, chan
-            )
-        )
+        admin_log(f"{nick} used IGNORE to make me ignore {target} in {chan}")
         notice(f"{target} has been ignored in {chan}.")
         add_ignore(db, conn.name, chan, target)
 
@@ -168,9 +164,7 @@ def unignore(text, db, chan, conn, notice, nick, admin_log):
 
     if remove_ignore(db, conn.name, chan, target):
         admin_log(
-            "{} used UNIGNORE to make me stop ignoring {} in {}".format(
-                nick, target, chan
-            )
+            f"{nick} used UNIGNORE to make me stop ignoring {target} in {chan}"
         )
         notice(f"{target} has been un-ignored in {chan}.")
     else:
@@ -205,9 +199,7 @@ def global_ignore(text, db, conn, notice, nick, admin_log):
     else:
         notice(f"{target} has been globally ignored.")
         admin_log(
-            "{} used GLOBAL_IGNORE to make me ignore {} everywhere".format(
-                nick, target
-            )
+            f"{nick} used GLOBAL_IGNORE to make me ignore {target} everywhere"
         )
         add_ignore(db, conn.name, "*", target)
 
@@ -222,9 +214,7 @@ def global_unignore(text, db, conn, notice, nick, admin_log):
     else:
         notice(f"{target} has been globally un-ignored.")
         admin_log(
-            "{} used GLOBAL_UNIGNORE to make me stop ignoring {} everywhere".format(
-                nick, target
-            )
+            f"{nick} used GLOBAL_UNIGNORE to make me stop ignoring {target} everywhere"
         )
         remove_ignore(db, conn.name, "*", target)
 

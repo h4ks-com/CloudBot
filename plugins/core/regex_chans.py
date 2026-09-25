@@ -110,9 +110,7 @@ def change_status(db, event, status):
     channel = parse_args(event.text, event.chan)
     action = "Enabling" if status else "Disabling"
     event.message(
-        "{} regex matching (youtube, etc) (issued by {})".format(
-            action, event.nick
-        ),
+        f"{action} regex matching (youtube, etc) (issued by {event.nick})",
         target=channel,
     )
 
@@ -165,16 +163,12 @@ def resetregex(text, db, conn, chan, nick, message, notice):
     """[chan] - Reset regex hook status in [chan] (default: current channel)"""
     channel = parse_args(text, chan)
     message(
-        "Resetting regex matching setting (youtube, etc) (issued by {})".format(
-            nick
-        ),
+        f"Resetting regex matching setting (youtube, etc) (issued by {nick})",
         target=channel,
     )
 
     notice(
-        "Resetting regex matching setting (youtube, etc) in channel {}".format(
-            channel
-        )
+        f"Resetting regex matching setting (youtube, etc) in channel {channel}"
     )
 
     delete_status(db, conn.name, channel)

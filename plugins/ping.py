@@ -59,19 +59,7 @@ def ping(text, reply):
     if IS_WINDOWS:
         m = re.search(win_ping_regex, pingcmd)
         r = int(m.group(2)) - int(m.group(1))
-        return "min: {}ms, max: {}ms, average: {}ms, range: {}ms, count: {}".format(
-            m.group(1),
-            m.group(2),
-            m.group(3),
-            r,
-            count,
-        )
+        return f"min: {m.group(1)}ms, max: {m.group(2)}ms, average: {m.group(3)}ms, range: {r}ms, count: {count}"
 
     m = re.search(unix_ping_regex, pingcmd)
-    return "min: {}ms, max: {}ms, average: {}ms, range: {}ms, count: {}".format(
-        m.group(1),
-        m.group(3),
-        m.group(2),
-        m.group(4),
-        count,
-    )
+    return f"min: {m.group(1)}ms, max: {m.group(3)}ms, average: {m.group(2)}ms, range: {m.group(4)}ms, count: {count}"

@@ -73,15 +73,15 @@ IRC_FORMATTING_DICT = {
     "color": "\x03",
     "bold": "\x02",
     "b": "\x02",
-    "underlined": "\x1F",
-    "underline": "\x1F",
-    "ul": "\x1F",
-    "italics": "\x1D",
-    "italic": "\x1D",
-    "i": "\x1D",
+    "underlined": "\x1f",
+    "underline": "\x1f",
+    "ul": "\x1f",
+    "italics": "\x1d",
+    "italic": "\x1d",
+    "i": "\x1d",
     "reverse": "\x16",
-    "reset": "\x0F",
-    "clear": "\x0F",
+    "reset": "\x0f",
+    "clear": "\x0f",
 }
 
 COLOR_RE = re.compile(r"\$\(.*?\)", re.I)
@@ -98,9 +98,7 @@ def get_color(colour, return_formatted=True):
 
     if colour not in IRC_COLOUR_DICT:
         raise KeyError(
-            "The colour '{}' is not in the list of available colours.".format(
-                colour
-            )
+            f"The colour '{colour}' is not in the list of available colours."
         )
 
     if colour == "random":  # Special keyword for a random colour
@@ -126,9 +124,7 @@ def get_format(formatting):
 
     if formatting.lower() not in IRC_FORMATTING_DICT:
         raise KeyError(
-            "The formatting '{}' is not found in the list of available formats.".format(
-                formatting
-            )
+            f"The formatting '{formatting}' is not found in the list of available formats."
         )
 
     return IRC_FORMATTING_DICT[formatting.lower()]

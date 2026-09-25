@@ -90,7 +90,7 @@ def flip(text, message, chan):
         message(
             random.choice(
                 [
-                    random.choice(flippers) + FLIP_CHAR + "\u253B\u2501\u253B",
+                    random.choice(flippers) + FLIP_CHAR + "\u253b\u2501\u253b",
                     table_flipper,
                 ]
             )
@@ -128,9 +128,7 @@ def fix(text, message, chan):
             message(FIXED_TABLE)
         else:
             message(
-                "no tables have been turned over in {}, thanks for checking!".format(
-                    chan
-                )
+                f"no tables have been turned over in {chan}, thanks for checking!"
             )
     else:
         flip(text, message, chan)
