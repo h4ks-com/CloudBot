@@ -29,13 +29,13 @@ jobs:
         python-version: "${{matrix.python-ver}}"
 
     - name: Install apt deps
-      run: sudo apt-get update && sudo apt-get install -qq -y libxml2-dev libxslt1-dev
+      run: sudo apt-get update && sudo apt-get install -qq -y libxml2-dev libxslt1-dev libenchant-2-2
 
     - name: Install dependencies
       run: uv sync --all-groups
 
     - name: Test with pytest
-      run: uv run pytest
+      run: uv run pytest --cov . --cov-report=xml
       env:
         PYTHONDEVMODE: 1
         PYTHONPATH: .
