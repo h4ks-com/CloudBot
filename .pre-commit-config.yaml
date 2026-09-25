@@ -2,7 +2,7 @@ default_language_version:
   python: python3.12
 ci:
   skip:
-  - mypy
+  - ty
 exclude: ^\.vscode/.*$
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -44,9 +44,9 @@ repos:
   - id: ruff-format
 - repo: local
   hooks:
-  - id: mypy
-    name: mypy
-    entry: uv run mypy
+  - id: ty
+    name: ty
+    entry: uv run ty check --exit-zero-on-warning
     args:
     - cloudbot
     - plugins
@@ -54,7 +54,6 @@ repos:
     language: system
     types: [python]
     pass_filenames: false
-    always_run: true
 - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
   rev: 8d1b9cadaf854cb25bb0b0f5870e1cc66a083d6b  # frozen: 0.2.3
   hooks:

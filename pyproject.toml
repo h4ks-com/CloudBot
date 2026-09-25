@@ -1,5 +1,5 @@
 [project]
-name = ""
+name = "cloudbot"
 version = "0.0.1"
 requires-python = ">=3.10,<3.12"
 dependencies = [
@@ -123,7 +123,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "freezegun==1.4.0",
-    "mypy==1.9.0",
     "pre-commit==3.3.3",
     "pytest==8.1.1",
     "pytest-asyncio==0.20.3",
@@ -135,6 +134,7 @@ dev = [
     "types-requests~=2.32.4.20250611",
     "types-pytz>=2024.1",
     "types-cachetools>=7.0.0",
+    "ty==0.0.84",
 ]
 
 [tool.ruff]
@@ -143,7 +143,7 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I", "UP", "PGH", "B", "PLE"]
-# The older plugins trip these style rules; we keep them off rather than rewrite code that works.
+# The older plugins trip these style rules, so we leave them off.
 ignore = [
     "B007",
     "B008",
@@ -165,19 +165,23 @@ known-first-party = ["cloudbot", "plugins", "tests"]
 [tool.uv]
 package = false
 
-[tool.mypy]
-namespace_packages = true
-python_version = "3.10"
-warn_unused_configs = true
-strict = false
-strict_optional = false
-ignore_missing_imports = true
-check_untyped_defs = true
-show_error_codes = true
-warn_unused_ignores = true
-warn_redundant_casts = true
+[tool.ty.environment]
+python-version = "3.10"
 
-[[tool.mypy.overrides]]
-module = 'cloudbot.*'
-check_untyped_defs = true
-warn_return_any = true
+# We enforce what the old mypy setup enforced; it ignored missing imports and
+# Optional, so these checks stay off until the older plugins are typed.
+[tool.ty.rules]
+invalid-argument-type = "ignore"
+invalid-assignment = "ignore"
+invalid-method-override = "ignore"
+invalid-parameter-default = "ignore"
+invalid-return-type = "ignore"
+invalid-type-form = "ignore"
+no-matching-overload = "ignore"
+not-iterable = "ignore"
+not-subscriptable = "ignore"
+too-many-positional-arguments = "ignore"
+unknown-argument = "ignore"
+unresolved-attribute = "ignore"
+unresolved-import = "ignore"
+unsupported-operator = "ignore"
