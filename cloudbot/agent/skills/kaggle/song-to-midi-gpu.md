@@ -1,6 +1,6 @@
 ---
 name: song-to-midi-gpu
-description: Turn a real recording into a playable multi-track MIDI in kinesthesia, transcribed on a Kaggle GPU. The fallback for song-to-midi, which is the default. Use this one only when the user names Kaggle, or when the midifier service is down or its estimate is over its limit.
+description: Turn a real recording into a playable multi-track MIDI in kinesthesia, transcribed on a Kaggle GPU. The fallback for song-to-midi, which is the default. Use this one only when the user names Kaggle, or when workflows.h4ks.com has no `midi` job type.
 ---
 
 # Clone a real song into MIDI, on a Kaggle GPU
@@ -16,8 +16,8 @@ song lands near half the session cap, so `timeout_s=1800` is enough for anything
 six-minute limit.
 
 **This is the fallback.** `song-to-midi` on the homelab 3090 is the default. Come here only when
-the user names Kaggle, or when the service is down or its estimate is over its limit. Never
-start a job on both: that transcribes one song twice for a result nobody reads.
+the user names Kaggle, or when workflows.h4ks.com has no `midi` job type. Never start a job on
+both: that transcribes one song twice for a result nobody reads.
 
 **Check the library first.** One `kinesthesia_search_midi(q="<song>")`. A human-made MIDI beats
 a transcription and is instant. Empty results mean carry on; do not search again.
