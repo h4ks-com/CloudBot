@@ -299,11 +299,13 @@ def search_npmjs(query: str) -> Generator[Package, None, None]:
                     d = d.get(k)
                     if d is None:
                         break
-                return (str(d) or "").strip()
+                return "" if d is None else str(d).strip()
             raise ValueError(f"Unknown key type {type(key)}")
 
         name = safeget("name")
-        link = safeget(["links", "npm"])
+        link = (
+            safeget(["links", "npm"]) or f"https://www.npmjs.com/package/{name}"
+        )
         version = safeget("version")
         released = package.get("date", {}).get("rel", "").strip()
         description = safeget("description")

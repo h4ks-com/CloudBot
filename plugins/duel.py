@@ -555,7 +555,7 @@ def display_scores(score_type: ScoreType, event, text, chan, conn, db):
 
     global_pfx = f"duel {score_type.noun} scores across the network: "
     chan_pfx = f"duel {score_type.noun} scores in {chan}: "
-    no_duels = "It appears no one has {verb} any duels yet."
+    no_duels = f"It appears no one has {score_type.verb} any duels yet."
 
     out = global_pfx if text else chan_pfx
 
@@ -852,7 +852,8 @@ def duel(text, nick, chan, message, conn, event):
     check = get_state_table(conn.name, chan).game_on
     if not check:
         return f"Dueling is not currently enabled in {chan}."
-    nick2 = text.split()[0].strip()
+    parts = text.split()
+    nick2 = parts[0].strip() if parts else ""
     if not nick2:
         return "Please specify a user to duel with."
     if not event.is_nick_valid(nick2):

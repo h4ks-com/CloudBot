@@ -1096,7 +1096,7 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
             "- Use -> to separate your question from the answer",
         ]
 
-    if len(parts) < 2 and subcmd not in ["list", "help"]:
+    if len(parts) < 2 and subcmd not in ["list", "help", "question"]:
         return "❌ Missing arguments. Use '.trivia help' for usage information."
 
     if subcmd == "add":

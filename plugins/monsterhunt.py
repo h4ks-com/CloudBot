@@ -428,7 +428,7 @@ def friends(text, chan, conn, db):
             select(table.c.name, table.c.befriend)
             .where(table.c.network == conn.name)
             .order_by(desc(table.c.befriend))
-        )
+        ).fetchall()
         if scores:
             for row in scores:
                 if row[1] == 0:
@@ -447,7 +447,7 @@ def friends(text, chan, conn, db):
             .where(table.c.network == conn.name)
             .where(table.c.chan == chan.lower())
             .order_by(desc(table.c.befriend))
-        )
+        ).fetchall()
         if scores:
             for row in scores:
                 if row[1] == 0:
@@ -484,7 +484,7 @@ def killers(text, chan, conn, db):
             select(table.c.name, table.c.shot)
             .where(table.c.network == conn.name)
             .order_by(desc(table.c.shot))
-        )
+        ).fetchall()
         if scores:
             for row in scores:
                 if row[1] == 0:
@@ -503,7 +503,7 @@ def killers(text, chan, conn, db):
             .where(table.c.network == conn.name)
             .where(table.c.chan == chan.lower())
             .order_by(desc(table.c.shot))
-        )
+        ).fetchall()
         if scores:
             for row in scores:
                 if row[1] == 0:
@@ -619,6 +619,8 @@ def duck_merge(text, conn, db, message):
                 duckmerge[row["chan"]]["shot"] = row["shot"]
                 duckmerge[row["chan"]]["befriend"] = row["befriend"]
                 channelkey["insert"].append(row["chan"])
+                total_kills += row["shot"]
+                total_friends += row["befriend"]
         for channel in channelkey["insert"]:
             dbadd_entry(
                 newnick,

@@ -35,13 +35,7 @@ jobs:
       run: uv sync --all-groups
 
     - name: Test with pytest
-      run: uv run pytest --cov . --cov-report=xml
+      run: uv run pytest --cov .
       env:
         PYTHONDEVMODE: 1
         PYTHONPATH: .
-
-    - uses: codecov/codecov-action@v4
-      with:
-        name: build-${{ matrix.python-ver }}
-        fail_ci_if_error: true
-        token: ${{ secrets.CODECOV_TOKEN }}
