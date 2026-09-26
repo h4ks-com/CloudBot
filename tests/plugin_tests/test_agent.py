@@ -122,6 +122,16 @@ class TestGuardArtifactUrls:
         answer = "see https://example.com/x and http://localhost:8000/y"
         assert _guard_artifact_urls(answer, set(), set()) == answer
 
+    def test_a_host_that_only_ends_like_the_paste_host_is_untouched(self):
+        answer = "open https://workflows.h4ks.com/d/_TqxzyqI"
+        assert _guard_artifact_urls(answer, set(), set()) == answer
+
+    def test_a_subdomain_of_the_paste_host_is_still_checked(self):
+        answer = "at https://cdn.s.h4ks.com/Zz.html"
+        assert "<nothing-was-uploaded>" in _guard_artifact_urls(
+            answer, set(), set()
+        )
+
     def test_a_games_upload_survives_a_subpath(self):
         produced = {"https://snake.games.h4ks.com/"}
         answer = "play at https://snake.games.h4ks.com/index.html"

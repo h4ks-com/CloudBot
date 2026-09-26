@@ -424,7 +424,7 @@ _GAMES_HOST = "games.h4ks.com"
 _PASTE_HOST = urlsplit(web.pastebins.get("girafiles").url).netloc
 _ARTIFACT_HOSTS = (_PASTE_HOST, _GAMES_HOST)
 _ARTIFACT_URL_RE = re.compile(
-    r"https?://[\w.\-]*(?:{})\S*".format(
+    r"https?://(?:[\w\-]+\.)*(?:{})(?![\w.\-])\S*".format(
         "|".join(re.escape(host) for host in _ARTIFACT_HOSTS)
     )
 )
