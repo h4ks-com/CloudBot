@@ -1,6 +1,5 @@
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -37,32 +36,6 @@ def test_get_json_rejects_an_unexpected_shape():
         client.job(7)
 
 
-def test_submit_sends_identity_type_params_and_webhook():
-    seen = {}
-
-    def handler(request):
-        seen["path"] = request.url.path
-        seen["body"] = json.loads(request.content)
-        return httpx.Response(201, json={"job": {"id": 1}})
-
-    webhook: workflows.JobWebhook = {
-        "url": "u",
-        "token": "t",
-        "extra_params": {"target": "#chan"},
-        "message_prefix": "",
-    }
-    _client(handler).submit("irc:matt", "song", {"prompt": "hi"}, webhook)
-    assert seen == {
-        "path": "/api/clients/jobs",
-        "body": {
-            "identity": "irc:matt",
-            "type": "song",
-            "params": {"prompt": "hi"},
-            "webhook": webhook,
-        },
-    }
-
-
 def test_link_and_whois_use_identity():
     seen = {}
 
@@ -93,27 +66,6 @@ def test_link_and_whois_use_identity():
 )
 def test_error_detail_prefers_the_api_message(response, detail):
     assert workflows.error_detail(response) == detail
-
-
-def test_job_webhook_needs_base_url():
-    bot = SimpleNamespace(config={"webhooks": {}})
-    assert workflows.job_webhook(bot, "#chan", "matt: ") is None
-
-
-def test_job_webhook_points_at_send_message(monkeypatch):
-    monkeypatch.setattr(
-        workflows, "generate_webhook_token", lambda db, expiration_hours: "tok"
-    )
-    monkeypatch.setattr(workflows.database, "Session", MagicMock)
-    bot = SimpleNamespace(
-        config={"webhooks": {"base_url": "https://bot.example/"}}
-    )
-    assert workflows.job_webhook(bot, "#chan", "matt: ") == {
-        "url": "https://bot.example/send_message",
-        "token": "tok",
-        "extra_params": {"target": "#chan"},
-        "message_prefix": "matt: ",
-    }
 
 
 def test_subscription_comes_from_webhooks_subscriptions():

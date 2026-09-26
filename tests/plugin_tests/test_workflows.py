@@ -19,18 +19,8 @@ def _mock_client(handler) -> workflows.WorkflowsClient:
     )
 
 
-def _fake_webhook(bot, target, prefix):
-    return {
-        "url": "https://bot.example/send_message",
-        "token": "t",
-        "extra_params": {"target": target},
-        "message_prefix": prefix,
-    }
-
-
 def _wf(monkeypatch, client, **overrides):
     monkeypatch.setattr(wf_plugin, "_client", lambda bot: client)
-    monkeypatch.setattr(workflows, "job_webhook", _fake_webhook)
     kwargs = {
         "nick": "matt",
         "chan": "#chan",
@@ -222,9 +212,6 @@ def test_handler_posts_to_the_announce_channel():
         connections={"gobot": conn},
     )
     wf_plugin.handle_workflows_event(bot, {**EVENT, "status": "running"})
-    wf_plugin.handle_workflows_event(
-        bot, {**EVENT, "status": "succeeded", "has_webhook": True}
-    )
     assert [(chan, strip_irc(msg)) for chan, msg in sent] == [
         ("#lobby", "mattf's image #12 started")
     ]

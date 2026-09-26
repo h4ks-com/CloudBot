@@ -29,12 +29,11 @@ it is too long.
    `ytdl_download_media(url="<video url>", mode="audio", format="mp3")` returns a public
    link. The job downloads the file itself, so pass that direct mp3 link.
 
-3. **Submit it.** `workflows_submit(type="midi", params={"url": "<the mp3 link>"})`.
-   Tell the user it is submitted, its price in credits and the run page. The bot announces
-   the result in the channel itself: the MIDI file and a kinesthesia link that plays it.
-   Never poll or wait for it.
+3. **Fill the form.** `workflows_share_filled_form(type="midi", params={"url": "<the mp3 link>"})`.
+   Give the user the link and its price in credits, and tell them to open it, log in and
+   submit. The bot announces the result in the channel itself: the MIDI file and a
+   kinesthesia link that plays it. Never poll or wait for it.
 
-If the submit fails for lack of credits, say so and give the wallet link from the error.
 Never run this and `song-to-midi-gpu` for the same song.
 
 ## Reporting the result

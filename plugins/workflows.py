@@ -222,7 +222,7 @@ def handle_workflows_event(bot, payload: dict[str, Any]) -> None:
     channel = workflows.announce_channel(bot)
     connection_name = workflows.announce_connection(bot)
     connection = bot.connections.get(connection_name)
-    message = None if payload.get("has_webhook") else format_event(payload)
+    message = format_event(payload)
     if not (channel and message):
         return
     if not connection or not connection.connected:

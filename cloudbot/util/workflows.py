@@ -1,8 +1,7 @@
-"""Client for the workflows.h4ks.com API, shared by the .wf plugin and the agent tool.
+"""Client for the workflows.h4ks.com API, used by the .wf plugin.
 
-The service knows each caller by an opaque identity (``irc:<services account>``). It sends status
-updates to our ``/send_message`` route with a temporary webhook token, and signs every job event it
-posts to ``/webhooks/workflows`` for the subscription in ``webhooks.subscriptions``.
+The service knows each caller by an opaque identity (``irc:<services account>``) and signs every
+job event it posts to ``/webhooks/workflows`` for the subscription in ``webhooks.subscriptions``.
 Config: ``api_keys.workflows_url`` and ``api_keys.workflows_token``.
 """
 
@@ -12,21 +11,11 @@ from urllib.parse import quote
 
 import httpx
 
-from cloudbot.util import database
 from plugins.core.chan_track import get_users
-from plugins.core.webhook_tokens import generate_webhook_token
 
 TIMEOUT = 30.0
-WEBHOOK_TOKEN_HOURS = 48
 
 JsonShape = TypeVar("JsonShape", dict, list)
-
-
-class JobWebhook(TypedDict):
-    url: str
-    token: str
-    extra_params: dict[str, str]
-    message_prefix: str
 
 
 class Subscription(TypedDict):
@@ -122,18 +111,6 @@ class WorkflowsClient:
     def job_url(self, job_id: int | str) -> str:
         return f"{self.base_url}/jobs/{job_id}"
 
-    def submit(
-        self,
-        identity: str | None,
-        type_name: str,
-        params: dict,
-        webhook: JobWebhook | None = None,
-    ) -> httpx.Response:
-        body = {"identity": identity, "type": type_name, "params": params}
-        if webhook:
-            body["webhook"] = webhook
-        return self._request("POST", "/api/clients/jobs", json=body)
-
     def subscribe(self, subscription: Subscription) -> httpx.Response:
         return self._request(
             "PUT", "/api/clients/subscription", json=subscription
@@ -183,29 +160,6 @@ def error_detail(resp: httpx.Response) -> str:
     except (ValueError, AttributeError):
         detail = None
     return detail or resp.text[:200] or f"HTTP {resp.status_code}"
-
-
-def job_webhook(bot: Any, target: str, prefix: str) -> JobWebhook | None:
-    """A webhook the service calls with status updates, or None without ``webhooks.base_url``."""
-    base_url = bot.config.get("webhooks", {}).get("base_url")
-    if not base_url:
-        return None
-    db = database.Session()
-    try:
-        token = generate_webhook_token(db, expiration_hours=WEBHOOK_TOKEN_HOURS)
-    finally:
-        db.close()
-    return {
-        "url": f"{base_url.rstrip('/')}/send_message",
-        "token": token,
-        "extra_params": {"target": target},
-        "message_prefix": prefix,
-    }
-
-
-def notify_target(nick: str, chan: str, is_private: bool) -> tuple[str, str]:
-    """Where status updates go and what they start with: the channel with a highlight, or a DM."""
-    return (nick, "") if is_private else (chan, f"{nick}: ")
 
 
 def announce_channel(bot: Any) -> str:
