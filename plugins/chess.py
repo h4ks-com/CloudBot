@@ -6,7 +6,7 @@ from cloudbot.util.web import get_session
 
 @hook.command("chess", "lichess", autohelp=False)
 def lichess(text: str) -> list[str] | str:
-    """[time-limit] - Create a random lichess game link to play with a friend, with optional time limit in minutes"""
+    """[minutes] - Create a random lichess game link to play with a friend, with optional time limit in minutes"""
     text = text.strip()
     data = {}
     if text:

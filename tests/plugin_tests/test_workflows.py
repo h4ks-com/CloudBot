@@ -173,13 +173,17 @@ EVENT = {
 @pytest.mark.parametrize(
     ("status", "text"),
     [
-        ("queued", "mattf submitted image #12 · https://w/jobs/12"),
-        ("running", "mattf's image #12 started"),
+        ("queued", "mattf: image #12 is in line · https://w/jobs/12"),
+        ("running", "mattf: image #12 started"),
         (
             "succeeded",
-            "mattf's image #12 is done: Neon Rain · https://s3/x.png",
+            "mattf: image #12 is done: Neon Rain · https://s3/x.png",
         ),
-        ("cancelled", "mattf's image #12 was cancelled"),
+        (
+            "failed",
+            "mattf: image #12 failed: unknown error · https://w/jobs/12",
+        ),
+        ("cancelled", "mattf: image #12 was cancelled"),
     ],
 )
 def test_format_event(status, text):
@@ -213,7 +217,7 @@ def test_handler_posts_to_the_announce_channel():
     )
     wf_plugin.handle_workflows_event(bot, {**EVENT, "status": "running"})
     assert [(chan, strip_irc(msg)) for chan, msg in sent] == [
-        ("#lobby", "mattf's image #12 started")
+        ("#lobby", "mattf: image #12 started")
     ]
 
 

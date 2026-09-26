@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import isodate
 import requests
-from pyyoutube import Client
+from pyyoutube import Client, PyYouTubeException
 from youtube_transcript_api import (
     NoTranscriptFound,
     TranscriptsDisabled,
@@ -29,7 +29,7 @@ base_url = "https://www.googleapis.com/youtube/v3/"
 
 @lru_cache
 def get_client() -> Client:
-    api_key = bot.config.get("api_keys", {}).get("google", None)
+    api_key = bot.config.get_api_key("google")
     return Client(api_key=api_key)
 
 
@@ -131,7 +131,11 @@ def get_video_info(
                 "transcript": "",
             }
 
-    videos = client.videos.list(video_id=video_id)
+    try:
+        videos = client.videos.list(video_id=video_id)
+    except PyYouTubeException as e:
+        raise_pyyoutube_error(e)
+
     if videos is None or not videos.items:
         return {
             "title": "Title not available",
@@ -181,7 +185,11 @@ def search_youtube_videos(
     client: Client, query: str, max_results: int = 10
 ) -> "list[str]":
     video_urls = []
-    search = client.search.list(q=query, max_results=max_results)
+    try:
+        search = client.search.list(q=query, max_results=max_results)
+    except PyYouTubeException as e:
+        raise_pyyoutube_error(e)
+
     if search is None or not search.items:
         return []
     for item in search.items:
@@ -230,6 +238,13 @@ def raise_api_errors(response: requests.Response) -> None:
         domain = first_error["domain"]
         reason = first_error["reason"]
         raise APIError(f"API Error ({domain}/{reason})", data) from e
+
+
+def raise_pyyoutube_error(e: PyYouTubeException) -> None:
+    if isinstance(e.response, requests.Response):
+        raise_api_errors(e.response)
+
+    raise APIError(e.message or str(e)) from e
 
 
 def make_short_url(video_id: str) -> str:
@@ -363,10 +378,15 @@ last_youtube_url: dict[tuple[str, str], str] = {}
 
 @hook.command("ytn")
 def youtube_next(text: str, nick: str, chan: str, reply) -> str:
+    """- Show the next YouTube result"""
     client = get_client()
     url = user_results[nick].pop(0)
     last_youtube_url[(chan, nick)] = url
-    result = get_video_info(client, video_url=url)
+    try:
+        result = get_video_info(client, video_url=url)
+    except APIError as e:
+        reply(e.message)
+        raise
     time = timeformat.format_time(
         int(isodate.parse_duration(result["duration"]).total_seconds()),
         simple=True,
@@ -384,7 +404,11 @@ def youtube(text: str, nick: str, chan: str, reply) -> str:
     :param text: User input
     """
     client = get_client()
-    results = search_youtube_videos(client, text)
+    try:
+        results = search_youtube_videos(client, text)
+    except APIError as e:
+        reply(e.message)
+        raise
     user_results[nick] = results
     return youtube_next(text, nick, chan, reply)
 

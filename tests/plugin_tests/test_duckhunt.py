@@ -1,4 +1,5 @@
 import datetime
+import re
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -145,7 +146,7 @@ def test_ignore_integration(mock_db):
     ignore_plugin.code.is_ignored.return_value = True
 
     plugins = {
-        "core.ignore": ignore_plugin,
+        "ignore": ignore_plugin,
     }
 
     def find_plugin(name):
@@ -542,12 +543,19 @@ class TestAttack:
         event = MagicMock()
         with patch.object(duckhunt, "hit_or_miss") as p:
             p.return_value = 0
-            res = duckhunt.bang("nick", "#chan", mock_db.session(), conn, event)
+            res = duckhunt.bang(
+                re.match(r"^\s*(.+)bang\s*$", ".bang"),
+                "nick",
+                "#chan",
+                mock_db.session(),
+                conn,
+                event,
+            )
 
         assert res is None
         assert event.mock_calls == [
             call.message(
-                "nick you shot a duck in 3600.000 seconds! You have killed 1 duck in #chan."
+                "nick you shot a duck in 1 hour! You have killed 1 duck in #chan."
             )
         ]
         assert mock_db.get_data(duckhunt.table) == [
@@ -581,7 +589,7 @@ class TestAttack:
         assert res is None
         assert event.mock_calls == [
             call.message(
-                "nick you befriended a duck in 3600.000 seconds! You have made friends with 1 duck in #chan."
+                "nick you befriended a duck in 1 hour! You have made friends with 1 duck in #chan."
             )
         ]
         assert mock_db.get_data(duckhunt.table) == [

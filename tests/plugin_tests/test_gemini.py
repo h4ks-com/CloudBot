@@ -10,6 +10,7 @@ from datetime import timedelta
 import pytest
 
 from plugins import gemini, ratelimit
+from tests.core_tests.test_plugin_hooks import get_plugins
 
 # ---------- fixtures ----------
 
@@ -294,5 +295,10 @@ def test_gemtclear_removes_history(mock_bot, mock_requests, db):
 
 
 def test_gemt_aliases_registered():
-    aliases = gemini.gemt_command._cloudbot_hook["command"].aliases
-    assert {"gemt", "gai", "gae"}.issubset(aliases)
+    # find_hooks() strips HOOK_ATTR off the function once a plugin loads,
+    # so we read the CommandHook it already built instead of the raw attr.
+    plugin = next(p for p in get_plugins() if p.title == "gemini")
+    cmd_hook = next(
+        h for h in plugin.hooks["command"] if h.function_name == "gemt_command"
+    )
+    assert {"gemt", "gai", "gae"}.issubset(cmd_hook.aliases)

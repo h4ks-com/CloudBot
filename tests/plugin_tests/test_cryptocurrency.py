@@ -229,7 +229,7 @@ def test_invalid_schema_type():
         TypeError,
         match="field 'a' expected type <class 'str'>, got type <class 'int'>",
     ):
-        cryptocurrency.read_data({"a": 1, "b": "world"}, OtherConcreteSchema)
+        cryptocurrency.read_data({"a": -1, "b": "world"}, OtherConcreteSchema)
 
 
 def test_schema_missing_field():

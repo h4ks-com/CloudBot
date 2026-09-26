@@ -171,7 +171,7 @@ def _cmd_me(client: workflows.WorkflowsClient, nick: str, conn, notice) -> str:
 
 @hook.command("wf", "workflows", autohelp=False)
 def wf_cmd(text, nick, chan, conn, bot, notice, event):
-    """queue | status [id] | me | link - follow workflows; ask .agi to run one"""
+    """<queue|status|me|link> [id] - follow workflows; ask .agi to run one"""
     client = _client(bot)
     if isinstance(client, str):
         return client
@@ -195,26 +195,26 @@ def wf_cmd(text, nick, chan, conn, bot, notice, event):
 
 def format_event(payload: dict[str, Any]) -> str | None:
     """IRC line for a job event from the service, or None for statuses we stay quiet about."""
-    owner = payload.get("owner") or "someone"
+    to_owner = f"{payload['owner']}: " if payload.get("owner") else ""
     ref = _bold(
         f"{str(payload.get('type_title') or payload.get('type')).lower()} #{payload.get('job_id')}"
     )
     run_url = payload.get("run_url", "")
     match payload.get("status"):
         case "queued":
-            return f"{owner} submitted {ref} {_dim('·')} {run_url}"
+            return f"{to_owner}{ref} is in line {_dim('·')} {run_url}"
         case "running":
-            return f"{owner}'s {ref} started"
+            return f"{to_owner}{ref} started"
         case "succeeded":
             title = (
                 f" {_bold(payload['title'])}" if payload.get("title") else ""
             )
             urls = " ".join(payload.get("result_urls") or []) or run_url
-            return f"{owner}'s {ref} is done:{title} {_dim('·')} {urls}"
+            return f"{to_owner}{ref} is done:{title} {_dim('·')} {urls}"
         case "failed":
-            return f"{owner}'s {ref} failed: {payload.get('error') or 'unknown error'} {_dim('·')} {run_url}"
+            return f"{to_owner}{ref} failed: {payload.get('error') or 'unknown error'} {_dim('·')} {run_url}"
         case "cancelled":
-            return f"{owner}'s {ref} was cancelled"
+            return f"{to_owner}{ref} was cancelled"
     return None
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import importlib
 import logging
@@ -14,6 +15,20 @@ from cloudbot.util import database
 from cloudbot.util.database import Session
 from tests.util.mock_bot import MockBot
 from tests.util.mock_db import MockDB
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_fixture_post_finalizer(fixturedef, request):
+    # pytest-asyncio leaves a fresh unclosed loop after each event_loop teardown, so we close it before GC warns about its socket.
+    yield
+    if fixturedef.argname == "event_loop":
+        policy = asyncio.get_event_loop_policy()
+        try:
+            loop = policy.get_event_loop()
+        except RuntimeError:
+            return
+        if not loop.is_closed():
+            loop.close()
 
 
 @pytest.fixture(autouse=True)

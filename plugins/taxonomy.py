@@ -295,7 +295,7 @@ def get_taxonomy_from_gbif(species_name: str) -> dict[str, str | None] | None:
 
 @hook.command("taxonomy", "tax")
 def taxonomy(text: str):
-    """<species> [-s|--simple] - retrieves taxonomic classification tree for <species>"""
+    """<species> [simple flag] - retrieves taxonomic classification tree for <species>"""
 
     if not text or not text.strip():
         return ["Please provide a species name"]

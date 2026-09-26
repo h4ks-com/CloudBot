@@ -21,7 +21,7 @@ def test_chainlist_empty(mock_db, mock_bot_factory):
     event = MagicMock()
     res = chain.chainlist(mock_bot, event)
     assert res is None
-    assert event.mock_calls == []
+    assert event.mock_calls == [call.notice("No commands allowed in 'chain'.")]
 
 
 def test_chainlist(mock_db, mock_bot_factory):

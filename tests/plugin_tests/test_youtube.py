@@ -166,9 +166,8 @@ class TestGetVideoDescription:
         )
 
         result = (
-            "\x02some title\x02 - length \x0217m 2s\x02 - 4,633 likes - "
-            "\x0268,905\x02 views - \x02a channel\x02 on "
-            "\x022019.10.10\x02"
+            "\x02some title\x02 - length \x0217m 2s\x02 - \x0268,905\x02 views - "
+            "\x02a channel\x02 on \x022019.10.10\x02"
         )
 
         assert youtube.get_video_description("phL7P6gtZRM") == result
@@ -222,7 +221,9 @@ class TestGetVideoDescription:
             "GET",
             "https://www.googleapis.com/youtube/v3/search",
             json={
-                "items": [{"id": {"videoId": "foobar"}}],
+                "items": [
+                    {"id": {"kind": "youtube#video", "videoId": "foobar"}}
+                ],
                 "pageInfo": {"totalResults": 1},
             },
         )
@@ -231,11 +232,14 @@ class TestGetVideoDescription:
             "GET",
             self.api_url,
             match=[
-                query_param_matcher(self.get_params(id="foobar", key="APIKEY"))
+                query_param_matcher(
+                    {"id": "foobar", "key": "APIKEY"}, strict_match=False
+                )
             ],
             json={
                 "error": {
                     "code": 500,
+                    "message": "Internal error",
                     "errors": [{"domain": "foo", "reason": "bar"}],
                 }
             },
@@ -245,6 +249,8 @@ class TestGetVideoDescription:
         reply = MagicMock()
 
         with pytest.raises(youtube.APIError):
-            youtube.youtube("test video", reply)
+            youtube.youtube("test video", "nick", "#chan", reply)
+
+        reply.assert_called_with("API Error (foo/bar)")
 
         reply.assert_called_with("API Error (foo/bar)")

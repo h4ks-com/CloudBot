@@ -206,7 +206,7 @@ user_results: dict[str, dict[str, Generator[Result, None, None]]] = {}
 
 @hook.command("ghn", "ghnext", autohelp=False)
 def ghn_cmd(chan, nick):
-    """Next result in the for GitHub search"""
+    """- Show the next GitHub search result"""
     next_result_generator = user_results.get(chan, {}).get(nick)
     if not next_result_generator:
         return "You haven't searched for anything yet. Use gh <subcommand> <query> to search."
@@ -219,6 +219,7 @@ def ghn_cmd(chan, nick):
 
 @hook.command("gh", "github", autohelp=False)
 def gh_cmd(text, event, reply, bot, nick, chan):
+    """<subcommand> [args] <query> - Search GitHub"""
     arguments = shlex.split(text)
     if not arguments:
         return "Usage: gh <subcommand> [args] <query>"

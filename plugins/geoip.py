@@ -7,7 +7,7 @@ from cloudbot.util.web import get_session
 URL = "https://json.geoiplookup.io/{}"
 
 
-@hook.command
+@hook.command()
 def geoip(text, loop, reply):
     """<host|ip> - Looks up the physical location of <host|ip> using Maxmind GeoLite"""
     if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", text):

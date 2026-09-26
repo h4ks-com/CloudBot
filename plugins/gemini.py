@@ -282,7 +282,7 @@ def gemt_command(text, nick, chan, db):
 
 @hook.command("gemtclear", autohelp=False)
 def gemtclear_command(nick, chan):
-    """Clear your Gemini text conversation."""
+    """- - Clear your Gemini text conversation."""
     return clear_history(gemt_messages_cache, chan, nick)
 
 

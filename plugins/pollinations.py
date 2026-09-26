@@ -203,7 +203,7 @@ def on_start():
 
 @hook.command("plbalance", autohelp=False)
 def plbalance_command(bot, notice) -> str:
-    """Check your Pollinations pollen balance."""
+    """- - Check your Pollinations pollen balance."""
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
@@ -223,7 +223,7 @@ def plbalance_command(bot, notice) -> str:
 
 @hook.command("plmodels", autohelp=False)
 def plmodels_command(bot, notice) -> str:
-    """List available text generation models."""
+    """- List the text generation models."""
     api_key = get_pollinations_config(bot)
     if not api_key:
         notice("Pollinations API key not configured.")
@@ -572,5 +572,5 @@ def plcopy_command(text: str, nick: str, chan: str) -> str:
 
 @hook.command("plclear", autohelp=False)
 def plclear_command(nick: str, chan: str) -> str:
-    """Clear Pollinations conversation history for the current user."""
+    """- Clear your Pollinations conversation history."""
     return clear_history(pollinations_messages_cache, chan, nick)

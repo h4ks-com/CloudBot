@@ -641,7 +641,7 @@ def total_beans_cmd(bot) -> str:
 
 @hook.command("exportbeans", autohelp=False)
 def export_beans(bot) -> str:
-    """Export all bean balances as JSON file"""
+    """- Export all bean balances as a JSON file"""
     users = get_all_users(bot)
 
     if not users:
@@ -1065,7 +1065,8 @@ def delete_trivia(trivia_id: int, db, conn) -> bool:
 
 @hook.command("trivia")
 def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
-    """
+    """<add|question|list|user|delete|help> [args] - Manage trivia questions
+
     .trivia add <prize_amount> <question> -> <answer> - Add a new trivia question
     .trivia question [id] - Show a trivia question (latest by default)
     .trivia list - Show latest 3 trivia questions
@@ -1279,7 +1280,8 @@ def track_trivia_answers(
 
 @hook.command("bets", "bet")
 def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
-    """
+    """<trivia|help> [args] - Bet beans on trivia winners
+
     .bet trivia <trivia_id> place <amount> bean(s) on <winner> - Bet on who will win a trivia
     .bet trivia list - Show recent trivias with bets
     .bet trivia <trivia_id> - Show bets for a specific trivia

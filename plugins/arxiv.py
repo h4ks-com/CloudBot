@@ -136,7 +136,7 @@ def arxiv(text: str, nick: str):
 
 @hook.command("arxiv_next", "axn", autohelp=False)
 def arxiv_next(text: str, nick: str):
-    """Show next page of results"""
+    """- Show the next page of results"""
     if text.strip():
         nick = text.strip()
 
@@ -156,7 +156,7 @@ def arxiv_next(text: str, nick: str):
 def summarize_command(
     bot, reply, text: str, chan: str, nick: str, conn
 ) -> str | list[str] | None:
-    """Summarizes the contents of the article"""
+    """[number] - Summarize an article from your results"""
     api_key = bot.config.get_api_key("huggingface")
     if not api_key:
         return "error: missing api key for huggingface"

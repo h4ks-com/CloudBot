@@ -38,7 +38,7 @@ def load_cache(db) -> None:
 @hook.command("aliasadd", autohelp=False)
 def add_alias(text: str, nick: str, db, reply, notice) -> None:
     """
-    .addalias <name> = <cmdline> - Adds a new alias with the given name and commands
+    <name> = <cmdline> - Adds a new alias with the given name and commands
     """
     if not text:
         reply("Usage: .addalias <name> = <cmdline>")
@@ -87,7 +87,7 @@ def add_alias(text: str, nick: str, db, reply, notice) -> None:
 @hook.command("aliasdel", "aliasrm", "aliasremove", autohelp=False)
 def delete_alias(text: str, nick: str, db, reply, notice) -> None:
     """
-    .delalias <name> - Deletes the alias with the given name
+    <name> - Deletes the alias with the given name
     """
     if not text:
         reply("Usage: .delalias <name>")
@@ -119,7 +119,7 @@ def delete_alias(text: str, nick: str, db, reply, notice) -> None:
 @hook.command("aliases", "aliaslist", autohelp=False)
 def list_aliases(text: str, nick: str, reply, notice) -> None:
     """
-    .aliases [nick] - Lists all aliases for the user or yourself
+    [nick] - Lists all aliases for the user or yourself
     """
     nick_lower = text.split()[0].lower() if text else nick.lower()
     if nick_lower not in aliases_cache or not aliases_cache[nick_lower]:
@@ -137,7 +137,7 @@ def list_aliases(text: str, nick: str, reply, notice) -> None:
 @hook.command("aliascopy", "aliasimport", autohelp=False)
 def copy_alias(text: str, nick: str, db, reply, notice) -> None:
     """
-    .aliascopy <source_nick> <alias_name> - Copies an alias from another user
+    <source_nick> <alias_name> - Copies an alias from another user
     """
     if not text:
         reply("Usage: .aliascopy <source_nick> <alias_name>")
@@ -176,7 +176,7 @@ def copy_alias(text: str, nick: str, db, reply, notice) -> None:
 @hook.command("alias", "a", autohelp=False)
 async def run_alias(text: str, nick: str, bot: CloudBot, event, reply) -> str:
     """
-    .alias <name> [args] - Executes the alias with the given name optionally with arguments.
+    <name> [args] - Executes the alias with the given name optionally with arguments.
 
     Arguments are appended to the command if no placeholder "<>" is used in the alias definition.
     """

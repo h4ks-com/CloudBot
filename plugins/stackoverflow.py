@@ -1104,7 +1104,7 @@ def find_best_code(chan, nick) -> tuple[Question | None, Answer | None]:
 
 @hook.command("son", autohelp=False)
 def sonext(reply, chan, nick, text) -> str:
-    """Gets next result in stack overflow and return formated text."""
+    """- Show the next stack overflow result."""
     results = results_queue[chan][nick]
     user = text.strip().split()[0] if text.strip() else ""
     if user:
@@ -1139,7 +1139,7 @@ def sonext(reply, chan, nick, text) -> str:
 
 @hook.command("stackoverflow", "so")
 def sosearchhook(text, reply, chan, nick):
-    """gitgrep <query> - Searches for <query> in stack overflow returning the first answer with code. If you want a more precise search start the query with a tag (separating words with '-') like 'python' or 'windows-10'"""
+    """<query> - Searches for <query> in stack overflow returning the first answer with code. If you want a more precise search start the query with a tag (separating words with '-') like 'python' or 'windows-10'"""
     results = results_queue[chan][nick]
     results.metadata.no_good_code = False
     tag = text.split()[0] if text.split()[0] in TAGS else None

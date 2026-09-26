@@ -143,7 +143,7 @@ def test_event_notice_with_rarget():
     )
     event.notice("foobar", target="foo")
 
-    assert conn.mock_calls == [call.notice("foo", "foobar")]
+    assert conn.mock_calls == [call.notice("foo", "foobar", tags=None)]
 
 
 def test_event_notice_no_rarget():
@@ -167,17 +167,31 @@ def test_event_notice_no_rarget():
             "#foo",
             "bar",
             None,
-            [call.message("#foo", "(bar) test")],
+            [call.message("#foo", "(bar) test", tags=None)],
         ],
-        [False, ["test"], "#foo", "bar", None, [call.message("#foo", "test")]],
-        [True, ["test"], "bar", "bar", None, [call.message("bar", "test")]],
+        [
+            False,
+            ["test"],
+            "#foo",
+            "bar",
+            None,
+            [call.message("#foo", "test", tags=None)],
+        ],
+        [
+            True,
+            ["test"],
+            "bar",
+            "bar",
+            None,
+            [call.message("bar", "test", tags=None)],
+        ],
         [
             True,
             ["test"],
             "bar",
             "bar",
             "baz",
-            [call.message("baz", "(bar) test")],
+            [call.message("baz", "(bar) test", tags=None)],
         ],
     ],
 )
@@ -218,7 +232,7 @@ def test_event_message():
     conn = MagicMock()
     event = Event(channel="#foo", conn=conn)
     event.message("foobar")
-    assert conn.mock_calls == [call.message("#foo", "foobar")]
+    assert conn.mock_calls == [call.message("#foo", "foobar", tags=None)]
 
 
 def test_irc_out_prepare_threaded():

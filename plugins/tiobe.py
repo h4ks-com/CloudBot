@@ -131,7 +131,7 @@ def get_table() -> list[TiobeRow]:
 
 @hook.command("tiobe", "tiobeindex", autohelp=False)
 def tiobe(reply, text):
-    """Returns the tiobe index ranking for the month."""
+    """- Show the tiobe index ranking for the month."""
     rows = get_table()
     arg = ""
     if text.split():

@@ -47,6 +47,12 @@ class HookResult:
         return str(self.as_tuple())
 
 
+def _set_kwargs(kwargs):
+    return {
+        key: value for key, value in (kwargs or {}).items() if value is not None
+    }
+
+
 def wrap_hook_response(func, event, results=None):
     """
     Wrap the response from a hook, allowing easy assertion against calls to
@@ -56,7 +62,7 @@ def wrap_hook_response(func, event, results=None):
         results = []
 
     def add_result(name, value, data=None):
-        results.append(HookResult(name, value, data))
+        results.append(HookResult(name, value, _set_kwargs(data)))
 
     def notice(*args, **kwargs):  # pragma: no cover
         add_result("notice", args, kwargs)
@@ -91,7 +97,7 @@ async def wrap_hook_response_async(func, event, results=None):
         return func(*args, **kwargs)
 
     def add_result(name, value, data=None):
-        results.append(HookResult(name, value, data))
+        results.append(HookResult(name, value, _set_kwargs(data)))
 
     def notice(*args, **kwargs):  # pragma: no cover
         add_result("notice", args, kwargs)

@@ -127,7 +127,7 @@ def news(text, chan, nick, reply):
 
 @hook.command("fakenews", autohelp=False)
 def fakenews(text, chan, nick, reply):
-    """Get random news from fake news website."""
+    """- Show random news from a fake news website."""
     rss = choice(fakenews_feeds)
     feed = feedparser.parse(rss)
     article = choice(feed["entries"])

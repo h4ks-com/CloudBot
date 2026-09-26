@@ -214,7 +214,7 @@ def marstime(text: str) -> str:
 
 @hook.command("marslocations", "marslocs", autohelp=False)
 def mars_locations(reply) -> None:
-    """List available Mars mission locations for marstime command."""
+    """- List the Mars mission locations for the marstime command."""
     reply(
         "Available Mars locations:",
         *[

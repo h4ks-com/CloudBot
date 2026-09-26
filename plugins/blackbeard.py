@@ -23,7 +23,7 @@ def pastebin(text):
 providers: list[str] = []
 
 
-@hook.on_start
+@hook.on_start()
 def load_providers():
     raw_providers = getJson("providers")["providers"]
     providers.clear()
@@ -52,10 +52,7 @@ def search_show(provider, search):
 
 @hook.command("blackbeard", "blb")
 def blackbeard(text, reply):
-    """
-    [provider] <search> -N - searches for <search> on <provider>. If -N is provided, where N is a number
-    , will return the Nth episode. You can also use `list` to list providers
-    """
+    """[provider] <search> [N] - searches <provider> for <search>. Pass -N to get the Nth episode. Use `list` to list providers"""
     args = text.strip().split()
     if len(args) < 1:
         return "Usage: .blackbeard [provider] <search> or .blackbeard list"

@@ -11,7 +11,7 @@ import asyncwhois
 from cloudbot import hook
 
 
-@hook.command
+@hook.command()
 def whois(text, reply):
     """<domain> - Does a whois query on <domain>."""
     domain = text.strip().lower()

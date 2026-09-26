@@ -383,6 +383,7 @@ def check_jobs(bot) -> None:
 
 @hook.command("aimusic", autohelp=False)
 def aiaudio_cmd(text: str, chan: str, nick: str, conn) -> str:
+    """<prompt> - Generate music from a prompt"""
     if not _State.executor:
         return "❌ ComfyUI workflows plugin not configured"
 

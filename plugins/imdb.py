@@ -129,7 +129,7 @@ def _format_result(info: dict[str, str]) -> str:
 
 @hook.command("imdbn", "imdb_next", autohelp=False)
 def imdbn(nick, chan):
-    """Get next IMDB result from your search results."""
+    """- Show the next IMDB result from your search."""
     results = results_queue[chan][nick]
     if len(results) == 0:
         return "No [more] results found."

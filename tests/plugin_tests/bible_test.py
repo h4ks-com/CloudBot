@@ -9,7 +9,7 @@ from plugins import bible
 def test_bible(mock_requests):
     mock_requests.add(
         "GET",
-        "https://labs.bible.org/api?passage=foo&formatting=plain&type=json",
+        "https://labs.bible.org/api/?passage=foo&formatting=plain&type=json",
         json=[
             {
                 "bookname": "foo",
@@ -28,7 +28,7 @@ def test_bible(mock_requests):
 def test_bible_404(mock_requests):
     mock_requests.add(
         "GET",
-        "https://labs.bible.org/api?passage=foo&formatting=plain&type=json",
+        "https://labs.bible.org/api/?passage=foo&formatting=plain&type=json",
         status=404,
     )
     event = MagicMock()
@@ -37,6 +37,6 @@ def test_bible_404(mock_requests):
 
     assert event.mock_calls == [
         call.reply(
-            "Something went wrong, either you entered an invalid passage or the API is down."
+            "Something went wrong, either you entered an invalid passage or the API is down"
         )
     ]

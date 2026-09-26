@@ -405,7 +405,7 @@ results_queue: dict[tuple[str, str], Generator[Package, None, None]] = {}
 
 @hook.command("pkglist", autohelp=False)
 def pkglist():
-    """List all repos."""
+    """- List all repos."""
     return ", ".join("/".join(k) for k in _REPOS.keys())
 
 

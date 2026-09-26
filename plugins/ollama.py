@@ -424,13 +424,13 @@ def ai_copy_command(text: str, nick: str, chan: str) -> str:
 
 @hook.command("aiclear", autohelp=False)
 def ai_clear_command(nick: str, chan: str) -> str:
-    """Clear the conversation cache."""
+    """- Clear the conversation cache."""
     return clear_history(ollama_messages_cache, chan, nick)
 
 
 @hook.command("aimodels", autohelp=False)
 def ai_models_command(bot, notice) -> list[str] | str:
-    """List available Ollama models."""
+    """- List the Ollama models."""
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
         notice(

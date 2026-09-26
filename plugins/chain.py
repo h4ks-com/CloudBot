@@ -259,7 +259,7 @@ async def chain(text, bot, event):
 
 
 @hook.command("chainlist", autohelp=False)
-def chainlist(bot, event, reply):
+def chainlist(bot, event):
     """- Returns the list of commands allowed in 'chain'"""
     hooks = [
         get_hook_from_command(bot, name)

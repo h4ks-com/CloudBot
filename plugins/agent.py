@@ -1594,7 +1594,7 @@ def reload_skills(bot) -> list[str]:
 
 @hook.command("addskill", permissions=["botcontrol"], allow_private=False)
 async def add_skill(bot, text) -> str:
-    """<git-url> [ref] - install a skill repository into the runtime skills dir, pinned to ref (tag/branch) when given. Owner only."""
+    """<git url> [ref] - install a skill repository into the runtime skills dir, pinned to ref (tag/branch) when given. Owner only."""
     parts = text.split()
     if not parts:
         return "usage: .addskill <git-url> [tag-or-branch]"
@@ -1614,7 +1614,7 @@ async def del_skill(bot, text) -> str:
 
 @hook.command("reloadmcp", permissions=["botcontrol"], autohelp=False)
 async def reload_mcp(bot) -> str:
-    """reloads config and re-polls the agent's MCP servers. Owner only."""
+    """- Reload config and re-poll the agent's MCP servers. Owner only."""
     bot.config.load_config()
     _TOOLS_CACHE.pop(id(bot), None)
     _AGENT_CACHE.pop(id(bot), None)

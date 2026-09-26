@@ -220,7 +220,7 @@ def scrape_hltb_search(game_name: str) -> list[Game] | None:
 
 @hook.command("hltbn", "hltb_next", autohelp=False)
 def hltbn(text, nick, chan):
-    """Displays next game in queue for nick."""
+    """- Show the next game in your results."""
     if text:
         nick = text.strip().split()[0]
         if nick not in results_queue[chan]:

@@ -17,7 +17,7 @@ translator = Dict()
 
 @hook.command("t")
 def dcc(text, nick):
-    """t <in> <out> <query> - translate <query> from <in> to <out> where <in> and <out> are two-letter language codes"""
+    """<in> <out> <query> - translate <query> from <in> to <out> where <in> and <out> are two-letter language codes"""
     text = text.strip().split()
     if len(text) < 3:
         return "Usage: .t <in> <out> <query>"
@@ -41,6 +41,7 @@ def dcc(text, nick):
 
 @hook.command("tn")
 def dcc_next(text, nick):
+    """- Show the next translation"""
     results = last_results[nick]
     result = results.translation_tuples.pop(0)
     if last_results:

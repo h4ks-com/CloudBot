@@ -9,13 +9,10 @@ from cloudbot.util import web
 def test_paste(mock_requests):
     mock_requests.add(
         "POST",
-        "https://hastebin.com/documents",
-        json={"key": "foobar"},
+        web.pastebins.get("girafiles").url,
+        body="https://s.h4ks.com/foobar.txt",
     )
-    assert (
-        web.paste("test data", service="hastebin")
-        == "https://hastebin.com/foobar.txt"
-    )
+    assert web.paste("test data") == "https://s.h4ks.com/foobar.txt"
 
     assert web.paste("test data", service="none") == "Unable to paste data"
 
@@ -48,24 +45,24 @@ def test_paste_try(mock_requests):
     web.pastebins.set_working()
     mock_requests.add(
         "POST",
-        "https://hastebin.com/documents",
-        json={"key": "foobar"},
+        web.pastebins.get("girafiles").url,
+        body="https://s.h4ks.com/foobar.txt",
     )
 
-    expected = "https://hastebin.com/foobar.txt"
+    expected = "https://s.h4ks.com/foobar.txt"
     assert web.paste("test data") == expected
 
 
 def test_paste_error(mock_requests):
     assert web.paste("test data") == "Unable to paste data"
 
-    mock_requests.add("POST", "https://hastebin.com/documents", status=502)
+    mock_requests.add("POST", web.pastebins.get("girafiles").url, status=502)
     assert web.paste("test data") == "Unable to paste data"
 
     mock_requests.replace(
         "POST",
-        "https://hastebin.com/documents",
-        json={"message": "Error"},
+        web.pastebins.get("girafiles").url,
+        body="Error",
         status=201,
     )
     assert web.paste("test data") == "Unable to paste data"

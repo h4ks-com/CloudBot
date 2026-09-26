@@ -104,7 +104,7 @@ def search_game(query: str, lang: str) -> list[Game]:
 
 @hook.command("psnn", autohelp=False)
 def psnn(text: str, message: str, chan, nick):
-    """Next result in the queue for playstation games"""
+    """- Show the next playstation game result"""
     results = results_queue[chan][nick]
     if len(results) == 0:
         return "No [more] results found."

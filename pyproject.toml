@@ -24,7 +24,6 @@ dependencies = [
     "decorator==5.1.1",
     "dict-cc-py==3.1.0",
     "dnspython==2.4.2",
-    "duckduckpy==0.2",
     "ety==1.4.0",
     "fake-useragent==0.1.11",
     "fastapi",

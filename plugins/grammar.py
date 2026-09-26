@@ -65,9 +65,11 @@ def grammar(text, bot, reply, lang="en", retry=True):
 
 @hook.command("grammar", "grammaren")
 def grammar_command(text, message, bot, reply):
+    """<text> - Fix the grammar of English text"""
     return grammar(text, bot, reply, lang="en")
 
 
 @hook.command("grammarde", "grammatik")
 def grammar_command2(text, message, bot, reply):
+    """<text> - Fix the grammar of German text"""
     return grammar(text, bot, reply, lang="de")

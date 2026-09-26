@@ -104,7 +104,7 @@ def twitch_url(match, reply):
 
 @hook.command("twitch", "twitchtv")
 def twitch(text, reply):
-    """<channel name> -- Retrieves the channel and shows it's offline/offline status"""
+    """<channel name> - Show whether the channel is live"""
     text = text.split("/")[-1]
     if test_name(text):
         location = text

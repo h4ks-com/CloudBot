@@ -313,7 +313,6 @@ dependencies = [
     { name = "decorator" },
     { name = "dict-cc-py" },
     { name = "dnspython" },
-    { name = "duckduckpy" },
     { name = "ety" },
     { name = "fake-useragent" },
     { name = "fastapi" },
@@ -450,7 +449,6 @@ requires-dist = [
     { name = "decorator", specifier = "==5.1.1" },
     { name = "dict-cc-py", specifier = "==3.1.0" },
     { name = "dnspython", specifier = "==2.4.2" },
-    { name = "duckduckpy", specifier = "==0.2" },
     { name = "ety", specifier = "==1.4.0" },
     { name = "fake-useragent", specifier = "==0.1.11" },
     { name = "fastapi" },
@@ -772,12 +770,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/65/2d/372a20e52a87b2ba0
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f6/b4/0a9bee52c50f226a3cbfb54263d02bb421c7f2adc136520729c2c689c1e5/dnspython-2.4.2-py3-none-any.whl", hash = "sha256:57c6fbaaeaaf39c891292012060beb141791735dbb4004798328fc2c467402d8", size = 300366, upload-time = "2023-08-09T13:54:10.807Z" },
 ]
-
-[[package]]
-name = "duckduckpy"
-version = "0.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e0/7a/b186c3e372217edf3573844cdf5d9c22f11d147ec8d46f04982b40b4f4f1/duckduckpy-0.2.tar.bz2", hash = "sha256:608c2972efc375d3af88fef12a182e62bd8e3f971fc1e51877a2f636599e18b8", size = 7108, upload-time = "2016-11-21T12:26:59.72Z" }
 
 [[package]]
 name = "ety"

@@ -7,7 +7,7 @@ class MockConn:
     def __init__(self, *, nick=None, name=None):
         self.nick = nick or "TestBot"
         self.name = name or "testconn"
-        self.config = {}
+        self.config = {"command_prefix": "."}
         self.history = {}
         self.memory = {}
         self.keepalive = []

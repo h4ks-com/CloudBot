@@ -36,7 +36,7 @@ def pretty_dict(dict):
 
 @hook.command("chinese", autohelp=False)
 def chinese(text):
-    """chinese <command> <args> - Chinese lang tools"""
+    """<command> <args> - Chinese lang tools"""
     # If no arguments are provided list commands
     if not text:
         return "Commands: " + ", ".join(commands.keys())

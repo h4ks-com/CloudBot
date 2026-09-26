@@ -1,6 +1,6 @@
-from cloudbot.util.database import base, metadata
+from cloudbot.util.database import Base, base, metadata
 
 
 def test_database():
-    assert metadata is None
-    assert base is None
+    assert metadata is Base.metadata
+    assert base is Base

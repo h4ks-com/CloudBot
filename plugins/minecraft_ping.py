@@ -74,7 +74,7 @@ def mcping(text):
 
 @hook.command("mc", autohelp=False)
 def d_mcp():
-    "Information about our minecraft server"
+    "- Show our minecraft server status"
     return [
         f"Minecraft server at {DEFAULT_SERVER}",
         mcping(DEFAULT_SERVER),

@@ -124,7 +124,7 @@ def g_search(text):
 
 @hook.command("gn", "ddg_next", autohelp=False)
 def g_next(text):
-    """returns the next result from the last .g search"""
+    """- Show the next result from your last .g search"""
     if not last_results:
         return "No search results left"
     result = last_results.pop(0)

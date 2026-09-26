@@ -186,7 +186,7 @@ def correction(match, conn, nick, chan, message):
 
 @hook.command("sed", autohelp=False)
 def sed(bot, reply, text: str) -> str:
-    """s/<part1>/<part2>/<flags> <args> - Perform regex substitution on the given text."""
+    """<s/part1/part2/flags> - Perform regex substitution on the given text."""
     if not text:
         return "Usage: sed s/<part1>/<part2>/<flags> <args>"
 

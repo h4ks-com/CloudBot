@@ -27,7 +27,6 @@ class ProxyOptions:
 class Config(OrderedDict):
     def __init__(self, bot, *, filename=None):
         super().__init__()
-        logger.info("Initializing config with filename=%s", filename)
         if filename is None:
             filename = "config.json"
         self.filename = filename
@@ -68,6 +67,7 @@ class Config(OrderedDict):
 
     def load_config(self):
         """(re)loads the bot config from the config file"""
+        logger.info("Initializing config with filename=%s", self.filename)
         self._api_keys.clear()
         if not self.path.exists():
             # if there is no config, show an error and die
@@ -75,7 +75,7 @@ class Config(OrderedDict):
                 "No config file found, bot shutting down! Looked for '%s',"
                 " CLOUDBOT_RUN_PATH=%s",
                 self.path,
-                os.environ["CLOUDBOT_RUN_PATH"],
+                os.environ.get("CLOUDBOT_RUN_PATH"),
             )
             print("No config file found! Bot shutting down in five seconds.")
             print("Copy 'config.default.json' to 'config.json' for defaults.")

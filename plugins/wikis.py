@@ -191,7 +191,7 @@ def make_next_hook(commands):
 
 @hook.command("wikilist", autohelp=False)
 def wikilist(text, bot, chan, nick):
-    """List all wikisi and their commands"""
+    """- List all wikis and their commands"""
     return "Available wikis: " + " - ".join(
         [": ".join(w) for w in WIKI_APIS.keys()]
     )

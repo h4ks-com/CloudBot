@@ -425,7 +425,7 @@ def llm_set_model(text: str, chan: str, conn, db, nick: str) -> str:
 
 @hook.command("llmlist", "llmmodels", autohelp=False)
 def llm_list_models(conn) -> str:
-    """List available free AI models"""
+    """- List the free AI models"""
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
         return "OpenRouter API key not configured."
@@ -559,7 +559,7 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
 
 @hook.command("llmpaste", autohelp=False)
 def llm_paste_history(chan: str, conn, db, nick: str) -> str:
-    """Share your chat history"""
+    """- Paste your chat history"""
     history = get_chat_history(db, conn.name, chan, nick)
     if not history:
         return "No chat history."
@@ -575,6 +575,6 @@ def llm_paste_history(chan: str, conn, db, nick: str) -> str:
 
 @hook.command("llmclear", autohelp=False)
 def llm_clear_history(chan: str, conn, db, nick: str) -> str:
-    """Clear your chat history"""
+    """- - Clear your chat history"""
     clear_chat_history(db, conn.name, chan, nick)
     return "Chat history cleared."

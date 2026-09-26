@@ -75,7 +75,7 @@ def grep(query: str, token: str, **params) -> tuple[list, list]:
 
 @hook.command("gitgrepn", "grepn", autohelp=False)
 def gitnext(text, reply, chan, nick) -> str | None:
-    """Gets next result in gitgrep."""
+    """- Show the next gitgrep result."""
     results = results_queue[chan][nick]
     user = text.strip().split()[0] if text.strip() else ""
     if user:

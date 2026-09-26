@@ -30,4 +30,4 @@ def test_autohelp():
     )
     res = core_hooks.cmd_autohelp(event.bot, event, event.hook)
     assert res is None
-    assert conn.mock_calls == [call.notice("foo", ".foo foo")]
+    assert conn.mock_calls == [call.notice("foo", ".foo foo", tags=None)]

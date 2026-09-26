@@ -56,6 +56,7 @@ def next(api):
 
 @hook.command()
 def awn(text):
+    """- Show the next archwiki result"""
     return next(API_ARCH)
 
 
@@ -79,6 +80,7 @@ def aw(text, bot, nick):
 
 @hook.command()
 def gwn(text):
+    """- Show the next gentoo wiki result"""
     return next(API_GENTOO)
 
 

@@ -88,16 +88,18 @@ def upload_file(file):
 def tor_refresh():
     # Create tcp socket
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((TOR_HOST, TOR_PORT))
+    try:
+        s.connect((TOR_HOST, TOR_PORT))
 
-    # Get new ip
-    s.sendall(f'AUTHENTICATE "{TOR_PASSWORD}"\n'.encode())
-    tor_check_code(s, "Authentication failed")
-    s.sendall(b"signal NEWNYM\n")
-    tor_check_code(s, "Signal failed")
-    s.sendall(b"QUIT\n")
-    print(s.recv(2048).decode())
-    s.close()
+        # Get new ip
+        s.sendall(f'AUTHENTICATE "{TOR_PASSWORD}"\n'.encode())
+        tor_check_code(s, "Authentication failed")
+        s.sendall(b"signal NEWNYM\n")
+        tor_check_code(s, "Signal failed")
+        s.sendall(b"QUIT\n")
+        print(s.recv(2048).decode())
+    finally:
+        s.close()
 
 
 def tor_request_get(*args, **kwargs):

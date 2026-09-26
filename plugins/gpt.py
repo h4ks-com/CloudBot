@@ -217,7 +217,7 @@ def gpt_copy_command(text: str, nick: str, chan: str) -> str:
 
 @hook.command("gptclear", autohelp=False)
 def gpt_clear_command(nick: str, chan: str) -> str:
-    """Clear the conversation cache."""
+    """- Clear the conversation cache."""
     return clear_history(gpt_messages_cache, chan, nick)
 
 
@@ -288,7 +288,7 @@ def summarize(
 def summarize_command(
     bot, reply, text: str, chan: str, nick: str, conn
 ) -> str | list[str] | None:
-    """Summarizes the contents of the last chat messages. Optionally pass a number for max words and nicks to summarize. Sorry yeah if your nick is a number fuck you"""
+    """[max words] [nicks] - Summarize the last chat messages, optionally only from some nicks"""
     image = False
     worcount = None
     if text.strip().lower() == "image":
@@ -333,7 +333,7 @@ def summarize_command(
 def sumsum(
     bot, text: str, reply, nick: str, chan: str, conn
 ) -> str | list[str] | None:
-    """Summarizes the last summary"""
+    """- Summarize the last summary"""
     if not _SummaryState.last_summary:
         return "No summary to summarize."
     return summarize(
@@ -399,7 +399,7 @@ def generate_agi_history(conn, chan: str) -> list[Message]:
 
 @hook.command("agipaste", autohelp=False)
 def agi_paste_command(nick: str, conn, chan: str) -> str:
-    """Pastes the AGI context window."""
+    """- Paste the AGI context window."""
     messages = generate_agi_history(conn, chan)
     return upload_history("", messages, f"AGI conversation in {chan}")
 

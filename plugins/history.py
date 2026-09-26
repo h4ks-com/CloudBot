@@ -244,6 +244,7 @@ def chat_tracker(event, db, conn):
 @hook.command()
 def seen(text, nick, chan, db, event, is_nick_valid):
     """<nick> <channel> - tells when a nickname was last in active in one of my channels
+
     :type db: sqlalchemy.orm.Session
     :type event: cloudbot.event.Event
     """
@@ -501,11 +502,11 @@ def searchword(text, chan, conn):
 
 @hook.command("now", autohelp=False)
 def now(text, chan, conn):
-    """Returns now in local time"""
+    """- Show the time now in local time"""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 @hook.command("utc", autohelp=False)
 def utc(text, chan, conn):
-    """Returns now in UTC"""
+    """- Show the time now in UTC"""
     return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")

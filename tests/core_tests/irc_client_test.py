@@ -360,7 +360,7 @@ class TestLineParsing:
 
         assert self._filter_event(event) == {
             "chan": "#channel",
-            "content": "\x02some text\x0faa",
+            "content": "some textaa",
             "content_raw": "\x02some text\x0faa",
             "db": None,
             "db_executor": None,

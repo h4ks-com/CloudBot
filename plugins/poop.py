@@ -16,7 +16,7 @@ SENTENCES = [
 
 @hook.command("poop", autohelp=False)
 def poop(text):
-    """<nick> -- Makes the bot poop"""
+    """<nick> - Makes the bot poop"""
     if not text.strip():
         return "💩"
     return choice(SENTENCES).format(text.strip())

@@ -887,7 +887,7 @@ def admin_queue_add_gse(
 
 @hook.command("rsuno", "rslop", autohelp=False)
 def random_slop(event: Any, bot: Any, conn: Any, nick: str, chan: str) -> str:
-    """Add a random song from Suno's featured section"""
+    """- Add a random song from Suno's featured section"""
     allowed, error_msg = check_queue_rate_limit(conn, nick, chan)
     if not allowed:
         return error_msg
