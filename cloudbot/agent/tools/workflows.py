@@ -1,71 +1,30 @@
 """Submit paid workflows.h4ks.com jobs for the person who asked."""
 
-from typing import Any
-
 from cloudbot.agent.common import run_in_executor
 from cloudbot.agent.registry import tool
 from cloudbot.util import workflows
 
-NOT_LINKED = 404
-NO_CREDITS = 402
+SHARE_REASONS: dict[workflows.ShareReason, str] = {
+    "unidentified": "they are not identified with services",
+    "unlinked": "their IRC account is not linked to workflows (.wf link)",
+    "no_credits": "they do not have enough credits",
+}
 
 
-def _share(
-    client: workflows.WorkflowsClient,
-    reason: str,
-    job_type: str,
-    params: dict[str, Any],
-) -> str:
-    resp = client.share(job_type, params)
-    if resp.status_code != 201:
-        return f"(error: {workflows.error_detail(resp)})"
-    draft = resp.json()
+def describe(outcome: workflows.Submitted | workflows.Shared) -> str:
+    if isinstance(outcome, workflows.Submitted):
+        return (
+            f"submitted job #{outcome.job_id} for {outcome.owner}, {outcome.credits} credits: "
+            f"{outcome.url}. The bot announces the start and the result in the channel itself, "
+            "so never poll or wait for it."
+        )
     price = (
-        f", {draft['quote']['credits']} credits" if draft.get("quote") else ""
+        f", {outcome.credits} credits" if outcome.credits is not None else ""
     )
     return (
-        f"{reason}, so give them this filled form to open, log in and submit: "
-        f"{draft['url']}{price}"
+        f"{SHARE_REASONS[outcome.reason]}, so give them this filled form to open, log in "
+        f"and submit: {outcome.url}{price}"
     )
-
-
-def submit_or_share(
-    client: workflows.WorkflowsClient,
-    identity: str | None,
-    job_type: str,
-    params: dict[str, Any],
-    origin: tuple[str, str] | None = None,
-) -> str:
-    """Submit as the linked user, or fall back to a filled form link they submit themselves.
-
-    A submitted job is announced in ``origin`` (connection, channel) as well.
-    """
-    if identity is None:
-        return _share(
-            client, "they are not identified with services", job_type, params
-        )
-    resp = client.submit(identity, job_type, params)
-    if resp.status_code == 201:
-        job = resp.json()
-        if origin:
-            workflows.remember_origin(job["id"], *origin)
-        return (
-            f"submitted job #{job['id']} for {job['owner']}, {job['quote']} credits: "
-            f"{client.job_url(job['id'])}. The bot announces the start and the result in "
-            "the channel itself, so never poll or wait for it."
-        )
-    if resp.status_code == NOT_LINKED:
-        return _share(
-            client,
-            "their IRC account is not linked to workflows (.wf link)",
-            job_type,
-            params,
-        )
-    if resp.status_code == NO_CREDITS:
-        return _share(
-            client, "they do not have enough credits", job_type, params
-        )
-    return f"(error: {workflows.error_detail(resp)})"
 
 
 @tool(
@@ -98,16 +57,16 @@ async def workflows_submit_job(ctx, data):
     except workflows.WorkflowsNotConfigured as e:
         return f"(error: {e})"
     identity = workflows.identity_of(event.conn, event.nick)
-    params = data.get("params") or {}
     origin = (event.conn.name, event.chan) if event.chan else None
     try:
-        return await run_in_executor(
-            submit_or_share,
+        outcome = await run_in_executor(
+            workflows.submit_or_share,
             client,
             identity,
             str(data.get("type") or ""),
-            params,
+            data.get("params") or {},
             origin,
         )
     except workflows.WorkflowsError as e:
         return f"(error: {e})"
+    return describe(outcome)

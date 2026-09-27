@@ -43,6 +43,52 @@ def test_wf_help_lists_commands_only(monkeypatch):
     assert not any("song" in line for line in result)
 
 
+@pytest.mark.parametrize(
+    ("rest", "expected"),
+    [
+        ("", (30, "")),
+        ("45 lo-fi jazz", (45, "lo-fi jazz")),
+        ("9999", (300, "")),
+        ("as a sea shanty", (30, "as a sea shanty")),
+    ],
+)
+def test_clip_request_reads_seconds_and_idea(rest, expected):
+    assert wf_plugin._clip_request(rest) == expected
+
+
+def test_wf_cover_submits_the_frozen_radio_clip(monkeypatch):
+    sent = {}
+
+    def handler(request):
+        sent.update(json.loads(request.content))
+        return httpx.Response(
+            201, json={"id": 90, "owner": "matt", "quote": 105}
+        )
+
+    monkeypatch.setattr(
+        wf_plugin,
+        "radio_clip",
+        lambda seconds: f"https://files.example/{seconds}.mp3",
+    )
+    client = _mock_client(handler)
+    result = wf_plugin.wf_cmd("cover 20 metal", **_wf(monkeypatch, client))
+
+    assert sent == {
+        "identity": "irc:matt",
+        "type": "song",
+        "params": {
+            "model": "ace-step",
+            "use": "cover",
+            "prompt": "metal",
+            "song": "https://files.example/20.mp3",
+        },
+    }
+    assert strip_irc(result) == (
+        "follow your cover of the last 20s of radio · 105 credits · https://workflows.example/jobs/90"
+    )
+    assert workflows.origin_of(90, "succeeded") == ("testconn", "#chan")
+
+
 def test_wf_status_not_found(monkeypatch):
     def handler(request):
         return httpx.Response(404, json={"detail": "not found"})

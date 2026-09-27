@@ -5,8 +5,9 @@ job event it posts to ``/webhooks/workflows`` for the subscription in ``webhooks
 Config: ``api_keys.workflows_url`` and ``api_keys.workflows_token``.
 """
 
+from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, Literal, TypedDict, TypeVar, cast
 from urllib.parse import quote
 
 import httpx
@@ -55,6 +56,26 @@ class WorkflowsError(Exception):
 
 class WorkflowsNotConfigured(WorkflowsError):
     """api_keys.workflows_url or workflows_token is missing from config."""
+
+
+NOT_LINKED = 404
+NO_CREDITS = 402
+ShareReason = Literal["unidentified", "unlinked", "no_credits"]
+
+
+@dataclass(frozen=True)
+class Submitted:
+    job_id: int
+    owner: str
+    credits: int
+    url: str
+
+
+@dataclass(frozen=True)
+class Shared:
+    reason: ShareReason
+    url: str
+    credits: int | None
 
 
 class WorkflowsClient:
@@ -141,6 +162,50 @@ class WorkflowsClient:
         return self._request(
             "GET", f"/api/clients/identities/{quote(identity, safe='')}"
         )
+
+
+def _share(
+    client: WorkflowsClient,
+    reason: ShareReason,
+    job_type: str,
+    params: dict[str, Any],
+) -> Shared:
+    resp = client.share(job_type, params)
+    if resp.status_code != 201:
+        raise WorkflowsError(error_detail(resp), resp.status_code)
+    draft = resp.json()
+    quote = draft.get("quote")
+    return Shared(reason, draft["url"], quote["credits"] if quote else None)
+
+
+def submit_or_share(
+    client: WorkflowsClient,
+    identity: str | None,
+    job_type: str,
+    params: dict[str, Any],
+    origin: tuple[str, str] | None = None,
+) -> Submitted | Shared:
+    """Submit as the linked user, or fall back to a filled form link they submit themselves.
+
+    A submitted job is announced in ``origin`` (connection, channel) as well.
+
+    :raises WorkflowsError: when the service refuses the job, for example for invalid params.
+    """
+    if identity is None:
+        return _share(client, "unidentified", job_type, params)
+    resp = client.submit(identity, job_type, params)
+    if resp.status_code == 201:
+        job = resp.json()
+        if origin:
+            remember_origin(job["id"], *origin)
+        return Submitted(
+            job["id"], job["owner"], job["quote"], client.job_url(job["id"])
+        )
+    if resp.status_code == NOT_LINKED:
+        return _share(client, "unlinked", job_type, params)
+    if resp.status_code == NO_CREDITS:
+        return _share(client, "no_credits", job_type, params)
+    raise WorkflowsError(error_detail(resp), resp.status_code)
 
 
 # ponytail: in memory, so a restart mid-job only announces in the global channel.

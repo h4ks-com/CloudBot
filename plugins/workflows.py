@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+import httpx
+
 from cloudbot import hook
 from cloudbot.util import workflows
 from cloudbot.webhooks.handlers import register_webhook_handler
@@ -66,6 +68,11 @@ def _cmd_help(client: workflows.WorkflowsClient) -> list[str]:
         (".wf status [id]", "check a job, your latest by default"),
         (".wf link", "connect your IRC account to your wallet"),
         (".wf me", "see your credits"),
+        (".wf cover [seconds] [style]", "cover what just played on the radio"),
+        (
+            ".wf continue [seconds] [idea]",
+            "continue what just played on the radio",
+        ),
     ]
     return [
         f"{_bold(command)} {_dim('·')} {what}" for command, what in usage
@@ -169,9 +176,89 @@ def _cmd_me(client: workflows.WorkflowsClient, nick: str, conn, notice) -> str:
     return "check your DMs for your balance"
 
 
+RADIO_CLIP_URL = "https://radio.h4ks.com/api/public/clip"
+FILE_HOST_URL = "https://s.t3ks.com/api/"
+DEFAULT_CLIP_SECONDS = 30
+MIN_CLIP_SECONDS = 5
+MAX_CLIP_SECONDS = 300
+SHARE_HINTS: dict[workflows.ShareReason, str] = {
+    "unidentified": "identify with NickServ and .wf link to run it from chat, or open and submit",
+    "unlinked": ".wf link to run it from chat, or open and submit",
+    "no_credits": "top up your credits, then open and submit",
+}
+
+
+def radio_clip(seconds: int) -> str:
+    """Freeze the last ``seconds`` of the live radio as a public MP3 and return its URL.
+
+    The radio serves whatever is live when asked, and a queued job fetches its song later,
+    so we copy the clip to the file host right away.
+    """
+    try:
+        clip = httpx.get(
+            RADIO_CLIP_URL,
+            params={"start_offset": seconds},
+            timeout=workflows.TIMEOUT,
+        )
+        clip.raise_for_status()
+        stored = httpx.post(
+            FILE_HOST_URL,
+            files={"file": ("radio.mp3", clip.content, "audio/mpeg")},
+            timeout=workflows.TIMEOUT,
+        )
+        stored.raise_for_status()
+    except httpx.HTTPError as e:
+        raise workflows.WorkflowsError(f"could not grab the radio: {e}") from e
+    url = stored.json().get("url")
+    if not isinstance(url, str):
+        raise workflows.WorkflowsError(
+            "the file host gave no link for the clip"
+        )
+    return url
+
+
+def _clip_request(rest: str) -> tuple[int, str]:
+    words = rest.split(None, 1)
+    if words and words[0].isdecimal():
+        seconds = int(words[0])
+        idea = words[1] if len(words) > 1 else ""
+    else:
+        seconds, idea = DEFAULT_CLIP_SECONDS, rest
+    return max(MIN_CLIP_SECONDS, min(MAX_CLIP_SECONDS, seconds)), idea.strip()
+
+
+def _cmd_radio(
+    client: workflows.WorkflowsClient,
+    use: str,
+    rest: str,
+    nick: str,
+    chan: str,
+    conn,
+) -> str:
+    seconds, idea = _clip_request(rest)
+    params: dict[str, Any] = {"model": "ace-step", "use": use}
+    if idea:
+        params["prompt"] = idea
+    try:
+        params["song"] = radio_clip(seconds)
+        outcome = workflows.submit_or_share(
+            client,
+            workflows.identity_of(conn, nick),
+            "song",
+            params,
+            (conn.name, chan) if chan.startswith("#") else None,
+        )
+    except workflows.WorkflowsError as e:
+        return f"workflows: {e}"
+    what = f"the last {seconds}s of radio"
+    if isinstance(outcome, workflows.Submitted):
+        return f"follow your {use} of {what} {_dim('·')} {outcome.credits} credits {_dim('·')} {outcome.url}"
+    return f"{SHARE_HINTS[outcome.reason]} {_dim('·')} {outcome.url}"
+
+
 @hook.command("wf", "workflows", autohelp=False)
 def wf_cmd(text, nick, chan, conn, bot, notice, event):
-    """<queue|status|me|link> [id] - follow workflows; ask .agi to run one"""
+    """<queue|status|me|link|cover|continue> [id|seconds] [idea] - follow workflows or cover the radio"""
     client = _client(bot)
     if isinstance(client, str):
         return client
@@ -189,6 +276,8 @@ def wf_cmd(text, nick, chan, conn, bot, notice, event):
             return _cmd_link(client, nick, conn, notice)
         case "me":
             return _cmd_me(client, nick, conn, notice)
+        case "cover" | "continue":
+            return _cmd_radio(client, sub, rest, nick, chan, conn)
         case _:
             return _cmd_help(client)
 
