@@ -17,4 +17,5 @@ from cloudbot.agent.tools import (  # noqa: F401  (side effect: tool registratio
     wait,
     web,
     wiki,
+    workflows,
 )

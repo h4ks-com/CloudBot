@@ -29,10 +29,10 @@ it is too long.
    `ytdl_download_media(url="<video url>", mode="audio", format="mp3")` returns a public
    link. The job downloads the file itself, so pass that direct mp3 link.
 
-3. **Fill the form.** `workflows_share_filled_form(type="midi", params={"url": "<the mp3 link>"})`.
-   Give the user the link and its price in credits, and tell them to open it, log in and
-   submit. The bot announces the result in the channel itself: the MIDI file and a
-   kinesthesia link that plays it. Never poll or wait for it.
+3. **Submit.** `workflows_submit_job(type="midi", params={"url": "<the mp3 link>"})`. Tell the
+   user the job link and its price, or, when it returns a form link, give them that link to
+   open, log in and submit. The bot announces the result in the channel itself: the MIDI file
+   and a kinesthesia link that plays it. Never poll or wait for it.
 
 Never run this and `song-to-midi-gpu` for the same song.
 

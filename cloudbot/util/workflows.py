@@ -121,6 +121,22 @@ class WorkflowsClient:
             "POST", "/api/clients/links", json={"identity": identity}
         )
 
+    def submit(
+        self, identity: str, job_type: str, params: dict[str, Any]
+    ) -> httpx.Response:
+        return self._request(
+            "POST",
+            "/api/clients/jobs",
+            json={"identity": identity, "type": job_type, "params": params},
+        )
+
+    def share(self, job_type: str, params: dict[str, Any]) -> httpx.Response:
+        return self._request(
+            "POST",
+            "/api/clients/drafts",
+            json={"type": job_type, "params": params},
+        )
+
     def whois(self, identity: str) -> httpx.Response:
         return self._request(
             "GET", f"/api/clients/identities/{quote(identity, safe='')}"
