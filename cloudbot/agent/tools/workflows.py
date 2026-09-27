@@ -34,8 +34,12 @@ def submit_or_share(
     identity: str | None,
     job_type: str,
     params: dict[str, Any],
+    origin: tuple[str, str] | None = None,
 ) -> str:
-    """Submit as the linked user, or fall back to a filled form link they submit themselves."""
+    """Submit as the linked user, or fall back to a filled form link they submit themselves.
+
+    A submitted job is announced in ``origin`` (connection, channel) as well.
+    """
     if identity is None:
         return _share(
             client, "they are not identified with services", job_type, params
@@ -43,6 +47,8 @@ def submit_or_share(
     resp = client.submit(identity, job_type, params)
     if resp.status_code == 201:
         job = resp.json()
+        if origin:
+            workflows.remember_origin(job["id"], *origin)
         return (
             f"submitted job #{job['id']} for {job['owner']}, {job['quote']} credits: "
             f"{client.job_url(job['id'])}. The bot announces the start and the result in "
@@ -93,6 +99,7 @@ async def workflows_submit_job(ctx, data):
         return f"(error: {e})"
     identity = workflows.identity_of(event.conn, event.nick)
     params = data.get("params") or {}
+    origin = (event.conn.name, event.chan) if event.chan else None
     try:
         return await run_in_executor(
             submit_or_share,
@@ -100,6 +107,7 @@ async def workflows_submit_job(ctx, data):
             identity,
             str(data.get("type") or ""),
             params,
+            origin,
         )
     except workflows.WorkflowsError as e:
         return f"(error: {e})"

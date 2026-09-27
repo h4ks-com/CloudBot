@@ -218,19 +218,30 @@ def format_event(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _targets(bot, payload: dict[str, Any]) -> set[tuple[str, str]]:
+    targets = set()
+    if channel := workflows.announce_channel(bot):
+        targets.add((workflows.announce_connection(bot), channel))
+    job_id = payload.get("job_id")
+    if isinstance(job_id, int):
+        origin = workflows.origin_of(job_id, str(payload.get("status")))
+        if origin:
+            targets.add(origin)
+    return targets
+
+
 def handle_workflows_event(bot, payload: dict[str, Any]) -> None:
-    channel = workflows.announce_channel(bot)
-    connection_name = workflows.announce_connection(bot)
-    connection = bot.connections.get(connection_name)
     message = format_event(payload)
-    if not (channel and message):
+    if not message:
         return
-    if not connection or not connection.connected:
-        logger.warning(
-            "workflows: connection %s is not available", connection_name
-        )
-        return
-    connection.message(channel, message)
+    for connection_name, channel in _targets(bot, payload):
+        connection = bot.connections.get(connection_name)
+        if not connection or not connection.connected:
+            logger.warning(
+                "workflows: connection %s is not available", connection_name
+            )
+            continue
+        connection.message(channel, message)
 
 
 @hook.on_start()

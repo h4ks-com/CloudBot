@@ -143,6 +143,23 @@ class WorkflowsClient:
         )
 
 
+# ponytail: in memory, so a restart mid-job only announces in the global channel.
+_ORIGINS: dict[int, tuple[str, str]] = {}
+FINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+
+
+def remember_origin(job_id: int, connection: str, channel: str) -> None:
+    """Announce job ``job_id`` in ``channel`` too, where someone asked for it."""
+    _ORIGINS[job_id] = (connection, channel)
+
+
+def origin_of(job_id: int, status: str) -> tuple[str, str] | None:
+    """The (connection, channel) a job was asked for in, forgotten once the job ends."""
+    if status in FINAL_STATUSES:
+        return _ORIGINS.pop(job_id, None)
+    return _ORIGINS.get(job_id)
+
+
 def identity_for(irc_account: str | None) -> str | None:
     """The opaque identity string the service expects, or None if unidentified."""
     return f"irc:{irc_account}" if irc_account else None

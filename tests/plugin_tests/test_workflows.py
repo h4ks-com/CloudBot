@@ -221,6 +221,37 @@ def test_handler_posts_to_the_announce_channel():
     ]
 
 
+def test_a_job_asked_for_in_a_channel_is_announced_there_until_it_ends():
+    sent = []
+    conn = SimpleNamespace(
+        connected=True, message=lambda chan, msg: sent.append((chan, msg))
+    )
+    bot = SimpleNamespace(
+        config={
+            "plugins": {
+                "workflows": {
+                    "announce_channel": "#bots",
+                    "connection": "gobot",
+                }
+            }
+        },
+        connections={"gobot": conn},
+    )
+    workflows.remember_origin(12, "gobot", "#lobby")
+
+    wf_plugin.handle_workflows_event(bot, {**EVENT, "status": "running"})
+    wf_plugin.handle_workflows_event(bot, {**EVENT, "status": "succeeded"})
+    wf_plugin.handle_workflows_event(bot, {**EVENT, "status": "running"})
+
+    assert sorted(chan for chan, _ in sent) == [
+        "#bots",
+        "#bots",
+        "#bots",
+        "#lobby",
+        "#lobby",
+    ]
+
+
 def test_wf_status_shows_result_files_and_defaults_to_latest(monkeypatch):
     done = {
         "id": 7,
