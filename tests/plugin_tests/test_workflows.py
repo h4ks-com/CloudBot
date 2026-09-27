@@ -86,6 +86,11 @@ def test_wf_cover_submits_the_frozen_radio_clip(monkeypatch):
     assert strip_irc(result) == (
         "follow your cover of the last 20s of radio · 105 credits · https://workflows.example/jobs/90"
     )
+    assert strip_irc(
+        wf_plugin.wf_cmd("continue", **_wf(monkeypatch, client))
+    ) == (
+        "follow the song that continues the last 30s of radio · 105 credits · https://workflows.example/jobs/90"
+    )
     assert workflows.origin_of(90, "succeeded") == ("testconn", "#chan")
 
 

@@ -181,6 +181,7 @@ FILE_HOST_URL = "https://s.t3ks.com/api/"
 DEFAULT_CLIP_SECONDS = 30
 MIN_CLIP_SECONDS = 5
 MAX_CLIP_SECONDS = 300
+RADIO_JOBS = {"cover": "your cover of", "continue": "the song that continues"}
 SHARE_HINTS: dict[workflows.ShareReason, str] = {
     "unidentified": "identify with NickServ and .wf link to run it from chat, or open and submit",
     "unlinked": ".wf link to run it from chat, or open and submit",
@@ -250,9 +251,8 @@ def _cmd_radio(
         )
     except workflows.WorkflowsError as e:
         return f"workflows: {e}"
-    what = f"the last {seconds}s of radio"
     if isinstance(outcome, workflows.Submitted):
-        return f"follow your {use} of {what} {_dim('·')} {outcome.credits} credits {_dim('·')} {outcome.url}"
+        return f"follow {RADIO_JOBS[use]} the last {seconds}s of radio {_dim('·')} {outcome.credits} credits {_dim('·')} {outcome.url}"
     return f"{SHARE_HINTS[outcome.reason]} {_dim('·')} {outcome.url}"
 
 
