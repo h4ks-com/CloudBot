@@ -1,6 +1,6 @@
 ---
 name: character-3d
-description: Make an animated, rigged 3D character (GLB) with the paid `character-3d` job on workflows.h4ks.com, from a picture, a description or both. THE DEFAULT for any "3D character", "animated character", "rigged model" or "make this picture a 3D character" request.
+description: Make an animated, rigged 3D character (GLB) with the paid `character-3d` job on workflows.h4ks.com. THE DEFAULT for any "3D character", "animated character", "rigged model" or "make this picture a 3D character" request.
 ---
 
 # Animated 3D character
@@ -13,7 +13,7 @@ credits and runs on the homelab GPU.
 **Go straight to the job.** Do not describe, research or download the picture, and do not look
 up who is in it. The job reads the picture itself. Submit in your first steps.
 
-## Steps
+## Make a character
 
 1. **Map the request to the fields.**
    - `image`: the picture URL the user gave, exactly as given. Leave it out when there is none.
@@ -28,3 +28,8 @@ up who is in it. The job reads the picture itself. Submit in your first steps.
 2. **Submit.** `workflows_submit_job(type="character-3d", params={...})`. Tell the user the job
    link and its price, or, when it returns a form link, give them that link to open, log in and
    submit. The bot announces the result in the channel itself. Never poll or wait for it.
+
+## After it is done
+
+To show, play or build a game with a finished character, read the `workflows` skill. It has
+the tested three.js core that loads the GLB from the bucket.
