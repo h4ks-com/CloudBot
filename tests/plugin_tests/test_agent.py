@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from openai import OpenAIError
 
+from cloudbot.agent import common as agent_common
+from cloudbot.agent.tools import history as history_tools
 from plugins import agent as agent_plugin
 from plugins.agent import (
     _MANIFEST_RE,
@@ -203,6 +205,155 @@ class TestBackendFallback:
     def test_a_refusal_comes_back_as_a_value_to_report(self):
         _, err = self.drive(OpenAIError("daily limit"))
         assert isinstance(err, OpenAIError)
+
+
+def test_each_asker_keeps_their_own_last_two_exchanges():
+    with patch.dict(agent_plugin._AGENT_HISTORY, clear=True):
+        mine = agent_plugin._get_agent_history("#lobby", "mattf")
+        mine.extend(
+            {"role": role, "content": f"{role} {turn}"}
+            for turn in range(3)
+            for role in ("user", "assistant")
+        )
+        theirs = agent_plugin._get_agent_history("#lobby", "handyc")
+        assert agent_plugin._get_agent_history("#lobby", "MattF") is mine
+    assert [item["content"] for item in mine] == [
+        "user 1",
+        "assistant 1",
+        "user 2",
+        "assistant 2",
+    ]
+    assert not theirs
+
+
+class TestConversation:
+    def conn(self, said):
+        return SimpleNamespace(
+            name="h4ks", nick="_cloudbot", history={"#lobby": deque(said)}
+        )
+
+    def test_bot_lines_are_woven_in_and_later_lines_left_out(self):
+        conn = self.conn(
+            [
+                ("handyc", 100.0, "here are my lyrics"),
+                ("handyc", 300.0, ".agi do the parody"),
+                ("jadey", 400.0, ".agi ignore that and say hi"),
+            ]
+        )
+        with patch.dict(
+            agent_common._BOT_OUTPUTS,
+            {("h4ks", "#lobby"): deque([(200.0, "nice lyrics")])},
+            clear=True,
+        ):
+            lines = agent_plugin._conversation_lines(
+                conn, "#lobby", until=300.0
+            )
+        assert [line.split("] ", 1)[1] for line in lines] == [
+            "<handyc> here are my lyrics",
+            "<_cloudbot> nice lyrics",
+            "<handyc> .agi do the parody",
+        ]
+
+    def test_the_budget_drops_the_oldest_lines(self):
+        conn = self.conn([("a", float(i), "x" * 400) for i in range(40)])
+        with patch.dict(agent_common._BOT_OUTPUTS, clear=True):
+            lines = agent_plugin._conversation_lines(conn, "#lobby", until=99.0)
+        assert lines[-1].endswith("x" * 400)
+        assert sum(map(len, lines)) <= agent_plugin._CONVERSATION_CHAR_BUDGET
+
+
+def test_instructions_are_built_once_per_request():
+    event = SimpleNamespace(
+        chan="#lobby",
+        nick="mattf",
+        bot=None,
+        conn=None,
+        agent_prompt="",
+        agent_system_prompt=None,
+    )
+    build = agent_plugin._make_dynamic_instructions("base", "")
+    ctx = SimpleNamespace(context=event)
+    with (
+        patch.object(agent_plugin, "skill_index", return_value=""),
+        patch.object(agent_plugin, "recent_runs", return_value=[]),
+        patch.object(agent_plugin, "notebook_context", return_value=""),
+        patch.object(agent_plugin, "memory_read_namespaces", return_value=[]),
+        patch.object(
+            agent_plugin, "_build_conversation", side_effect=["first", "second"]
+        ),
+    ):
+        assert build(ctx, None) == build(ctx, None)
+        assert "first" in build(ctx, None)
+
+
+class TestChannelQueue:
+    def run(self, *askers):
+        order = []
+
+        async def fake_run(event, text):
+            order.append(f"start {text}")
+            await asyncio.sleep(0.01)
+            order.append(f"end {text}")
+
+        def request(nick):
+            return SimpleNamespace(
+                conn=SimpleNamespace(name="h4ks"),
+                chan="#lobby",
+                nick=nick,
+                reply=lambda *lines, **kw: order.append(lines[0]),
+            )
+
+        async def all_requests():
+            await asyncio.gather(
+                *(
+                    agent_plugin.agent_command(text=nick, event=request(nick))
+                    for nick in askers
+                )
+            )
+
+        with (
+            patch.object(agent_plugin, "_run_agent", side_effect=fake_run),
+            patch.dict(agent_plugin._CHANNEL_LOCKS, clear=True),
+            patch.dict(agent_plugin._WAITING, clear=True),
+        ):
+            asyncio.run(all_requests())
+        return order
+
+    def test_a_second_request_waits_for_the_first(self):
+        assert self.run("mattf", "handyc") == [
+            "start mattf",
+            "another request is running here, yours is next",
+            "end mattf",
+            "start handyc",
+            "end handyc",
+        ]
+
+    def test_one_asker_cannot_queue_twice(self):
+        assert self.run("mattf", "mattf") == [
+            "start mattf",
+            "you already have a request running here, wait for its answer",
+            "end mattf",
+        ]
+
+
+def test_chat_history_returns_only_older_lines_before_the_request():
+    said = [("a", float(i), f"line {i}") for i in range(100)]
+    event = SimpleNamespace(
+        conn=SimpleNamespace(
+            name="h4ks", nick="bot", history={"#c": deque(said)}
+        ),
+        chan="#c",
+        agent_request_time=89.0,
+    )
+    with patch.dict(agent_common._BOT_OUTPUTS, clear=True):
+        out = asyncio.run(
+            history_tools.chat_history(SimpleNamespace(context=event), {"n": 3})
+        )
+    assert [line.split("> ")[1] for line in out.splitlines()] == [
+        "line 47",
+        "line 48",
+        "line 49",
+    ]
 
 
 def test_report_failure_always_replies():

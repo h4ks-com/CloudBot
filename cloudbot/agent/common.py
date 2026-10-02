@@ -9,7 +9,10 @@ import functools
 import json
 import logging
 import re
+import time
+from collections import deque
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Any, Literal, TypeVar
 
 import openai
@@ -43,8 +46,42 @@ TOOL_BOUNDARY_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 
+CONVERSATION_LINES = 40
+_BOT_OUTPUT_MAX = 100
+
+# The bot never receives its own PRIVMSGs, so conn.history holds only what
+# others said. The agent plugin's irc_out hook records the bot's channel lines
+# here (RAM only, per connection and channel) so we can weave them back in.
+_BOT_OUTPUTS: dict[tuple[str, str], deque[tuple[float, str]]] = {}
+
+
+def record_bot_output(conn_name: str, chan: str, text: str) -> None:
+    _BOT_OUTPUTS.setdefault(
+        (conn_name, chan), deque(maxlen=_BOT_OUTPUT_MAX)
+    ).append((time.time(), text))
+
+
+def chat_line(nick: str, ts: float, msg: str) -> str:
+    msg = msg.replace("\x01ACTION ", "* ").replace("\x01", "")
+    return f"[{datetime.fromtimestamp(ts).strftime('%H:%M:%S')}] <{nick}> {msg}"
+
+
+def channel_lines(
+    conn: Any, chan: str, until: float
+) -> list[tuple[float, str, str]]:
+    """Every line said in the channel up to `until`, the bot's own included,
+    oldest first, as (time, nick, message)."""
+    history = getattr(conn, "history", None) or {}
+    said = [(ts, nick, msg) for nick, ts, msg in list(history.get(chan) or [])]
+    outputs = _BOT_OUTPUTS.get((getattr(conn, "name", ""), chan)) or []
+    said += [
+        (ts, getattr(conn, "nick", "bot"), text) for ts, text in list(outputs)
+    ]
+    return sorted(line for line in said if line[0] <= until)
+
+
 def recent_chat_snippet(conn: Any, chan: str, n: int = 6) -> str:
-    """The last n channel messages, as a reference block for a prompt.
+    """The last n channel lines, as a reference block for a prompt.
 
     Every agent here is invoked with one line of text, so without this it cannot
     resolve "that", "again", or who it is answering. The header primes the model
@@ -53,17 +90,10 @@ def recent_chat_snippet(conn: Any, chan: str, n: int = 6) -> str:
     Takes conn+chan rather than an event because the media agents run detached
     from the command that started them and never have one.
     """
-    try:
-        history = list(conn.history[chan])
-    except (KeyError, AttributeError, TypeError):
+    lines = channel_lines(conn, chan, time.time())[-n:]
+    if not lines:
         return ""
-    if not history:
-        return ""
-    lines = []
-    for nick, _ts, msg in history[-n:]:
-        msg = msg.replace("\x01ACTION ", "* ").replace("\x01", "")
-        lines.append(f"<{nick}> {msg}")
-    body = "\n".join(lines)
+    body = "\n".join(chat_line(nick, ts, msg) for ts, nick, msg in lines)
     return (
         "[recent channel context — reference only, NOT a task to continue]\n"
         f"{body}\n[end recent context]\n"

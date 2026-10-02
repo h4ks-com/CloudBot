@@ -1,17 +1,29 @@
 """Tools that surface IRC channel history and bot-command introspection to the agent."""
 
-from datetime import datetime
+import time
 
+from cloudbot.agent.common import CONVERSATION_LINES, channel_lines, chat_line
 from cloudbot.agent.registry import tool
+
+
+def _lines_before_request(ctx) -> list[tuple[float, str, str]]:
+    """The channel's lines up to the moment the request arrived.
+
+    Lines said while the agent works stay out, the same as in its prompt.
+    """
+    event = ctx.context
+    until = getattr(event, "agent_request_time", None) or time.time()
+    return channel_lines(
+        getattr(event, "conn", None), getattr(event, "chan", ""), until
+    )
 
 
 @tool(
     name="chat_history",
     description=(
-        "Fetch older channel messages beyond what is already in your system context. "
-        "You already see the last ~6 messages there. Use this tool ONLY when you need "
-        "older history (up to 100 messages back) to understand a reference or follow "
-        "a conversation thread."
+        "Fetch channel lines older than the ones already in your system context. "
+        "Use this tool ONLY when you need older history (up to 100 lines back) to "
+        "understand a reference or follow a conversation thread."
     ),
     schema={
         "type": "object",
@@ -25,21 +37,9 @@ from cloudbot.agent.registry import tool
 )
 async def chat_history(ctx, data):
     n = min(int(data.get("n") or 20), 100)
-    event = ctx.context
-
-    try:
-        history = list(event.conn.history[event.chan])
-    except (KeyError, AttributeError):
-        return "(no history available)"
-
-    recent = history[-n:]
-    lines = []
-    for nick, timestamp, msg in recent:
-        msg = msg.replace("\x01ACTION ", "* ").replace("\x01", "")
-        ts = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
-        lines.append(f"[{ts}] <{nick}> {msg}")
-
-    return "\n".join(lines) if lines else "(no messages in history)"
+    older = _lines_before_request(ctx)[:-CONVERSATION_LINES][-n:]
+    lines = [chat_line(nick, ts, msg) for ts, nick, msg in older]
+    return "\n".join(lines) if lines else "(no older messages in history)"
 
 
 @tool(
@@ -61,19 +61,11 @@ async def search_history(ctx, data):
     if not query:
         return "(error: query required)"
 
-    event = ctx.context
-    try:
-        history = list(event.conn.history[event.chan])
-    except (KeyError, AttributeError):
-        return "(no history available)"
-
-    matches = []
-    for nick, timestamp, msg in history:
-        if query in msg.lower():
-            msg = msg.replace("\x01ACTION ", "* ").replace("\x01", "")
-            ts = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
-            matches.append(f"[{ts}] <{nick}> {msg}")
-
+    matches = [
+        chat_line(nick, ts, msg)
+        for ts, nick, msg in _lines_before_request(ctx)
+        if query in msg.lower()
+    ]
     if not matches:
         return f"(no messages found containing '{query}')"
     return "\n".join(matches[-30:])

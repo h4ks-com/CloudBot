@@ -6,6 +6,7 @@ the codebase.
 """
 
 import re
+import unicodedata
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any
@@ -53,23 +54,6 @@ def ensure_memory_table(engine: Engine) -> None:
     _MEMORY_TABLE.create(bind=engine, checkfirst=True)
 
 
-def all_memories(
-    namespaces: Sequence[str], limit: int
-) -> list[tuple[str, str]]:
-    """Every memory across these namespaces, newest first (capped at limit)."""
-    if not namespaces:
-        return []
-    db = database.Session()
-    rows = db.execute(
-        _MEMORY_TABLE.select()
-        .with_only_columns(_MEMORY_TABLE.c.key, _MEMORY_TABLE.c.value)
-        .where(_MEMORY_TABLE.c.namespace.in_(namespaces))
-        .order_by(_MEMORY_TABLE.c.updated_at.desc())
-        .limit(limit)
-    ).fetchall()
-    return [(r[0], r[1]) for r in rows]
-
-
 def store_memory(namespace: str, key: str, value: str) -> None:
     """Upsert one memory (insert, or overwrite by namespace+key)."""
     db = database.Session()
@@ -93,10 +77,19 @@ def store_memory(namespace: str, key: str, value: str) -> None:
 # FTS5 mirror powering the memory_search tool: bm25-ranked, word-boundary
 # matching via the unicode61 tokenizer (language-neutral — no English stemmer,
 # diacritics folded consistently on both index and query). External content off
-# agent_memory's rowid; triggers keep it synced. Recall (the prompt index) does
-# NOT use this — only the agent's explicit memory_search does.
+# agent_memory's rowid; triggers keep it synced. Both the memory_search tool and
+# the agent's recall of memories matching a request read it.
 _FTS_TABLE = "agent_memory_fts"
+_FTS_VOCAB = "agent_memory_fts_vocab"
 _FTS_TOKEN_RE = re.compile(r"[^\W_]+")
+_SEARCH_TERMS_MAX = 20
+_RECALL_TERMS_MAX = 60
+# Recall drops words found in more than this share of memories ("the", "de",
+# "is" in any language), once there are enough memories for the share to mean
+# something, and keeps only matches scoring at least half as well as the best.
+_COMMON_TERM_SHARE = 0.15
+_COMMON_TERM_MIN_MEMORIES = 20
+_RECALL_SCORE_SHARE = 0.5
 
 _FTS_DDL = (
     f"CREATE VIRTUAL TABLE IF NOT EXISTS {_FTS_TABLE} USING fts5("
@@ -113,6 +106,7 @@ _FTS_DDL = (
     "VALUES ('delete', old.rowid, old.namespace, old.key, old.value); "
     f"INSERT INTO {_FTS_TABLE}(rowid, namespace, key, value) "
     "VALUES (new.rowid, new.namespace, new.key, new.value); END",
+    f"CREATE VIRTUAL TABLE IF NOT EXISTS {_FTS_VOCAB} USING fts5vocab({_FTS_TABLE}, 'row')",
 )
 
 
@@ -131,43 +125,93 @@ def ensure_fts(engine: Engine) -> None:
         )
 
 
-def _fts_match_query(raw: str) -> str | None:
-    """Build a safe FTS5 MATCH expression (OR of quoted terms) from user text.
+def _fold(text_: str) -> str:
+    """Lowercase and strip accents, the way the unicode61 tokenizer indexes words.
 
-    Quoting each term neutralises FTS5 operators in free-form input; the
-    unicode61 tokenizer keeps it language-agnostic. No stopword list.
+    The vocabulary table holds folded words, so we fold the query to compare.
     """
-    seen: set[str] = set()
-    terms: list[str] = []
-    for tok in _FTS_TOKEN_RE.findall(raw.lower()):
-        if len(tok) < 2 or tok in seen:
-            continue
-        seen.add(tok)
-        terms.append(tok)
-        if len(terms) >= 20:
-            break
-    if not terms:
-        return None
-    return " OR ".join(f'"{tok}"' for tok in terms)
+    decomposed = unicodedata.normalize("NFKD", text_.lower())
+    return "".join(
+        char for char in decomposed if not unicodedata.combining(char)
+    )
+
+
+def _query_terms(raw: str, limit: int) -> list[str]:
+    """The distinct words of free-form text, in order, as FTS5 search terms."""
+    terms = [tok for tok in _FTS_TOKEN_RE.findall(_fold(raw)) if len(tok) >= 2]
+    return list(dict.fromkeys(terms))[:limit]
+
+
+def _match_expression(terms: Sequence[str]) -> str:
+    """OR the terms, each quoted so FTS5 operators in user text stay words."""
+    return " OR ".join(f'"{term}"' for term in terms)
+
+
+def _ranked_matches(
+    db: Any, namespaces: Sequence[str], terms: Sequence[str], limit: int
+) -> list[tuple[str, str, float]]:
+    sql = text(
+        f"SELECT key, value, bm25({_FTS_TABLE}) FROM {_FTS_TABLE} "
+        f"WHERE {_FTS_TABLE} MATCH :q AND namespace IN :ns "
+        f"ORDER BY bm25({_FTS_TABLE}) LIMIT :lim"
+    ).bindparams(bindparam("ns", expanding=True))
+    rows = db.execute(
+        sql,
+        {"q": _match_expression(terms), "ns": list(namespaces), "lim": limit},
+    ).fetchall()
+    return [(row[0], row[1], row[2]) for row in rows]
 
 
 def fts_search(
     namespaces: Sequence[str], query: str, limit: int
 ) -> list[tuple[str, str]]:
     """bm25-ranked keyword search over stored memories across namespaces."""
-    match = _fts_match_query(query)
-    if not match or not namespaces:
+    terms = _query_terms(query, _SEARCH_TERMS_MAX)
+    if not terms or not namespaces:
+        return []
+    matches = _ranked_matches(database.Session(), namespaces, terms, limit)
+    return [(key, value) for key, value, _score in matches]
+
+
+def _distinctive_terms(db: Any, terms: list[str]) -> list[str]:
+    memories = (
+        db.execute(text("SELECT count(*) FROM agent_memory")).scalar() or 0
+    )
+    if memories < _COMMON_TERM_MIN_MEMORIES:
+        return terms
+    sql = text(
+        f"SELECT term FROM {_FTS_VOCAB} WHERE term IN :terms AND doc > :cutoff"
+    ).bindparams(bindparam("terms", expanding=True))
+    common = {
+        row[0]
+        for row in db.execute(
+            sql, {"terms": terms, "cutoff": memories * _COMMON_TERM_SHARE}
+        )
+    }
+    return [term for term in terms if term not in common]
+
+
+def recall_memories(
+    namespaces: Sequence[str], context: str, limit: int
+) -> list[tuple[str, str]]:
+    """The memories that bear on this text, best first.
+
+    We search on the words that set a memory apart and keep only matches that
+    score at least half as well as the best one, so a request made of everyday
+    words brings back nothing at all.
+    """
+    terms = _query_terms(context, _RECALL_TERMS_MAX)
+    if not terms or not namespaces:
         return []
     db = database.Session()
-    sql = text(
-        f"SELECT key, value FROM {_FTS_TABLE} "
-        f"WHERE {_FTS_TABLE} MATCH :q AND namespace IN :ns "
-        f"ORDER BY bm25({_FTS_TABLE}) LIMIT :lim"
-    ).bindparams(bindparam("ns", expanding=True))
-    rows = db.execute(
-        sql, {"q": match, "ns": list(namespaces), "lim": limit}
-    ).fetchall()
-    return [(r[0], r[1]) for r in rows]
+    terms = _distinctive_terms(db, terms)
+    if not terms:
+        return []
+    matches = _ranked_matches(db, namespaces, terms, limit)
+    if not matches:
+        return []
+    cutoff = matches[0][2] * _RECALL_SCORE_SHARE
+    return [(key, value) for key, value, score in matches if score <= cutoff]
 
 
 @tool(
