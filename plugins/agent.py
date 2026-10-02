@@ -701,8 +701,9 @@ _CHANNEL_PREFIXES = ("#", "&", "+", "!")
 # channel conversation, and as history it took them for its own conversation
 # with the asker and acted on them.
 _AGENT_HISTORY: dict[tuple[str, str], deque[dict]] = {}
-_CHANNEL_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
-_WAITING: dict[tuple[str, str], set[str]] = {}
+# Users run in parallel, one request each per channel: two runs of one user
+# would share and race on that user's history.
+_RUNNING: dict[tuple[str, str], set[str]] = {}
 
 
 def _get_agent_history(chan: str, nick: str) -> deque[dict]:
@@ -1542,23 +1543,20 @@ async def agent_command(text, event):
         event.reply("usage: .agi <natural language prompt>")
         return
     event.agent_request_time = time.time()
-    place = (event.conn.name, event.chan or event.nick)
-    waiting = _WAITING.setdefault(place, set())
+    running = _RUNNING.setdefault(
+        (event.conn.name, event.chan or event.nick), set()
+    )
     asker = event.nick.casefold()
-    if asker in waiting:
+    if asker in running:
         event.reply(
             "you already have a request running here, wait for its answer"
         )
         return
-    lock = _CHANNEL_LOCKS.setdefault(place, asyncio.Lock())
-    if lock.locked():
-        event.reply("another request is running here, yours is next")
-    waiting.add(asker)
+    running.add(asker)
     try:
-        async with lock:
-            await _run_agent(event, text)
+        await _run_agent(event, text)
     finally:
-        waiting.discard(asker)
+        running.discard(asker)
 
 
 @hook.command(

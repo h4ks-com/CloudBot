@@ -286,7 +286,7 @@ def test_instructions_are_built_once_per_request():
         assert "first" in build(ctx, None)
 
 
-class TestChannelQueue:
+class TestConcurrentRequests:
     def run(self, *askers):
         order = []
 
@@ -313,22 +313,20 @@ class TestChannelQueue:
 
         with (
             patch.object(agent_plugin, "_run_agent", side_effect=fake_run),
-            patch.dict(agent_plugin._CHANNEL_LOCKS, clear=True),
-            patch.dict(agent_plugin._WAITING, clear=True),
+            patch.dict(agent_plugin._RUNNING, clear=True),
         ):
             asyncio.run(all_requests())
         return order
 
-    def test_a_second_request_waits_for_the_first(self):
+    def test_different_users_run_in_parallel(self):
         assert self.run("mattf", "handyc") == [
             "start mattf",
-            "another request is running here, yours is next",
-            "end mattf",
             "start handyc",
+            "end mattf",
             "end handyc",
         ]
 
-    def test_one_asker_cannot_queue_twice(self):
+    def test_one_asker_cannot_run_two_requests(self):
         assert self.run("mattf", "mattf") == [
             "start mattf",
             "you already have a request running here, wait for its answer",
