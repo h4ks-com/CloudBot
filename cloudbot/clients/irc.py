@@ -31,6 +31,33 @@ irc_bad_chars = "".join(
 
 irc_clean_re = re.compile(f"[{re.escape(irc_bad_chars)}]")
 
+IRC_LINE_BYTES = 512
+# The server prepends our full hostmask when it relays a line, so we reserve room for the longest user@host.
+HOSTMASK_BYTES = 80
+
+
+def split_to_fit(text: str, max_bytes: int) -> list[str]:
+    """Split text at spaces into pieces of at most ``max_bytes`` UTF-8 bytes, cutting a word only when it alone is too long."""
+    pieces: list[str] = []
+    current = ""
+    for word in text.split(" "):
+        candidate = f"{current} {word}" if current else word
+        if len(candidate.encode()) <= max_bytes:
+            current = candidate
+            continue
+        if current:
+            pieces.append(current)
+        while len(word.encode()) > max_bytes:
+            head = (
+                word.encode()[:max_bytes].decode("utf-8", "ignore") or word[0]
+            )
+            pieces.append(head)
+            word = word[len(head) :]
+        current = word
+    if current or not pieces:
+        pieces.append(current)
+    return pieces
+
 
 def irc_clean_colors(dirty: str) -> str:
     stripped = colors.strip_irc(dirty)
@@ -344,12 +371,21 @@ class IrcClient(Client):
 
         Each message is split on embedded newlines so a single multi-line
         string batches (or degrades to one PRIVMSG per line) instead of being
-        flattened by the newline-stripping out-sieve.
+        flattened by the newline-stripping out-sieve. A line too long for one
+        IRC message goes out as a concat batch, or split at spaces when the
+        server has no multiline, so the server does not cut it.
         """
+        budget = IRC_LINE_BYTES - len(
+            f":{self.nick}!{'x' * HOSTMASK_BYTES} PRIVMSG {target} :\r\n".encode()
+        )
         lines = [line for text in messages for line in str(text).split("\n")]
-        if len(lines) > 1 and supports_multiline(self):
+        too_long = any(len(line.encode()) > budget for line in lines)
+        if (len(lines) > 1 or too_long) and supports_multiline(self):
             send_batch_multiline(self, target, lines, tags=tags)
         else:
+            lines = [
+                piece for line in lines for piece in split_to_fit(line, budget)
+            ]
             for i, text in enumerate(lines):
                 self.cmd("PRIVMSG", target, text, tags=tags if i == 0 else None)
 

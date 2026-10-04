@@ -35,6 +35,61 @@ def test_send_not_connected():
     assert bot.mock_calls == [("loop.create_future", (), {})]
 
 
+def test_split_to_fit():
+    assert irc.split_to_fit("", 10) == [""]
+    assert irc.split_to_fit("a b c", 3) == ["a b", "c"]
+    assert irc.split_to_fit("abcdefgh", 3) == ["abc", "def", "gh"]
+    assert irc.split_to_fit("héllo wörld", 6) == ["héllo", "wörld"]
+    assert irc.split_to_fit("éé", 1) == ["é", "é"]
+
+
+def test_message_splits_lines_too_long_for_irc():
+    client = irc.IrcClient(
+        MagicMock(),
+        "irc",
+        "_cloudbot",
+        "bar",
+        config={"connection": {"server": "s"}},
+    )
+    client.cmd = MagicMock()
+    urls = [
+        f"https://s3-api.t3ks.com/workflows/audiobook/{n:03}-192454.mp4"
+        for n in range(12)
+    ]
+    client.message("#bots", "done: " + " ".join(urls))
+
+    sent = [call.args[2] for call in client.cmd.mock_calls]
+    prefix = f":_cloudbot!{'x' * irc.HOSTMASK_BYTES} PRIVMSG #bots :\r\n"
+    assert len(sent) > 1
+    assert all(
+        len((prefix + line).encode()) <= irc.IRC_LINE_BYTES for line in sent
+    )
+    assert " ".join(sent) == "done: " + " ".join(urls)
+
+
+def test_message_sends_a_long_line_as_a_concat_batch_with_multiline():
+    client = irc.IrcClient(
+        MagicMock(),
+        "irc",
+        "_cloudbot",
+        "bar",
+        config={"connection": {"server": "s"}},
+    )
+    client.memory["server_caps"] = {"draft/multiline": True}
+    client.send = MagicMock()
+    text = "done: " + " ".join(
+        f"https://s3/{n:03}-192454.mp4" for n in range(30)
+    )
+    client.message("#bots", text)
+
+    sent = [call.args[0] for call in client.send.mock_calls]
+    privmsgs = [line for line in sent if " PRIVMSG #bots :" in line]
+    assert sent[0].startswith("BATCH +") and sent[-1].startswith("BATCH -")
+    assert len(privmsgs) > 1
+    assert all("draft/multiline-concat" in line for line in privmsgs[1:])
+    assert "".join(line.split(" :", 1)[1] for line in privmsgs) == text
+
+
 def test_send_closed(event_loop):
     bot = MagicMock(loop=event_loop)
     client = irc.IrcClient(
