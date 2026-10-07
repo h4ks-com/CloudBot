@@ -11,19 +11,23 @@ new lines in the original voice. It costs the user credits and runs on the homel
 **Go straight to the job.** The job downloads the song and looks up its lyrics itself. Pass the
 user's song link exactly as given.
 
-## Never write the lyrics yourself
+## The lyrics come from the user or the job
 
-The job has its own lyric writer that fits every new line to the song's timing. You only pass
-the idea. Leave `parody_lyrics` and `lyrics` out and put everything in `prompt`:
-- the theme or joke, in the user's words;
-- any example lines, pasted text or linked text the user gave, quoted verbatim, with "keep these
-  lines and write the rest in the same style";
-- `amount`: `a few words`, `most lines` or `every line` from the user's words ("replace every X"
-  means `every line`).
+The job has its own lyric writer that fits every line to the song's timing, so your part is to
+carry the user's words to it **verbatim**. Pick the one case that matches:
 
-Do not finish, extend, clean up or count lyrics, even when the user asks you to "complete the
-rest": the job does that. Fill `parody_lyrics` only when the user explicitly says to use their
-lyrics as the exact final lyrics; then pass their text unchanged and nothing else.
+- **An idea only** ("make it about a cat who wants dinner"): put the idea in `prompt`.
+- **Some lyrics** (example lines, a pasted chorus, a linked text, a draft): quote them verbatim in
+  `prompt` and add what the user wants done with them, in their words: "use these lines exactly
+  where they fit and write the rest in the same style", or "take these as inspiration".
+- **The whole song's lyrics, ready to sing**: pass them verbatim in `parody_lyrics`. The job
+  swaps the song line by line, so it refuses lyrics whose line count differs from the original;
+  it then fails at once at no cost. On that error, submit once more with the same text quoted in
+  `prompt` as in the case above.
+
+Set `amount` (`a few words`, `most lines`, `every line`) from the user's words whenever the job
+writes lines ("replace every X" means `every line`). The writing, finishing and fitting of lines
+is the job's work, so the text you send is always the user's own.
 
 ## Fields
 
@@ -40,6 +44,4 @@ lyrics as the exact final lyrics; then pass their text unchanged and nothing els
 when it returns a form link, give them that link to open, log in and submit. The bot announces
 the result in the channel itself. Never poll or wait for it.
 
-When the job fails because given lyrics do not match the song line by line, submit once more
-with `parody_lyrics` left out and the user's lyrics quoted in `prompt`. For any other error, tell
-the user the reason.
+For a failure other than the line count above, tell the user the reason from the error.
