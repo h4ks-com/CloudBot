@@ -1,6 +1,7 @@
 import concurrent.futures
 import enum
 import logging
+import time
 from collections.abc import Iterator, Mapping
 from functools import partial
 from typing import Any
@@ -8,8 +9,11 @@ from typing import Any
 from irclib.parser import Message
 
 from cloudbot.util.database import Session
+from cloudbot.util.messages import ChatMessage, MessageLog
 
 logger = logging.getLogger("cloudbot")
+
+REPLY_TAGS = ("+reply", "+draft/reply")
 
 
 @enum.unique
@@ -236,6 +240,33 @@ class Event(Mapping[str, Any]):
         tag = (self.irc_tags or {}).get(name)
         value: str | None = tag.value if tag is not None else None
         return value
+
+    @property
+    def chat_message(self) -> ChatMessage | None:
+        """This event as a ChatMessage, when it is a channel or private message."""
+        if self.type not in (EventType.message, EventType.action):
+            return None
+        if self.content is None or not self.nick:
+            return None
+        return ChatMessage(
+            msgid=self.tag_value("msgid"),
+            nick=self.nick,
+            target=self.chan or "",
+            text=self.content,
+            time=time.time(),
+        )
+
+    @property
+    def reply_to(self) -> ChatMessage | None:
+        """The message this one replies to, when the bot saw it recently."""
+        msgid = next(
+            (value for tag in REPLY_TAGS if (value := self.tag_value(tag))),
+            None,
+        )
+        log = getattr(self.conn, "messages", None)
+        if not msgid or not isinstance(log, MessageLog):
+            return None
+        return log.get(msgid)
 
     def _get_reply_tags(self) -> dict | None:
         if not self.irc_tags:

@@ -25,6 +25,7 @@ from cloudbot.plugin import PluginManager
 from cloudbot.reloader import ConfigReloader, PluginReloader
 from cloudbot.util import async_util, database, formatting
 from cloudbot.util.mapping import KeyFoldDict
+from cloudbot.util.messages import MessageLog
 
 logger = logging.getLogger("cloudbot")
 
@@ -352,6 +353,13 @@ class CloudBot(AbstractBot):
         run_before_tasks = []
         tasks = []
         halted = False
+
+        # We log before any hook runs and include our own echoed lines, so a reply
+        # to anything said here, the bot's answers included, can be resolved.
+        if (message := event.chat_message) is not None and isinstance(
+            getattr(event.conn, "messages", None), MessageLog
+        ):
+            event.conn.messages.add(message)
 
         # With echo-message the server echoes our own PRIVMSG/NOTICE back; never
         # let those drive command/regex/event hooks or the bot would react to

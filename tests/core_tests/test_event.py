@@ -4,7 +4,8 @@ import pytest
 from irclib.parser import Message
 
 from cloudbot import hook
-from cloudbot.event import Event, IrcOutEvent
+from cloudbot.event import Event, EventType, IrcOutEvent
+from cloudbot.util.messages import ChatMessage, MessageLog
 from tests.util.mock_module import MockModule
 
 
@@ -269,3 +270,37 @@ async def test_irc_out_prepare_error():
         await event.prepare()
 
     assert event.parsed_line is None
+
+
+def _tagged(**tags):
+    return {name: MagicMock(value=value) for name, value in tags.items()}
+
+
+def test_reply_to_finds_the_replied_message_by_msgid():
+    log = MessageLog()
+    original = Event(
+        conn=MagicMock(messages=log),
+        event_type=EventType.message,
+        channel="#lobby",
+        nick="_cloudbot",
+        content="parody #115 failed",
+        irc_tags=_tagged(msgid="abc"),
+    ).chat_message
+    log.add(original)
+    reply = Event(
+        conn=MagicMock(messages=log),
+        event_type=EventType.message,
+        channel="#lobby",
+        nick="mattf",
+        content="why?",
+        irc_tags=_tagged(**{"+draft/reply": "abc"}),
+    )
+    assert reply.reply_to == original
+    assert Event(conn=MagicMock(messages=log)).reply_to is None
+
+
+def test_message_log_drops_the_oldest_message():
+    log = MessageLog(size=2)
+    for msgid in ("a", "b", "c"):
+        log.add(ChatMessage(msgid, "n", "#c", msgid, 0.0))
+    assert (log.get("a"), log.get("c").text) == (None, "c")

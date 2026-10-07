@@ -9,6 +9,7 @@ from openai import OpenAIError
 
 from cloudbot.agent import common as agent_common
 from cloudbot.agent.tools import history as history_tools
+from cloudbot.util.messages import ChatMessage
 from plugins import agent as agent_plugin
 from plugins.agent import (
     _MANIFEST_RE,
@@ -306,7 +307,9 @@ class TestConcurrentRequests:
         async def all_requests():
             await asyncio.gather(
                 *(
-                    agent_plugin.agent_command(text=nick, event=request(nick))
+                    agent_plugin.agent_command(
+                        text=nick, event=request(nick), reply_to=None
+                    )
                     for nick in askers
                 )
             )
@@ -391,3 +394,13 @@ class TestFormatAnswer:
 
     def test_empty_text_returns_empty(self):
         assert _format_answer("   ", self.cfg) == ([], False)
+
+
+def test_a_reply_puts_the_replied_message_in_front_of_the_request():
+    replied = ChatMessage(
+        "abc", "_cloudbot", "#lobby", "parody #115 failed", 0.0
+    )
+    assert agent_plugin._with_reply("why?", replied) == (
+        '(replying to <_cloudbot>: "parody #115 failed") why?'
+    )
+    assert agent_plugin._with_reply("why?", None) == "why?"

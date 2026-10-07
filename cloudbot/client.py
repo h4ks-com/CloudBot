@@ -6,6 +6,7 @@ from typing import Any
 
 from cloudbot.permissions import PermissionManager
 from cloudbot.util import async_util
+from cloudbot.util.messages import MessageLog
 
 logger = logging.getLogger("cloudbot")
 
@@ -52,6 +53,7 @@ class Client:
             self.config = config
         self.vars = {}
         self.history = {}
+        self.messages = MessageLog()
 
         # create permissions manager
         self.permissions = PermissionManager(self)

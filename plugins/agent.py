@@ -1536,8 +1536,16 @@ def _init_agent_tables(bot):
     discover(bot)
 
 
+def _with_reply(prompt: str, replied) -> str:
+    """Put the message a request replies to in front of it, since the reply is often the whole subject."""
+    if replied is None:
+        return prompt
+    quoted = truncate(replied.text, _CONVERSATION_LINE_CHARS, "…")
+    return f'(replying to <{replied.nick}>: "{quoted}") {prompt}'
+
+
 @hook.command("agi", "agent", "ask", autohelp=False, allow_private=False)
-async def agent_command(text, event):
+async def agent_command(text, event, reply_to):
     """<prompt> - ask the bot in natural language; uses any available tool."""
     if not text:
         event.reply("usage: .agi <natural language prompt>")
@@ -1554,7 +1562,7 @@ async def agent_command(text, event):
         return
     running.add(asker)
     try:
-        await _run_agent(event, text)
+        await _run_agent(event, _with_reply(text, reply_to))
     finally:
         running.discard(asker)
 
