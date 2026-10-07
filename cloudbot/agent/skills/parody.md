@@ -17,9 +17,11 @@ The job has its own lyric writer that fits every line to the song's timing, so y
 carry the user's words to it **verbatim**. Pick the one case that matches:
 
 - **An idea only** ("make it about a cat who wants dinner"): put the idea in `prompt`.
-- **Some lyrics** (example lines, a pasted chorus, a linked text, a draft): quote them verbatim in
-  `prompt` and add what the user wants done with them, in their words: "use these lines exactly
-  where they fit and write the rest in the same style", or "take these as inspiration".
+- **Some lyrics** (example lines, a pasted chorus, a draft): quote them verbatim in `prompt` and
+  add what the user wants done with them, in their words: "use these lines exactly where they fit
+  and write the rest in the same style", or "take these as inspiration". The job reads only the
+  text you send, so for lyrics behind a link (a paste site, a gist) fetch the page first and
+  quote its text in place of the link.
 - **The whole song's lyrics, ready to sing**: pass them verbatim in `parody_lyrics`. The job
   swaps the song line by line, so it refuses lyrics whose line count differs from the original;
   it then fails at once at no cost. On that error, submit once more with the same text quoted in
