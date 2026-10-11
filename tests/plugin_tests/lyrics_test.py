@@ -42,6 +42,15 @@ def song_hit(artist: str, title: str, url: str, snippet: str = "") -> dict:
     return hit
 
 
+def lrclib_hit(artist: str, track: str) -> dict:
+    return {
+        "artistName": artist,
+        "trackName": track,
+        "instrumental": False,
+        "plainLyrics": "Risin' up\n\nback on the street",
+    }
+
+
 def add_search(mock_requests: RequestsMock, *hits: dict) -> None:
     mock_requests.add(
         "GET",
@@ -170,10 +179,70 @@ def test_search_skips_empty_query():
     assert plugin.search("   ") == []
 
 
-def test_search_raises_on_upstream_failure(mock_requests: RequestsMock):
+def test_search_raises_when_both_sources_fail(mock_requests: RequestsMock):
     mock_requests.add("GET", plugin.GENIUS_SEARCH_API, status=503)
+    mock_requests.add("GET", plugin.LRCLIB_SEARCH_API, status=503)
     with pytest.raises(plugin.LyricsError):
         plugin.search("anything")
+
+
+def test_search_falls_back_to_lrclib_when_genius_blocks_us(
+    mock_requests: RequestsMock,
+):
+    mock_requests.add("GET", plugin.GENIUS_SEARCH_API, status=403)
+    mock_requests.add(
+        "GET",
+        plugin.LRCLIB_SEARCH_API,
+        json=[
+            lrclib_hit("Survivor", "Survivor - Eye Of The Tiger"),
+            lrclib_hit("Survivor", "Eye Of The Tiger"),
+            lrclib_hit("Survivor", "Eye Of The Tiger [1981] (Remaster)"),
+            {
+                "artistName": "The Piano Guys",
+                "trackName": "Eye of the Tiger",
+                "instrumental": True,
+            },
+        ],
+    )
+
+    songs = plugin.search("survivor eye of the tiger")
+    assert [song.label for song in songs] == ["Survivor - Eye Of The Tiger"]
+    assert songs[0].snippet == "Risin' up / back on the street"
+    assert songs[0].url == ""
+
+
+@pytest.mark.parametrize(
+    ("track", "expected"),
+    [
+        ("Survivor - Eye Of The Tiger", "Eye Of The Tiger"),
+        ("Eye Of The Tiger [1981]", "Eye Of The Tiger"),
+        ("Manchild (Official Lyric Video)", "Manchild"),
+        ("survivor - Eye Of The Tiger (1983)", "Eye Of The Tiger"),
+        ("(Don't Fear) The Reaper", "(Don't Fear) The Reaper"),
+        ("(Untitled)", "(Untitled)"),
+    ],
+)
+def test_clean_title_collapses_upload_junk(track: str, expected: str):
+    assert plugin._clean_title("Survivor", track) == expected
+
+
+def test_fetch_lyrics_uses_words_the_search_already_returned():
+    song = Song(artist="Survivor", title="Eye Of The Tiger", words="the words")
+    assert plugin.fetch_lyrics(song) == "the words"
+
+
+def test_fetch_lyrics_falls_back_when_genius_blocks_the_page(
+    mock_requests: RequestsMock,
+):
+    url = "https://genius.com/Radiohead-creep-lyrics"
+    mock_requests.add("GET", url, status=403)
+    mock_requests.add(
+        "GET",
+        f"{plugin.LYRICS_OVH_API}/Radiohead/Creep",
+        json={"lyrics": "the hook goes here"},
+    )
+    song = Song(artist="Radiohead", title="Creep", url=url)
+    assert plugin.fetch_lyrics(song) == "the hook goes here"
 
 
 def test_extract_genius_lyrics_drops_page_chrome():

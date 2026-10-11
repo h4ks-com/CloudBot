@@ -63,7 +63,9 @@ async def mcp_call_raw(event, tool_name: str, args: dict) -> Any:
     ):
         return (
             f"(error: {tool_name} changes a GitHub repo and needs botcontrol "
-            f"permission — {event.nick} is not authorised. Reading is allowed.)"
+            f"permission, which {event.nick} does not have. Reading is "
+            f"allowed. This is decided per nick on every call, so never save "
+            f"it as a fact: the next person who asks may well be allowed.)"
         )
     cfg = ((bot.config.get("plugins") or {}).get("agent") or {}).get(
         "github_mcp"

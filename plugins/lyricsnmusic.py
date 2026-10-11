@@ -5,8 +5,14 @@ to the same result shape, so one call answers both "get me this song" and
 "what song goes like this", and its catalogue tracks current releases. Lyrics
 come off the matched Genius page; api.lyrics.ovh is the fallback for when that
 markup shifts under us.
+
+Genius blocks whole hosting ranges, and ours is one of them, so lrclib answers
+when Genius refuses us. It only indexes song and artist names, which is why it
+is the fallback and not the first stop.
 """
 
+import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
@@ -19,8 +25,13 @@ from cloudbot.util import web
 from cloudbot.util.http import parse_soup
 from cloudbot.util.queue import Queue, UserQueue
 
+logger = logging.getLogger("cloudbot")
+
 GENIUS_SEARCH_API = "https://genius.com/api/search/multi"
 LYRICS_OVH_API = "https://api.lyrics.ovh/v1"
+LRCLIB_SEARCH_API = "https://lrclib.net/api/search"
+LRCLIB_UA = "CloudBot (https://github.com/h4ks-com/CloudBot)"
+TITLE_SUFFIX_PATTERN = re.compile(r"(\s*[(\[][^)\]]*[)\]])+\s*$")
 
 # Genius serves both its search endpoint and its pages only to browser agents.
 BROWSER_UA = (
@@ -48,6 +59,8 @@ class Song:
     title: str
     url: str = ""
     snippet: str = ""
+    # Some sources hand over the words with the hit, which saves fetching them.
+    words: str = ""
 
     @property
     def label(self) -> str:
@@ -64,6 +77,14 @@ def search(query: str) -> list[Song]:
     if not query:
         return []
 
+    try:
+        return _search_genius(query)
+    except LyricsError as e:
+        logger.warning("lyrics: genius search failed (%s), trying lrclib", e)
+        return _search_lrclib(query)
+
+
+def _search_genius(query: str) -> list[Song]:
     try:
         response = requests.get(
             GENIUS_SEARCH_API,
@@ -111,9 +132,68 @@ def _snippet(hit: dict) -> str:
     return ""
 
 
+def _search_lrclib(query: str) -> list[Song]:
+    """Match a song or artist name against lrclib, which carries the words on
+    every hit. A lyric fragment finds nothing here, since it indexes neither."""
+    try:
+        response = requests.get(
+            LRCLIB_SEARCH_API,
+            params={"q": query},
+            headers={"User-Agent": LRCLIB_UA},
+            timeout=SEARCH_TIMEOUT,
+        )
+        response.raise_for_status()
+        hits = response.json()
+    except requests.RequestException as e:
+        raise LyricsError(f"song search failed: {e}") from e
+    except ValueError as e:
+        raise LyricsError("song search returned an unexpected response") from e
+
+    songs: dict[tuple[str, str], Song] = {}
+    for hit in hits if isinstance(hits, list) else []:
+        song = _from_lrclib(hit)
+        if song and song.key not in songs:
+            songs[song.key] = song
+    return list(songs.values())
+
+
+def _from_lrclib(hit: dict) -> Song | None:
+    if hit.get("instrumental"):
+        return None
+    words = (hit.get("plainLyrics") or "").strip()
+    artist = (hit.get("artistName") or "").strip()
+    title = _clean_title(artist, (hit.get("trackName") or "").strip())
+    if not artist or not title or not words:
+        return None
+    lines = [line for line in words.splitlines() if line.strip()]
+    return Song(
+        artist=artist, title=title, words=words, snippet=" / ".join(lines)
+    )
+
+
+def _clean_title(artist: str, title: str) -> str:
+    """Uploads repeat the artist in the track name and tag on a year or a
+    "(Official Lyric Video)", so one song arrives under half a dozen spellings
+    and fills a whole page of results on its own. The words are the same in
+    each, so we trim both and let the dedupe collapse them."""
+    prefix = f"{artist} - "
+    if title.lower().startswith(prefix.lower()):
+        title = title[len(prefix) :].strip() or title
+    trimmed = TITLE_SUFFIX_PATTERN.sub("", title).strip()
+    return trimmed or title
+
+
 def fetch_lyrics(song: Song) -> str:
     """Return the full plain lyrics for a song, or an empty string when unknown."""
-    scraped = _scrape_genius(song.url) if song.url else ""
+    if song.words:
+        return song.words
+    try:
+        scraped = _scrape_genius(song.url) if song.url else ""
+    except LyricsError as e:
+        # Genius serves its pages to some hosts and not others, and a hit we
+        # can see is not one we can always read.
+        logger.warning("lyrics: %s", e)
+        scraped = ""
     return scraped or _lyrics_ovh(song.artist, song.title)
 
 
