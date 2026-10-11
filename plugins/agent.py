@@ -37,6 +37,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from cloudbot import hook
 from cloudbot.agent import (
     AGENT_INSTRUCTIONS,
+    THINK_HARD_INSTRUCTIONS,
+    VISION_TOOL_INSTRUCTIONS,
+    backends,
     build_custom_tools,
     coding_plan,
     fetch_github_username,
@@ -684,10 +687,18 @@ class _RunTracker(RunHooks):
         return "\n".join(lines)
 
 
-# Per-bot caches keyed by id(bot). Built lazily — on_start fires per-plugin
-# during load, before sibling plugins have registered commands.
-_TOOLS_CACHE: dict[int, list[FunctionTool]] = {}
-_AGENT_CACHE: dict[int, Agent] = {}
+# Per-bot caches keyed by (id(bot), backend). Built lazily: on_start fires
+# per-plugin during load, before sibling plugins have registered commands.
+_TOOLS_CACHE: dict[tuple[int, str], list[FunctionTool]] = {}
+_AGENT_CACHE: dict[tuple[int, str], Agent] = {}
+
+
+def _drop_caches(bot) -> None:
+    """Forget every backend this bot built, so the next request rebuilds."""
+    for cache in (_TOOLS_CACHE, _AGENT_CACHE):
+        for key in [k for k in cache if k[0] == id(bot)]:
+            del cache[key]
+
 
 _OWN_EXCHANGES = 2
 _CONVERSATION_LINE_CHARS = 400
@@ -873,23 +884,22 @@ def _build_tool(cmd_name: str, cmd_hook) -> FunctionTool:
     )
 
 
-def _build_big_brain_agent(bot, cfg: dict) -> Agent | None:
+def _build_big_brain_agent(bot) -> Agent | None:
     """The escalation agent: a stronger model the main agent hands the whole
     conversation to when it judges a task beyond it."""
-    bb_cfg = cfg.get("big_brain") or {}
-    if not bb_cfg.get("enabled"):
+    bb_cfg = backends.escalation(bot)
+    if not bb_cfg.is_usable():
         return None
 
-    base_url = bb_cfg.get("base_url", "https://api.z.ai/api/coding/paas/v4")
-    model = bb_cfg.get("model") or "glm-5.1"
-    api_key_path = bb_cfg.get("api_key_config_path") or "z_ai"
-    api_key = bot.config.get_api_key(api_key_path)
+    api_key = bot.config.get_api_key(bb_cfg.api_key_config_path)
     if not api_key:
         logger.warning("agent: big_brain enabled but no api key")
         return None
 
-    client = AsyncOpenAI(base_url=base_url, api_key=api_key)
-    bb_model = OpenAIChatCompletionsModel(model=model, openai_client=client)
+    client = AsyncOpenAI(base_url=bb_cfg.base_url, api_key=api_key)
+    bb_model = OpenAIChatCompletionsModel(
+        model=bb_cfg.model, openai_client=client
+    )
 
     return Agent(
         name="BigBrain",
@@ -942,7 +952,7 @@ def _wire_big_brain(agent: Agent, bb_agent: Agent) -> None:
 
 
 def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
-    key = id(bot)
+    key = (id(bot), backends.active_name(bot))
     if key in _TOOLS_CACHE:
         return _TOOLS_CACHE[key]
 
@@ -962,6 +972,8 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
         tools.append(_build_tool(cmd_hook.name, cmd_hook))
 
     custom = build_custom_tools()
+    if backends.reads_images(bot):
+        custom = [t for t in custom if t.name != "describe_image"]
     tools.extend(custom)
 
     remote = build_mcp_tools(bot)
@@ -1106,10 +1118,14 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
 
 
 def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
-    key = id(bot)
+    key = (id(bot), backends.active_name(bot))
     if key in _AGENT_CACHE:
         return _AGENT_CACHE[key]
     base_instructions = cfg.get("instructions") or AGENT_INSTRUCTIONS
+    if not backends.reads_images(bot):
+        base_instructions += VISION_TOOL_INSTRUCTIONS
+    if backends.escalation(bot).is_usable():
+        base_instructions += THINK_HARD_INSTRUCTIONS
     gh_suffix = _build_gh_suffix(bot, cfg)
     instructions_fn = _make_dynamic_instructions(base_instructions, gh_suffix)
     # create_video is a fire-and-forget dispatch: it spawns the render and the
@@ -1124,7 +1140,7 @@ def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
             stop_at_tool_names=["create_video", "create_voice"]
         ),
     )
-    bb_agent = _build_big_brain_agent(bot, cfg)
+    bb_agent = _build_big_brain_agent(bot)
     if bb_agent is not None:
         _wire_big_brain(agent, bb_agent)
     _AGENT_CACHE[key] = agent
@@ -1132,32 +1148,30 @@ def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
 
 
 def _make_run_config(cfg: dict, bot, backend: str) -> RunConfig:
-    backends = cfg.get("backends") or {}
-    if backend not in backends:
+    chosen = backends.config_for(bot, backend)
+    if chosen is None:
         raise ValueError(f"agent backend '{backend}' not configured")
-    b = backends[backend]
-    api_key = resolve_config_path(bot, b.get("api_key_config_path", ""))
+    api_key = resolve_config_path(bot, chosen.api_key_config_path)
     if not api_key:
         raise ValueError(f"agent backend '{backend}' missing api key")
 
-    base_url = b["base_url"]
-    model = b["model"]
-
     # Ollama uses X-API-Key header, not Authorization: Bearer.
-    if b.get("auth_header") == "x-api-key":
+    if chosen.auth_header == "x-api-key":
         client = AsyncOpenAI(
-            base_url=base_url,
+            base_url=chosen.base_url,
             api_key="dummy",
             default_headers={"X-API-Key": api_key},
         )
         return RunConfig(
-            model=OpenAIChatCompletionsModel(model=model, openai_client=client)
+            model=OpenAIChatCompletionsModel(
+                model=chosen.model, openai_client=client
+            )
         )
 
     return RunConfig(
-        model=model,
+        model=chosen.model,
         model_provider=OpenAIProvider(
-            base_url=base_url,
+            base_url=chosen.base_url,
             api_key=api_key,
             use_responses=False,
         ),
@@ -1214,10 +1228,7 @@ async def _run_agent(event, prompt: str) -> None:
 
     timeout = float(cfg.get("timeout_s", 120))
     max_turns = int(cfg.get("max_turns", 20))
-    backends_to_try = [cfg.get("backend", "z_ai")]
-    fallback = cfg.get("fallback_backend")
-    if fallback and fallback != backends_to_try[0]:
-        backends_to_try.append(fallback)
+    backends_to_try = backends.order(bot)
 
     history = _get_agent_history(event.chan, event.nick)
     agent_input = _history_to_input(history, prompt, event.nick)
@@ -1544,6 +1555,39 @@ def _with_reply(prompt: str, replied) -> str:
     return f'(replying to <{replied.nick}>: "{quoted}") {prompt}'
 
 
+def _describe_backend(bot, name: str) -> str:
+    backend = backends.config_for(bot, name)
+    if backend is None:
+        return f" {name} (misconfigured)"
+    extras = []
+    if backend.big_brain.is_usable():
+        extras.append(f"moe: {backend.big_brain.model}")
+    extras.append("sees images" if backend.multimodal else "vision tool")
+    marker = "*" if name == backends.active_name(bot) else " "
+    return f"{marker}{name} ({backend.model}, {', '.join(extras)})"
+
+
+@hook.command("agimodel", autohelp=False, permissions=["botcontrol"])
+def agimodel_command(text, bot):
+    """[set <name>] - show which backend .agi runs on, or point it at another."""
+    available = backends.names(bot)
+    if not available:
+        return "no agent backends configured"
+
+    parts = text.split()
+    if not parts or parts[0] == "list":
+        listed = " | ".join(_describe_backend(bot, n) for n in available)
+        return f"backends (* = active, rest are fallbacks in order): {listed}"
+
+    if parts[0] != "set" or len(parts) < 2:
+        return "usage: .agimodel [list] | .agimodel set <name>"
+
+    name = parts[1]
+    if not backends.set_active(bot, name):
+        return f"no such backend '{name}'. have: {', '.join(available)}"
+    return f"agi now runs on {_describe_backend(bot, name).lstrip('*')}"
+
+
 @hook.command("agi", "agent", "ask", autohelp=False, allow_private=False)
 async def agent_command(text, event, reply_to):
     """<prompt> - ask the bot in natural language; uses any available tool."""
@@ -1630,7 +1674,6 @@ async def del_skill(bot, text) -> str:
 async def reload_mcp(bot) -> str:
     """- Reload config and re-poll the agent's MCP servers. Owner only."""
     bot.config.load_config()
-    _TOOLS_CACHE.pop(id(bot), None)
-    _AGENT_CACHE.pop(id(bot), None)
+    _drop_caches(bot)
     servers, tools = await run_in_executor(reload_servers, bot)
     return f"MCP reloaded: {servers} server(s), {tools} tool(s)."

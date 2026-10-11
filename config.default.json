@@ -161,13 +161,23 @@
         },
         "agent": {
             "enabled": true,
-            "backend": "z_ai",
-            "fallback_backend": "openrouter",
             "backends": {
                 "z_ai": {
                     "base_url": "https://api.z.ai/api/coding/paas/v4",
                     "model": "glm-5",
-                    "api_key_config_path": "z_ai"
+                    "api_key_config_path": "z_ai",
+                    "big_brain": {
+                        "enabled": false,
+                        "model": "glm-5.1",
+                        "base_url": "https://api.z.ai/api/coding/paas/v4",
+                        "api_key_config_path": "z_ai"
+                    }
+                },
+                "claude": {
+                    "base_url": "https://api.anthropic.com/v1",
+                    "model": "claude-haiku-5-5",
+                    "api_key_config_path": "claude",
+                    "multimodal": true
                 },
                 "openrouter": {
                     "base_url": "https://openrouter.ai/api/v1",
@@ -180,12 +190,6 @@
                     "api_key_config_path": "plugins.ollama.api_key",
                     "auth_header": "x-api-key"
                 }
-            },
-            "big_brain": {
-                "enabled": false,
-                "model": "glm-5.1",
-                "base_url": "https://api.z.ai/api/coding/paas/v4",
-                "api_key_config_path": "z_ai"
             },
             "vision": {
                 "base_url": "https://api.z.ai/api/paas/v4",
@@ -336,7 +340,8 @@
         "ytdl_mcp": "",
         "itplay_mcp": "",
         "workflows_url": "https://workflows.h4ks.com",
-        "workflows_token": ""
+        "workflows_token": "",
+        "claude": ""
     },
     "z_ai_endpoint": "https://api.z.ai/api/coding/paas/v4/chat/completions",
     "z_ai_model": "glm-5",

@@ -20,12 +20,18 @@ from cloudbot.agent.common import (
     sanitise_err_message,
     split_repo,
 )
-from cloudbot.agent.instructions import AGENT_INSTRUCTIONS
+from cloudbot.agent.instructions import (
+    AGENT_INSTRUCTIONS,
+    THINK_HARD_INSTRUCTIONS,
+    VISION_TOOL_INSTRUCTIONS,
+)
 from cloudbot.agent.registry import build_custom_tools
 from cloudbot.agent.tools.web import upload_markdown_paste
 
 __all__ = [
     "AGENT_INSTRUCTIONS",
+    "THINK_HARD_INSTRUCTIONS",
+    "VISION_TOOL_INSTRUCTIONS",
     "build_custom_tools",
     "fetch_github_username",
     "fetch_self_repo_push",

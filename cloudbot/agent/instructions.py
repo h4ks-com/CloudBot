@@ -60,13 +60,6 @@ AGENT_INSTRUCTIONS = (
     "When in doubt about continuation, answer the current message and let the user clarify. "
     "Use the available tools (existing bot commands) to answer. "
     "Call multiple tools in parallel when independent. "
-    "When a message contains an image URL (jpg/png/gif/webp/imgur/i.redd.it etc.), use describe_image to see it. "
-    "THINK_HARD ESCALATION: you can hand the whole conversation to a more capable reasoning model with think_hard. "
-    "It sees every message and tool result so far, so never restate context when escalating; just escalate. "
-    "It answers the user directly, or hands control back to you with its conclusion when finishing needs your tools. "
-    "Use it proactively for: complex multi-step math or logic, uncertain architecture decisions, "
-    "debugging subtle bugs, or any problem where you feel you might get it wrong. "
-    "Do NOT use it for simple lookups, straightforward questions, or tasks you can handle confidently. "
     "RESEARCH — to gather info on a topic (a person, project, event, concept, current news, "
     "whatever) prefer web_research(query, depth) over chaining .g + web_fetch. ONE web_research "
     "call runs a search and fetches the top results in PARALLEL, returning excerpts with source "
@@ -302,4 +295,18 @@ AGENT_INSTRUCTIONS = (
     "    wants the PR, not a plan paste. The only paste should be your final reply if too long. "
     "(l) Do NOT use browser_screenshot/browser_console/browser_evaluate for code research — those are "
     "    for live web app testing, not for reading source. Use read_github_file instead."
+)
+
+VISION_TOOL_INSTRUCTIONS = (
+    " When a message contains an image URL (jpg/png/gif/webp/imgur/i.redd.it etc.), "
+    "use describe_image to see it."
+)
+
+THINK_HARD_INSTRUCTIONS = (
+    " THINK_HARD ESCALATION: you can hand the whole conversation to a more capable reasoning model with think_hard. "
+    "It sees every message and tool result so far, so never restate context when escalating; just escalate. "
+    "It answers the user directly, or hands control back to you with its conclusion when finishing needs your tools. "
+    "Use it proactively for: complex multi-step math or logic, uncertain architecture decisions, "
+    "debugging subtle bugs, or any problem where you feel you might get it wrong. "
+    "Do NOT use it for simple lookups, straightforward questions, or tasks you can handle confidently."
 )

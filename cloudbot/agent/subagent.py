@@ -26,6 +26,7 @@ from agents.exceptions import MaxTurnsExceeded
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 
+from cloudbot.agent import backends
 from cloudbot.agent.common import resolve_config_path
 from plugins.agent import _make_run_config
 
@@ -36,9 +37,7 @@ class SubagentError(Exception):
     """The sub-agent could not run on any configured backend."""
 
 
-def agent_config(bot: Any) -> dict[str, Any]:
-    """The shared ``plugins.agent`` config block (backends, model, etc.)."""
-    return (bot.config.get("plugins") or {}).get("agent") or {}
+agent_config = backends.agent_config
 
 
 # (sid, step_type, state, tool, content) -> None. Fed by _SubagentProfiler so a
@@ -112,15 +111,6 @@ class _SubagentProfiler(RunHooks):
             )
 
 
-def _backends_to_try(agent_cfg: dict[str, Any]) -> list[str]:
-    backend = agent_cfg.get("backend", "z_ai")
-    fallback = agent_cfg.get("fallback_backend")
-    order = [backend]
-    if fallback and fallback != backend:
-        order.append(fallback)
-    return order
-
-
 def _bound_model_config(
     agent_cfg: dict[str, Any],
     bot: Any,
@@ -134,11 +124,13 @@ def _bound_model_config(
     SDK's default OpenAI endpoint instead). When ``thinking_off`` is set the client also
     sends ``thinking={"type": "disabled"}`` to skip GLM's per-turn reasoning.
     Bearer-auth (OpenAI-compatible) backends only."""
-    b = agent_cfg["backends"][backend]
-    api_key = resolve_config_path(bot, b.get("api_key_config_path", ""))
+    chosen = backends.config_for(bot, backend)
+    if chosen is None:
+        raise ValueError(f"agent backend '{backend}' not configured")
+    api_key = resolve_config_path(bot, chosen.api_key_config_path)
     if not api_key:
         raise ValueError(f"agent backend '{backend}' missing api key")
-    client = AsyncOpenAI(base_url=b["base_url"], api_key=api_key)
+    client = AsyncOpenAI(base_url=chosen.base_url, api_key=api_key)
     if thinking_off:
         original = client.chat.completions.create
 
@@ -183,7 +175,7 @@ async def run_subagent(
     run_context = context if context is not None else {}
     last_err: BaseException | None = None
     first_err: BaseException | None = None
-    for index, backend in enumerate(_backends_to_try(agent_cfg)):
+    for index, backend in enumerate(backends.order(bot)):
         b = (agent_cfg.get("backends") or {}).get(backend) or {}
         # Model override applies only to the primary backend's provider; a different-provider
         # fallback resolves its own configured model.
