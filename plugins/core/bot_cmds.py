@@ -452,18 +452,36 @@ def _reply_tags_for_pending(pending: PendingInvocation) -> dict[str, str]:
     return tags
 
 
+def _reply_target(parsed_line) -> str | None:
+    """The target of a line that can carry the reply tags. A multiline reply
+    carries its tags on the BATCH line, so we skip the lines inside it."""
+    if parsed_line is None or not parsed_line.parameters:
+        return None
+    params = parsed_line.parameters
+    if parsed_line.command == "BATCH":
+        if (
+            len(params) >= 3
+            and params[0].startswith("+")
+            and params[1] == "draft/multiline"
+        ):
+            return params[2]
+        return None
+    if parsed_line.command in ("PRIVMSG", "NOTICE") and "batch" not in (
+        parsed_line.tags or {}
+    ):
+        return params[0]
+    return None
+
+
 @hook.irc_out(priority=Priority.HIGHEST)
 def attach_reply_tags(parsed_line, conn, line):
     """Stamp +reply/+invoked-by/workflow tags onto the bot's reply to a
     structured invocation, correlating it back to the original +draft/bot-cmd.
     """
-    if (
-        parsed_line is None
-        or parsed_line.command not in ("PRIVMSG", "NOTICE")
-        or not parsed_line.parameters
-    ):
+    target = _reply_target(parsed_line)
+    if target is None:
         return line
-    pending = _consume_pending_by_target(conn, parsed_line.parameters[0])
+    pending = _consume_pending_by_target(conn, target)
     if pending is None:
         return line
     tags = {name: tag.value for name, tag in (parsed_line.tags or {}).items()}

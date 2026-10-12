@@ -220,6 +220,26 @@ def test_attach_reply_tags_stamps_matching_reply():
     assert "+draft/invoked-by" in result.tags
 
 
+def test_attach_reply_tags_stamps_the_batch_of_a_multiline_reply():
+    conn = MagicMock()
+    conn.memory = {}
+    bot_cmds._set_pending(
+        conn, pending(target="#chan", msgid="mid", workflow_id="wf1")
+    )
+    opening = "BATCH +b1 draft/multiline #chan"
+    inner = "@batch=b1 PRIVMSG #chan :first line"
+
+    stamped = bot_cmds.attach_reply_tags(Message.parse(opening), conn, opening)
+    untouched = bot_cmds.attach_reply_tags(Message.parse(inner), conn, inner)
+
+    assert stamped.tags["+draft/reply"].value == "mid"
+    assert (
+        bot_cmds.decode(stamped.tags["+draft/bot-tools"].value)["state"]
+        == "complete"
+    )
+    assert untouched == inner
+
+
 def test_attach_reply_tags_passthrough_without_pending():
     conn = MagicMock()
     conn.memory = {}
