@@ -37,6 +37,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from cloudbot import hook
 from cloudbot.agent import (
     AGENT_INSTRUCTIONS,
+    OWN_EYES_INSTRUCTIONS,
     THINK_HARD_INSTRUCTIONS,
     VISION_TOOL_INSTRUCTIONS,
     backends,
@@ -707,6 +708,13 @@ _MEMORY_RECALL_MAX = 8
 _MEMORY_CONTEXT_LINES = 5
 _MEMORY_PREVIEW_CHARS = 160
 _CHANNEL_PREFIXES = ("#", "&", "+", "!")
+# Every attached image costs well over a thousand prompt tokens, so a message
+# full of links cannot drag a whole run's budget with it.
+_MAX_ATTACHED_IMAGES = 3
+IMAGE_URL_PATTERN = re.compile(
+    r"https?://[^\s<>\"']+\.(?:jpe?g|png|gif|webp)(?:\?[^\s<>\"']*)?",
+    re.IGNORECASE,
+)
 
 # Keyed by channel and nick: the agent reads other users' requests in the
 # channel conversation, and as history it took them for its own conversation
@@ -733,11 +741,53 @@ def _attribute(nick: str, text: str) -> str:
     return f"<{nick}> {text}"
 
 
+def _image_urls(text: str) -> list[str]:
+    """Image links in a message, for a model that reads them itself.
+
+    ponytail: we read the current message only, so a follow-up question has to
+    carry the link again. Scanning the history would re-attach, and re-bill,
+    every image in the conversation on every turn.
+    """
+    seen = dict.fromkeys(
+        m.group(0).rstrip(_URL_TRAILERS)
+        for m in IMAGE_URL_PATTERN.finditer(text)
+    )
+    return list(seen)[:_MAX_ATTACHED_IMAGES]
+
+
+def _message_text(message: dict) -> str:
+    """The words in a conversation item, whether or not it carries images."""
+    content = message.get("content") or ""
+    if isinstance(content, str):
+        return content
+    return " ".join(
+        str(part.get("text") or part.get("image_url") or "")
+        for part in content
+        if isinstance(part, dict)
+    )
+
+
 def _history_to_input(
-    history: deque[dict], current_prompt: str, nick: str
+    history: deque[dict],
+    current_prompt: str,
+    nick: str,
+    images: list[str] | None = None,
 ) -> list[dict]:
     items = list(history)
-    items.append({"role": "user", "content": _attribute(nick, current_prompt)})
+    text = _attribute(nick, current_prompt)
+    content: str | list[dict] = text
+    if images:
+        # A model that reads images needs them as parts of the message; the URL
+        # alone is just text it cannot open. 'detail' is not optional, the SDK
+        # indexes it straight out of the part.
+        content = [
+            *(
+                {"type": "input_image", "image_url": url, "detail": "auto"}
+                for url in images
+            ),
+            {"type": "input_text", "text": text},
+        ]
+    items.append({"role": "user", "content": content})
     return items
 
 
@@ -1122,7 +1172,9 @@ def _get_or_build_agent(bot, cfg: dict, tools: list[FunctionTool]) -> Agent:
     if key in _AGENT_CACHE:
         return _AGENT_CACHE[key]
     base_instructions = cfg.get("instructions") or AGENT_INSTRUCTIONS
-    if not backends.reads_images(bot):
+    if backends.reads_images(bot):
+        base_instructions += OWN_EYES_INSTRUCTIONS
+    else:
         base_instructions += VISION_TOOL_INSTRUCTIONS
     if backends.escalation(bot).is_usable():
         base_instructions += THINK_HARD_INSTRUCTIONS
@@ -1231,7 +1283,6 @@ async def _run_agent(event, prompt: str) -> None:
     backends_to_try = backends.order(bot)
 
     history = _get_agent_history(event.chan, event.nick)
-    agent_input = _history_to_input(history, prompt, event.nick)
 
     typing_id = id(event)
     target = event.chan or event.nick
@@ -1281,7 +1332,6 @@ async def _run_agent(event, prompt: str) -> None:
     run_task = asyncio.ensure_future(
         _try_backends(
             agent,
-            agent_input,
             event,
             backends_to_try,
             backends_tried,
@@ -1382,7 +1432,6 @@ def _note_retry(
 
 async def _try_backends(
     agent,
-    agent_input,
     event,
     backends_to_try,
     backends_tried,
@@ -1401,6 +1450,15 @@ async def _try_backends(
     for index, backend in enumerate(backends_to_try):
         backends_tried.append(backend)
         remaining = backends_to_try[index + 1 :]
+        # Attach the images per attempt: a backend that cannot read one rejects
+        # the whole request, so a fallback run gets the links as plain text.
+        chosen = backends.config_for(bot, backend)
+        images = _image_urls(prompt) if chosen and chosen.multimodal else []
+        agent_input = _history_to_input(history, prompt, event.nick, images)
+        if images:
+            logger.info(
+                "agent: attaching %d image(s) for %s", len(images), backend
+            )
         try:
             run_cfg = _make_run_config(cfg, bot, backend)
         except (KeyError, ValueError) as e:
@@ -1433,7 +1491,7 @@ async def _try_backends(
                 "agent: context overflow, dropped %d history items, retrying",
                 dropped,
             )
-            agent_input = _history_to_input(history, prompt, event.nick)
+            agent_input = _history_to_input(history, prompt, event.nick, images)
             try:
                 result = await asyncio.wait_for(
                     Runner.run(
@@ -1491,9 +1549,7 @@ async def _try_backends(
             tracker._artifact_urls,
             event.agent_context_urls
             | _artifact_urls(
-                " ".join(
-                    str(message.get("content") or "") for message in agent_input
-                )
+                " ".join(_message_text(message) for message in agent_input)
             ),
         )
 

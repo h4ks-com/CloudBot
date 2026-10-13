@@ -152,16 +152,71 @@ def test_manifest_tag_written_by_the_model_is_stripped():
     assert _MANIFEST_RE.sub("", answer).strip() == "done!"
 
 
+class TestAttachedImages:
+    def test_image_links_are_picked_out_of_a_message(self):
+        prompt = (
+            "help Dora find the latch https://s.h4ks.com/KkY.png and "
+            "compare https://i.imgur.com/a.JPEG?w=80 see "
+            "https://example.com/doc.pdf (https://x.net/b.webp)"
+        )
+        assert agent_plugin._image_urls(prompt) == [
+            "https://s.h4ks.com/KkY.png",
+            "https://i.imgur.com/a.JPEG?w=80",
+            "https://x.net/b.webp",
+        ]
+
+    def test_a_message_without_an_image_attaches_nothing(self):
+        assert agent_plugin._image_urls("just https://example.com/page") == []
+
+    def test_only_a_few_images_ride_along(self):
+        prompt = " ".join(f"https://x.net/{i}.png" for i in range(9))
+        assert len(agent_plugin._image_urls(prompt)) == 3
+
+    def test_an_attached_image_becomes_a_content_part(self):
+        items = agent_plugin._history_to_input(
+            deque(), "look", "bob", ["https://x.net/a.png"]
+        )
+        assert items[-1]["content"] == [
+            {
+                "type": "input_image",
+                "image_url": "https://x.net/a.png",
+                "detail": "auto",
+            },
+            {"type": "input_text", "text": "<bob> look"},
+        ]
+        assert agent_plugin._message_text(items[-1]) == (
+            "https://x.net/a.png <bob> look"
+        )
+
+    def test_a_message_with_no_images_stays_plain_text(self):
+        items = agent_plugin._history_to_input(deque(), "hi", "bob", [])
+        assert items[-1] == {"role": "user", "content": "<bob> hi"}
+
+
 class TestBackendFallback:
     cfg = {"reply_max_chars": 420, "reply_max_lines": 10}
 
+    backends_config = {
+        "plugins": {
+            "agent": {
+                "backends": {
+                    "z_ai": {"base_url": "https://z/v1", "model": "glm"},
+                    "openrouter": {"base_url": "https://or/v1", "model": "air"},
+                }
+            }
+        }
+    }
+
     def drive(self, *outcomes):
         sent = []
+        bot = SimpleNamespace(
+            config=SimpleNamespace(get=self.backends_config.get)
+        )
         event = SimpleNamespace(
             nick="bob",
             chan="#chan",
             conn=None,
-            bot=None,
+            bot=bot,
             agent_context_urls=set(),
             reply=lambda *lines, **kw: sent.extend(lines),
         )
@@ -180,7 +235,6 @@ class TestBackendFallback:
             err = asyncio.run(
                 agent_plugin._try_backends(
                     agent=None,
-                    agent_input=[{"role": "user", "content": "hi"}],
                     event=event,
                     backends_to_try=["z_ai", "openrouter"][: len(outcomes)],
                     backends_tried=[],
@@ -188,7 +242,7 @@ class TestBackendFallback:
                     cfg=self.cfg,
                     timeout=30,
                     max_turns=8,
-                    bot=None,
+                    bot=bot,
                     history=deque(),
                     prompt="hi",
                 )

@@ -305,6 +305,13 @@ VISION_TOOL_INSTRUCTIONS = (
     "use describe_image to see it."
 )
 
+OWN_EYES_INSTRUCTIONS = (
+    " IMAGES: you see images yourself. Any image a user links is attached to their "
+    "message, so look at it and answer from what you see. You have no image tool and "
+    "need none, and web_fetch reads text only, so never report a linked image as empty "
+    "or unreachable."
+)
+
 THINK_HARD_INSTRUCTIONS = (
     " THINK_HARD ESCALATION: you can hand the whole conversation to a more capable reasoning model with think_hard. "
     "It sees every message and tool result so far, so never restate context when escalating; just escalate. "

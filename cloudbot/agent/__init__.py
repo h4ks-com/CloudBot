@@ -22,6 +22,7 @@ from cloudbot.agent.common import (
 )
 from cloudbot.agent.instructions import (
     AGENT_INSTRUCTIONS,
+    OWN_EYES_INSTRUCTIONS,
     THINK_HARD_INSTRUCTIONS,
     VISION_TOOL_INSTRUCTIONS,
 )
@@ -30,6 +31,7 @@ from cloudbot.agent.tools.web import upload_markdown_paste
 
 __all__ = [
     "AGENT_INSTRUCTIONS",
+    "OWN_EYES_INSTRUCTIONS",
     "THINK_HARD_INSTRUCTIONS",
     "VISION_TOOL_INSTRUCTIONS",
     "build_custom_tools",
