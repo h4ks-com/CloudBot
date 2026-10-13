@@ -2,7 +2,7 @@
 
 Explicit-only entry: .ask / .agent / .agi <prompt>. Routes to an LLM agent
 that can call existing bot commands as tools. Uses openai-agents 0.17.1
-with Z.AI glm-5 (primary) and OpenRouter (fallback).
+against whichever backend an admin has pointed it at with ``.agimodel set``.
 
 Tool definitions live in cloudbot.agent (outside plugins/) so the plugin
 manager doesn't try to load them as plugins.
@@ -1280,7 +1280,10 @@ async def _run_agent(event, prompt: str) -> None:
 
     timeout = float(cfg.get("timeout_s", 120))
     max_turns = int(cfg.get("max_turns", 20))
-    backends_to_try = backends.order(bot)
+    backend = backends.active_name(bot)
+    if not backend:
+        event.reply("Agent failed: no backend configured")
+        return
 
     history = _get_agent_history(event.chan, event.nick)
 
@@ -1288,8 +1291,8 @@ async def _run_agent(event, prompt: str) -> None:
     target = event.chan or event.nick
     await start_typing_for_command(event.conn, target, typing_id)
     logger.info(
-        "agent: starting LLM call, backends=%s timeout=%s history=%d",
-        backends_to_try,
+        "agent: starting LLM call, backend=%s timeout=%s history=%d",
+        backend,
         timeout,
         len(history),
     )
@@ -1325,16 +1328,14 @@ async def _run_agent(event, prompt: str) -> None:
             "agent: bot-tools workflow start skipped (connection closed)"
         )
 
-    backends_tried: list[str] = []
     invoker = event.nick
     cancel_requested = False
     run_cancelled = False
     run_task = asyncio.ensure_future(
-        _try_backends(
+        _run_on_backend(
             agent,
             event,
-            backends_to_try,
-            backends_tried,
+            backend,
             tracker,
             cfg,
             timeout,
@@ -1364,9 +1365,7 @@ async def _run_agent(event, prompt: str) -> None:
     try:
         last_err = await run_task
         if last_err:
-            _report_failure(event, tracker, last_err, prompt, backends_tried)
-        elif not backends_tried:
-            event.reply("Agent failed: no backends tried")
+            _report_failure(event, tracker, last_err, prompt, [backend])
     except asyncio.CancelledError:
         # A cancel that loses the race to natural completion never reaches here,
         # so the run actually stopped: drop the pending so its reply can't stamp
@@ -1419,22 +1418,10 @@ _BACKEND_ERRORS = (
 )
 
 
-def _note_retry(
-    event, backend: str, err: BaseException, remaining: list[str]
-) -> None:
-    """Announce a fallback before it starts; each backend gets the full timeout,
-    so a silent retry reads as the bot ignoring you."""
-    if remaining:
-        event.reply(
-            f"{backend} failed ({type(err).__name__}), retrying on {remaining[0]}"
-        )
-
-
-async def _try_backends(
+async def _run_on_backend(
     agent,
     event,
-    backends_to_try,
-    backends_tried,
+    backend,
     tracker,
     cfg,
     timeout,
@@ -1443,30 +1430,48 @@ async def _try_backends(
     history,
     prompt,
 ) -> BaseException | None:
-    """Run the agent against each backend in order. Return the last error (or
-    None on success — in which case we've already replied to IRC and the caller
-    skips the failure path)."""
-    last_err: BaseException | None = None
-    for index, backend in enumerate(backends_to_try):
-        backends_tried.append(backend)
-        remaining = backends_to_try[index + 1 :]
-        # Attach the images per attempt: a backend that cannot read one rejects
-        # the whole request, so a fallback run gets the links as plain text.
-        chosen = backends.config_for(bot, backend)
-        images = _image_urls(prompt) if chosen and chosen.multimodal else []
+    """Run the agent on the one backend the bot is set to. Return the error it
+    failed with, or None on success, in which case we have already replied to
+    IRC and the caller skips the failure path.
+
+    A failure stops here. Moving the run to another backend mid-task swaps the
+    model, its tools and its vision out from under the user, who asked this one
+    for the work.
+    """
+    chosen = backends.config_for(bot, backend)
+    images = _image_urls(prompt) if chosen and chosen.multimodal else []
+    agent_input = _history_to_input(history, prompt, event.nick, images)
+    if images:
+        logger.info("agent: attaching %d image(s) for %s", len(images), backend)
+    try:
+        run_cfg = _make_run_config(cfg, bot, backend)
+    except (KeyError, ValueError) as e:
+        logger.warning("agent: cannot build run config for %s: %s", backend, e)
+        return e
+    try:
+        result = await asyncio.wait_for(
+            Runner.run(
+                agent,
+                agent_input,
+                context=event,
+                run_config=run_cfg,
+                hooks=tracker,
+                max_turns=max_turns,
+            ),
+            timeout=timeout,
+        )
+    except BadRequestError as e:
+        if "context_length_exceeded" not in str(e) or len(history) == 0:
+            logger.warning("agent: %s bad request: %s", backend, e)
+            return e
+        dropped = min(4, len(history))
+        for _ in range(dropped):
+            history.popleft()
+        logger.warning(
+            "agent: context overflow, dropped %d history items, retrying",
+            dropped,
+        )
         agent_input = _history_to_input(history, prompt, event.nick, images)
-        if images:
-            logger.info(
-                "agent: attaching %d image(s) for %s", len(images), backend
-            )
-        try:
-            run_cfg = _make_run_config(cfg, bot, backend)
-        except (KeyError, ValueError) as e:
-            logger.warning(
-                "agent: cannot build run config for %s: %s", backend, e
-            )
-            last_err = e
-            continue
         try:
             result = await asyncio.wait_for(
                 Runner.run(
@@ -1479,97 +1484,53 @@ async def _try_backends(
                 ),
                 timeout=timeout,
             )
-        except BadRequestError as e:
-            if "context_length_exceeded" not in str(e) or len(history) == 0:
-                logger.warning("agent: %s bad request: %s", backend, e)
-                last_err = e
-                continue
-            dropped = min(4, len(history))
-            for _ in range(dropped):
-                history.popleft()
+        except (*_BACKEND_ERRORS, asyncio.TimeoutError) as e2:
             logger.warning(
-                "agent: context overflow, dropped %d history items, retrying",
-                dropped,
+                "agent: %s failed after history trim: %s", backend, e2
             )
-            agent_input = _history_to_input(history, prompt, event.nick, images)
-            try:
-                result = await asyncio.wait_for(
-                    Runner.run(
-                        agent,
-                        agent_input,
-                        context=event,
-                        run_config=run_cfg,
-                        hooks=tracker,
-                        max_turns=max_turns,
-                    ),
-                    timeout=timeout,
-                )
-            except (*_BACKEND_ERRORS, asyncio.TimeoutError) as e2:
-                logger.warning(
-                    "agent: %s failed after history trim: %s", backend, e2
-                )
-                last_err = e2
-                _note_retry(event, backend, e2, remaining)
-                continue
-        except asyncio.TimeoutError as e:
-            logger.warning("agent: %s timed out after %ss", backend, timeout)
-            last_err = e
-            _note_retry(event, backend, e, remaining)
-            continue
-        except MaxTurnsExceeded as e:
-            logger.warning("agent: %s hit max turns (%s)", backend, max_turns)
-            last_err = e
-            break
-        except TypeError as e:
-            logger.warning(
-                "agent: %s returned malformed response: %s", backend, e
-            )
-            last_err = e
-            break
-        except _BACKEND_ERRORS as e:
-            logger.warning(
-                "agent: %s failed: %s: %s", backend, type(e).__name__, e
-            )
-            last_err = e
-            _note_retry(event, backend, e, remaining)
-            continue
+            return e2
+    except asyncio.TimeoutError as e:
+        logger.warning("agent: %s timed out after %ss", backend, timeout)
+        return e
+    except MaxTurnsExceeded as e:
+        logger.warning("agent: %s hit max turns (%s)", backend, max_turns)
+        return e
+    except TypeError as e:
+        logger.warning("agent: %s returned malformed response: %s", backend, e)
+        return e
+    except _BACKEND_ERRORS as e:
+        logger.warning("agent: %s failed: %s: %s", backend, type(e).__name__, e)
+        return e
 
-        answer = str(result.final_output or "").strip() or "(no answer)"
-        pr_tool_called = any(
-            name == "open_github_pr" for name, _ in tracker._calls
-        )
-        answer = _guard_pr_hallucination(
-            answer, tracker._pr_urls, pr_tool_called
-        )
-        if _MANIFEST_RE.search(answer):
-            logger.warning("agent: model forged a [tools used:] tag")
-            answer = _MANIFEST_RE.sub("", answer).strip()
-        answer = _guard_artifact_urls(
-            answer,
-            tracker._artifact_urls,
-            event.agent_context_urls
-            | _artifact_urls(
-                " ".join(_message_text(message) for message in agent_input)
-            ),
-        )
+    answer = str(result.final_output or "").strip() or "(no answer)"
+    pr_tool_called = any(name == "open_github_pr" for name, _ in tracker._calls)
+    answer = _guard_pr_hallucination(answer, tracker._pr_urls, pr_tool_called)
+    if _MANIFEST_RE.search(answer):
+        logger.warning("agent: model forged a [tools used:] tag")
+        answer = _MANIFEST_RE.sub("", answer).strip()
+    answer = _guard_artifact_urls(
+        answer,
+        tracker._artifact_urls,
+        event.agent_context_urls
+        | _artifact_urls(
+            " ".join(_message_text(message) for message in agent_input)
+        ),
+    )
 
-        manifest = _tool_manifest(tracker)
+    manifest = _tool_manifest(tracker)
+    history.append({"role": "user", "content": _attribute(event.nick, prompt)})
+    if manifest:
         history.append(
-            {"role": "user", "content": _attribute(event.nick, prompt)}
+            {
+                "role": "assistant",
+                "content": f"{answer}\n{_MANIFEST_PREFIX} {manifest}]",
+            }
         )
-        if manifest:
-            history.append(
-                {
-                    "role": "assistant",
-                    "content": f"{answer}\n{_MANIFEST_PREFIX} {manifest}]",
-                }
-            )
-        else:
-            history.append({"role": "assistant", "content": answer})
-        reply_lines, ping_own_line = _format_answer(answer, cfg)
-        event.reply(*reply_lines, ping_own_line=ping_own_line)
-        return None
-    return last_err
+    else:
+        history.append({"role": "assistant", "content": answer})
+    reply_lines, ping_own_line = _format_answer(answer, cfg)
+    event.reply(*reply_lines, ping_own_line=ping_own_line)
+    return None
 
 
 def _report_failure(event, tracker, err, prompt, backends_tried) -> None:
@@ -1633,7 +1594,7 @@ def agimodel_command(text, bot):
     parts = text.split()
     if not parts or parts[0] == "list":
         listed = " | ".join(_describe_backend(bot, n) for n in available)
-        return f"backends (* = active, rest are fallbacks in order): {listed}"
+        return f"backends (* = the one .agi runs on): {listed}"
 
     if parts[0] != "set" or len(parts) < 2:
         return "usage: .agimodel [list] | .agimodel set <name>"

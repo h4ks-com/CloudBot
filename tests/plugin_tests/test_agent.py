@@ -193,7 +193,7 @@ class TestAttachedImages:
         assert items[-1] == {"role": "user", "content": "<bob> hi"}
 
 
-class TestBackendFallback:
+class TestTheChosenBackend:
     cfg = {"reply_max_chars": 420, "reply_max_lines": 10}
 
     backends_config = {
@@ -233,11 +233,10 @@ class TestBackendFallback:
                 for outcome in outcomes
             ]
             err = asyncio.run(
-                agent_plugin._try_backends(
+                agent_plugin._run_on_backend(
                     agent=None,
                     event=event,
-                    backends_to_try=["z_ai", "openrouter"][: len(outcomes)],
-                    backends_tried=[],
+                    backend="z_ai",
                     tracker=agent_plugin._RunTracker(),
                     cfg=self.cfg,
                     timeout=30,
@@ -247,19 +246,22 @@ class TestBackendFallback:
                     prompt="hi",
                 )
             )
-        return sent, err
+        return sent, err, run
 
-    def test_refused_backend_falls_through_to_the_next(self):
-        sent, err = self.drive(OpenAIError("daily limit"), "here you go")
+    def test_an_answer_goes_straight_back_to_the_channel(self):
+        sent, err, _ = self.drive("here you go")
         assert err is None
-        assert sent == [
-            "z_ai failed (OpenAIError), retrying on openrouter",
-            "here you go",
-        ]
+        assert sent == ["here you go"]
 
     def test_a_refusal_comes_back_as_a_value_to_report(self):
-        _, err = self.drive(OpenAIError("daily limit"))
+        sent, err, _ = self.drive(OpenAIError("daily limit"))
         assert isinstance(err, OpenAIError)
+        # The caller reports it; the run never moves to another backend.
+        assert sent == []
+
+    def test_the_model_is_asked_once_and_not_retried(self):
+        _, _, run = self.drive(OpenAIError("daily limit"))
+        assert run.call_count == 1
 
 
 def test_each_asker_keeps_their_own_last_two_exchanges():

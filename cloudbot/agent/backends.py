@@ -1,10 +1,12 @@
 """Which backend the agent runs on, and what that backend brings with it.
 
-Backends are declared in order under ``plugins.agent.backends``; the first is
-the default and the rest are fallbacks. An admin can point the agent at any of
-them at runtime with ``.agimodel set``. Each backend carries its own optional
-escalation model, and declares whether the model reads images itself, so
-swapping the backend swaps those capabilities with it.
+Backends are declared under ``plugins.agent.backends`` and the first is the
+default. An admin can point the agent at any of them at runtime with
+``.agimodel set``, and the agent then runs on that one alone: a failure is
+reported, never moved to another backend, because swapping models mid-task
+changes the answer, the tools and the vision the user asked for. Each backend
+carries its own optional escalation model, and declares whether the model reads
+images itself, so swapping the backend swaps those capabilities with it.
 
 The override is one setting for the whole process, by design: an admin moves
 every connection and channel at once, and a restart returns to the first
@@ -94,14 +96,6 @@ def set_active(bot: Any, name: str) -> bool:
         return False
     _override = name
     return True
-
-
-def order(bot: Any) -> list[str]:
-    """The active backend first, then the others as fallbacks in config order."""
-    first = active_name(bot)
-    if not first:
-        return []
-    return [first, *[name for name in names(bot) if name != first]]
 
 
 def reads_images(bot: Any) -> bool:

@@ -2,9 +2,9 @@
 
 A sub-agent is a single-purpose ``agents.Agent`` (its own instructions + a
 small tool set) that runs on the same LLM backend as the main ``.agi`` agent.
-This module encapsulates the shared plumbing — backend/fallback selection from
+This module encapsulates the shared plumbing (picking the active backend from
 ``plugins.agent`` config, ``RunConfig`` construction, and the bounded
-``Runner.run`` under a timeout — so each new sub-agent plugin only has to
+``Runner.run`` under a timeout) so each new sub-agent plugin only has to
 define its Agent and call :func:`run_subagent`.
 
 Lives outside ``plugins/`` so the plugin manager never loads it as a plugin.
@@ -60,9 +60,7 @@ class _SubagentProfiler(RunHooks):
         self.tool_count = 0
         # Open tool-call step ids per tool name, so on_tool_end pairs its result
         # with the right start FIFO. The Agents SDK runs a turn's tool calls
-        # concurrently, so pairing by call ordinal would cross the wires; unique
-        # sids also keep a fallback-backend retry from colliding with the primary
-        # attempt's steps under the same workflow.
+        # concurrently, so pairing by call ordinal would cross the wires.
         self._open_sids: dict[str, list[str]] = {}
 
     def _emit(self, kind: str, name: str, extra: str) -> None:
@@ -160,112 +158,76 @@ async def run_subagent(
 ) -> str:
     """Run ``agent`` on ``prompt`` and return its final text output.
 
-    Tries the configured backend then the fallback (same precedence as the
-    main agent and the sandbox agents), each under a hard ``timeout_s``. Raises
-    :class:`SubagentError` if the agent is disabled/unconfigured or every
-    backend fails. ``context`` is passed to the run so tools can record results
-    the caller reads back (e.g. exact URLs, instead of trusting the model to
-    retype them). ``on_tool_step``, when given, is called on every tool
-    start/end so the caller can stream the run as a draft/bot-tools workflow.
+    Runs on the backend the bot is set to, under a hard ``timeout_s``, and
+    raises :class:`SubagentError` when the agent is unconfigured or the run
+    fails. ``context`` is passed to the run so tools can record results the
+    caller reads back (e.g. exact URLs, instead of trusting the model to retype
+    them). ``on_tool_step``, when given, is called on every tool start/end so
+    the caller can stream the run as a draft/bot-tools workflow.
     """
     agent_cfg = agent_config(bot)
     if not agent_cfg.get("enabled", False) or not agent_cfg.get("backends"):
         raise SubagentError("agent not configured")
 
     run_context = context if context is not None else {}
-    last_err: BaseException | None = None
-    first_err: BaseException | None = None
-    for index, backend in enumerate(backends.order(bot)):
-        b = (agent_cfg.get("backends") or {}).get(backend) or {}
-        # Model override applies only to the primary backend's provider; a different-provider
-        # fallback resolves its own configured model.
-        override = model if index == 0 else None
-        backend_model = override or b.get("model")
-        bearer = b.get("auth_header") != "x-api-key"
-        thinking_off = disable_thinking and bearer
-        try:
-            # Bearer backends with an override or thinking-off need a bound client;
-            # x-api-key backends (ollama) keep their configured model via _make_run_config.
-            if bearer and backend_model and (thinking_off or override):
-                run_cfg = _bound_model_config(
-                    agent_cfg,
-                    bot,
-                    backend,
-                    backend_model,
-                    thinking_off=thinking_off,
-                )
-            else:
-                run_cfg = _make_run_config(agent_cfg, bot, backend)
-        except (ValueError, KeyError) as e:
-            logger.warning(
-                "subagent: cannot build run config for %s: %s", backend, e
-            )
-            if first_err is None:
-                first_err = e
-            last_err = e
-            continue
-        profiler = _SubagentProfiler(backend, agent.name, on_tool_step)
-        try:
-            result = await asyncio.wait_for(
-                Runner.run(
-                    agent,
-                    prompt,
-                    context=run_context,
-                    run_config=run_cfg,
-                    max_turns=max_turns,
-                    hooks=profiler,
-                ),
-                timeout=timeout_s,
-            )
-        except asyncio.TimeoutError as e:
-            logger.warning(
-                "subagent: %s timed out after %ss (%d tool calls)",
-                backend,
-                timeout_s,
-                profiler.tool_count,
-            )
-            # A retry costs another full timeout_s and redoes side effects that
-            # cannot be undone (a pushed Kaggle notebook has no cancel), so once
-            # the agent has acted the clock running out is the job's failure, not
-            # the backend's. Having done nothing, it may really be wedged.
-            if profiler.tool_count:
-                raise SubagentError(
-                    f"ran out of time after {timeout_s:.0f}s "
-                    f"({profiler.tool_count} tool calls)"
-                ) from e
-            if first_err is None:
-                first_err = e
-            last_err = e
-            continue
-        except MaxTurnsExceeded as e:
-            # Running out of turns is a run-level failure, not a backend fault: retrying on
-            # the fallback would burn it again and its own error (often an out-of-quota 403)
-            # would mask the real cause. Surface it directly instead of falling through.
-            raise SubagentError(
-                f"agent hit the {max_turns}-turn limit before finishing"
-            ) from e
-        except Exception as e:  # noqa: BLE001 — backend failure must fall through to the next
-            logger.warning(
-                "subagent: %s failed: %s: %s", backend, type(e).__name__, e
-            )
-            if first_err is None:
-                first_err = e
-            last_err = e
-            continue
-        return str(result.final_output or "").strip() or "(no answer)"
+    backend = backends.active_name(bot)
+    if not backend:
+        raise SubagentError("no agent backend configured")
 
-    # Report the PRIMARY backend's failure (what the agent actually ran on); the fallback's
-    # error is usually noise — e.g. an out-of-quota 403 — that masks the real cause.
-    err = first_err or last_err
-    if err is None:
-        detail = "unknown"
-    else:
+    b = (agent_cfg.get("backends") or {}).get(backend) or {}
+    backend_model = model or b.get("model")
+    bearer = b.get("auth_header") != "x-api-key"
+    thinking_off = disable_thinking and bearer
+    try:
+        # Bearer backends with an override or thinking-off need a bound client;
+        # x-api-key backends (ollama) keep their configured model via _make_run_config.
+        if bearer and backend_model and (thinking_off or model):
+            run_cfg = _bound_model_config(
+                agent_cfg,
+                bot,
+                backend,
+                backend_model,
+                thinking_off=thinking_off,
+            )
+        else:
+            run_cfg = _make_run_config(agent_cfg, bot, backend)
+    except (ValueError, KeyError) as e:
+        raise SubagentError(f"backend {backend} is misconfigured: {e}") from e
+
+    profiler = _SubagentProfiler(backend, agent.name, on_tool_step)
+    try:
+        result = await asyncio.wait_for(
+            Runner.run(
+                agent,
+                prompt,
+                context=run_context,
+                run_config=run_cfg,
+                max_turns=max_turns,
+                hooks=profiler,
+            ),
+            timeout=timeout_s,
+        )
+    except asyncio.TimeoutError as e:
+        logger.warning(
+            "subagent: %s timed out after %ss (%d tool calls)",
+            backend,
+            timeout_s,
+            profiler.tool_count,
+        )
+        raise SubagentError(
+            f"ran out of time after {timeout_s:.0f}s "
+            f"({profiler.tool_count} tool calls)"
+        ) from e
+    except MaxTurnsExceeded as e:
+        raise SubagentError(
+            f"agent hit the {max_turns}-turn limit before finishing"
+        ) from e
+    except Exception as e:  # noqa: BLE001 — any backend failure is reported, not retried
+        logger.warning(
+            "subagent: %s failed: %s: %s", backend, type(e).__name__, e
+        )
         # Some exceptions carry no message at all (asyncio.TimeoutError), which
         # renders as a bare "TimeoutError: " that tells the user nothing.
-        message = str(err)
-        detail = (
-            f"{type(err).__name__}: {message}"
-            if message
-            else type(err).__name__
-        )
-    raise SubagentError(f"all backends failed ({detail[:160]})")
+        detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+        raise SubagentError(f"{backend} failed ({detail[:160]})") from e
+    return str(result.final_output or "").strip() or "(no answer)"

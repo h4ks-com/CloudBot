@@ -49,14 +49,12 @@ def _clear_override():
 def test_first_backend_is_the_default():
     bot = _bot()
     assert backends.active_name(bot) == "z_ai"
-    assert backends.order(bot) == ["z_ai", "claude", "openrouter"]
 
 
-def test_override_leads_and_the_rest_stay_as_fallbacks():
+def test_the_override_is_the_only_backend_the_agent_runs_on():
     bot = _bot()
     assert backends.set_active(bot, "claude")
     assert backends.active_name(bot) == "claude"
-    assert backends.order(bot) == ["claude", "z_ai", "openrouter"]
 
 
 def test_unknown_backend_is_refused_and_changes_nothing():
@@ -96,7 +94,6 @@ def test_a_misconfigured_backend_is_skipped_not_fatal():
 def test_no_backends_configured_is_survivable():
     bot = SimpleNamespace(config=SimpleNamespace(get=lambda *a, **k: None))
     assert backends.active_name(bot) == ""
-    assert backends.order(bot) == []
     assert backends.active(bot) is None
     assert not backends.reads_images(bot)
     assert not backends.escalation(bot).is_usable()
