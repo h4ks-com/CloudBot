@@ -306,10 +306,12 @@ VISION_TOOL_INSTRUCTIONS = (
 )
 
 OWN_EYES_INSTRUCTIONS = (
-    " IMAGES: you see images yourself. Any image a user links is attached to their "
-    "message, so look at it and answer from what you see. You have no image tool and "
-    "need none, and web_fetch reads text only, so never report a linked image as empty "
-    "or unreachable."
+    " IMAGES: you see images yourself. An image linked in the message you are "
+    "answering is attached to it, so look at it and answer from what you see. An "
+    "image linked earlier in the channel, by someone else or in an older message, "
+    "is NOT attached: call describe_image on its URL to see that one. web_fetch "
+    "reads text only, so never use it on an image and never report a linked image "
+    "as empty or unreachable."
 )
 
 THINK_HARD_INSTRUCTIONS = (

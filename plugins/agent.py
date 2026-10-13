@@ -1021,9 +1021,10 @@ def _get_or_build_tools(bot, cfg: dict) -> list[FunctionTool]:
             continue
         tools.append(_build_tool(cmd_hook.name, cmd_hook))
 
+    # describe_image stays even for a model with its own eyes: we attach only the
+    # images linked in the message being answered, so an image someone else
+    # posted earlier is reachable through the tool and no other way.
     custom = build_custom_tools()
-    if backends.reads_images(bot):
-        custom = [t for t in custom if t.name != "describe_image"]
     tools.extend(custom)
 
     remote = build_mcp_tools(bot)

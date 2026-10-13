@@ -460,3 +460,30 @@ def test_a_reply_puts_the_replied_message_in_front_of_the_request():
         '(replying to <_cloudbot>: "parody #115 failed") why?'
     )
     assert agent_plugin._with_reply("why?", None) == "why?"
+
+
+def test_a_model_with_its_own_eyes_keeps_the_image_tool():
+    """We attach only the images in the message being answered, so the tool is
+    the only way to reach one posted earlier in the channel."""
+    config = {
+        "plugins": {
+            "agent": {
+                "backends": {
+                    "claude": {
+                        "base_url": "https://anthropic.example/v1",
+                        "model": "claude-haiku-5-5",
+                        "multimodal": True,
+                    }
+                }
+            }
+        }
+    }
+    bot = SimpleNamespace(
+        config=SimpleNamespace(get=config.get),
+        plugin_manager=SimpleNamespace(unique_commands=lambda: []),
+    )
+    with patch.dict(agent_plugin._TOOLS_CACHE, clear=True):
+        with patch.object(agent_plugin, "build_mcp_tools", return_value=[]):
+            tools = agent_plugin._get_or_build_tools(bot, {})
+    assert agent_plugin.backends.reads_images(bot)
+    assert "describe_image" in {tool.name for tool in tools}
