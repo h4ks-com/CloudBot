@@ -72,5 +72,7 @@ def ircv3_cmd(text, bot):
 
     lines = [format_item(item) for item in items[:MAX_RESULTS]]
     if total > MAX_RESULTS:
-        lines.append(f"{total} matches in total, showing the {MAX_RESULTS} most recently updated.")
+        lines.append(
+            f"{total} matches in total, showing the {MAX_RESULTS} most recently updated."
+        )
     return lines
