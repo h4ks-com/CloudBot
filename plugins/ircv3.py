@@ -66,7 +66,9 @@ def ircv3_cmd(text, bot):
     total = data.get("total_count", 0)
 
     if not items:
-        return "No matching issues or PRs in ircv3-ideas or ircv3-specification."
+        return (
+            "No matching issues or PRs in ircv3-ideas or ircv3-specification."
+        )
 
     lines = [format_item(item) for item in items[:MAX_RESULTS]]
     if total > MAX_RESULTS:
