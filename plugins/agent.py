@@ -1137,7 +1137,6 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
         frozen = getattr(event, "agent_system_prompt", None)
         if frozen:
             return frozen
-        ts = datetime.now().strftime("%H:%M:%S")
         parts = [
             base_instructions,
             gh_suffix,
@@ -1145,7 +1144,6 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
             "\n\n## Current Request Context",
             f"- Channel: {event.chan}",
             f"- User asking: {event.nick}",
-            f"- Time: {ts}",
         ]
         recall = _build_memory_recall(event)
         if recall:
@@ -1159,6 +1157,10 @@ def _make_dynamic_instructions(base_instructions: str, gh_suffix: str):
         conversation = _build_conversation(event)
         if conversation:
             parts.append(conversation)
+        # The clock goes last of all. A backend caches the longest prefix that
+        # repeats, so anything above a value that changes every second can be
+        # reused between requests and anything below it cannot.
+        parts.append(f"\n- Time: {datetime.now().strftime('%H:%M:%S')}")
         built = "\n".join(parts)
         # Links already on screen are fair for the model to repeat.
         event.agent_context_urls = _artifact_urls(built)

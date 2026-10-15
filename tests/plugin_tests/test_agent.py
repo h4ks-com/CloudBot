@@ -5,6 +5,7 @@ from collections import deque
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from openai import OpenAIError
 
 from cloudbot.agent import common as agent_common
@@ -487,3 +488,37 @@ def test_a_model_with_its_own_eyes_keeps_the_image_tool():
             tools = agent_plugin._get_or_build_tools(bot, {})
     assert agent_plugin.backends.reads_images(bot)
     assert "describe_image" in {tool.name for tool in tools}
+
+
+def test_only_the_tail_of_the_system_prompt_changes_between_requests(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A backend caches the longest repeated prefix, so a per-request value
+    above the tail silently costs us the whole prompt on every call."""
+    for name in ("_build_memory_recall", "_build_artifact_recall"):
+        monkeypatch.setattr(agent_plugin, name, lambda event: "")
+    monkeypatch.setattr(agent_plugin, "_build_conversation", lambda event: "")
+    monkeypatch.setattr(agent_plugin, "notebook_context", lambda: "")
+    monkeypatch.setattr(agent_plugin, "skill_index", lambda bot: "skills")
+
+    build = agent_plugin._make_dynamic_instructions("INSTRUCTIONS", "GH")
+    clocks = iter(["11:11:11", "22:22:22"])
+
+    class _Clock:
+        @staticmethod
+        def now():
+            return SimpleNamespace(strftime=lambda fmt: next(clocks))
+
+    monkeypatch.setattr(agent_plugin, "datetime", _Clock)
+
+    prompts = []
+    for _ in range(2):
+        event = SimpleNamespace(
+            bot=None, chan="#lobby", nick="mattf", agent_system_prompt=None
+        )
+        prompts.append(build(SimpleNamespace(context=event), None))
+
+    assert prompts[0] != prompts[1]
+    head, tail = prompts[0].rsplit("\n- Time: ", 1)
+    assert tail == "11:11:11"
+    assert prompts[1] == f"{head}\n- Time: 22:22:22"
