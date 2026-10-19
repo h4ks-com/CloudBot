@@ -3,6 +3,7 @@ import random
 import requests
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 from cloudbot.util import formatting
 from cloudbot.util.web import get_session
 
@@ -12,7 +13,7 @@ random_url = base_url + "/random"
 
 
 @hook.command("urban", "u", "ud", autohelp=False)
-def urban(text, reply):
+def urban(text: str, event: CommandEvent):
     """<phrase> [id] - Looks up <phrase> on urbandictionary.com."""
 
     headers = {"Referer": "http://m.urbandictionary.com"}
@@ -43,7 +44,7 @@ def urban(text, reply):
             requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError,
         ) as e:
-            reply(f"Could not get definition: {e}")
+            event.reply(f"Could not get definition: {e}")
             raise
 
         page = request.json()
@@ -56,7 +57,7 @@ def urban(text, reply):
             requests.exceptions.HTTPError,
             requests.exceptions.ConnectionError,
         ) as e:
-            reply(f"Could not get definition: {e}")
+            event.reply(f"Could not get definition: {e}")
             raise
 
         page = request.json()

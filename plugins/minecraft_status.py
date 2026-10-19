@@ -3,11 +3,12 @@ import json
 import requests
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 from cloudbot.util.web import get_session
 
 
 @hook.command(autohelp=False)
-def mcstatus(reply):
+def mcstatus(event: CommandEvent):
     """- gets the status of various Mojang (Minecraft) servers"""
 
     try:
@@ -17,7 +18,7 @@ def mcstatus(reply):
         requests.exceptions.HTTPError,
         requests.exceptions.ConnectionError,
     ) as e:
-        reply(f"Unable to get Minecraft server status: {e}")
+        event.reply(f"Unable to get Minecraft server status: {e}")
         raise
 
     # lets just reformat this data to get in a nice format

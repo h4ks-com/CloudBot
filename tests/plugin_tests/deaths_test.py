@@ -1,8 +1,10 @@
 from unittest.mock import MagicMock, patch
 
 import freezegun
+import pytest
 import requests
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import obituary
 
 SAMPLE_WIKITEXT = """===3===
@@ -53,7 +55,7 @@ def _api_responses(sections, wikitext_by_index):
     return _side_effect
 
 
-def _run(text, sections=None, wikitext_by_index=None):
+def _run(count=obituary.DEFAULT_LIMIT, sections=None, wikitext_by_index=None):
     if sections is None:
         sections = SAMPLE_SECTIONS
     if wikitext_by_index is None:
@@ -62,11 +64,11 @@ def _run(text, sections=None, wikitext_by_index=None):
         mock_session.return_value.get.side_effect = _api_responses(
             sections, wikitext_by_index
         )
-        return obituary.deaths(text)
+        return obituary.deaths(count)
 
 
 def test_default_returns_list():
-    result = _run("")
+    result = _run()
     assert isinstance(result, list)
     assert len(result) == 4
     assert "Paras Chandra Jain" in result[0]
@@ -74,25 +76,30 @@ def test_default_returns_list():
 
 
 def test_explicit_count_limits_results():
-    result = _run("2")
+    result = _run(2)
     assert isinstance(result, list)
     assert len(result) == 2
 
 
 def test_count_clamped_to_max():
-    result = _run("999")
+    result = _run(999)
     assert isinstance(result, list)
     assert len(result) == 4
 
 
-def test_invalid_count_returns_error():
-    result = _run("abc")
-    assert isinstance(result, str)
-    assert "abc" in result
+def test_invalid_count_is_rejected_by_the_parser():
+    with pytest.raises(CommandArgError):
+        build_spec(obituary.deaths).parse_text("abc")
+
+
+def test_count_parsed_from_text():
+    spec = build_spec(obituary.deaths)
+    assert spec.parse_text("3") == {"count": 3}
+    assert spec.parse_text("") == {"count": obituary.DEFAULT_LIMIT}
 
 
 def test_negative_count_clamped_to_one():
-    result = _run("-5")
+    result = _run(-5)
     assert isinstance(result, list)
     assert len(result) == 1
 
@@ -110,7 +117,7 @@ def test_future_day_section_is_skipped():
         mock_session.return_value.get.side_effect = _api_responses(
             SAMPLE_SECTIONS, wikitext_by_index
         )
-        result = obituary.deaths("")
+        result = obituary.deaths()
     assert isinstance(result, list)
     assert all("Future Person" not in line for line in result)
     assert "Paras Chandra Jain" in result[0]
@@ -118,7 +125,7 @@ def test_future_day_section_is_skipped():
 
 def test_empty_results():
     sections = [{"index": "1", "line": "August", "anchor": "August"}]
-    result = _run("", sections=sections, wikitext_by_index={})
+    result = _run(sections=sections, wikitext_by_index={})
     assert isinstance(result, str)
     assert "No recent deaths" in result
 
@@ -128,7 +135,7 @@ def test_network_error_returns_message():
         mock_session.return_value.get.side_effect = (
             requests.exceptions.ConnectionError("boom")
         )
-        result = obituary.deaths("")
+        result = obituary.deaths()
     assert isinstance(result, str)
     assert "Failed" in result
 
@@ -149,21 +156,10 @@ def test_wikitext_cleaning_unwraps_piped_links():
     assert "Madhya Pradesh MLA" in jain.details
 
 
-def test_parse_count_default():
-    assert obituary._parse_count("") == obituary.DEFAULT_LIMIT
-    assert obituary._parse_count("   ") == obituary.DEFAULT_LIMIT
-
-
-def test_parse_count_invalid():
-    result = obituary._parse_count("xyz")
-    assert isinstance(result, str)
-    assert "xyz" in result
-
-
-def test_parse_count_bounds():
-    assert obituary._parse_count("0") == 1
-    assert obituary._parse_count("100") == obituary.MAX_LIMIT
-    assert obituary._parse_count("3") == 3
+def test_clamp_count_bounds():
+    assert obituary._clamp_count(0) == 1
+    assert obituary._clamp_count(100) == obituary.MAX_LIMIT
+    assert obituary._clamp_count(3) == 3
 
 
 def test_format_bold_name_grey_date_cyan_link():

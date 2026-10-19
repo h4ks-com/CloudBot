@@ -1,10 +1,13 @@
 import locale
 import math
+from typing import Annotated
 
 import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
 
@@ -12,20 +15,22 @@ scrape_url = "http://www.myfitnesspal.com/food/diary/{}"
 
 
 @hook.command("mfp", "myfitnesspal")
-def mfp(text, reply):
-    """<user> - returns macros from the MyFitnessPal food diary of <user>"""
-    request = get_session().get(scrape_url.format(text))
+def mfp(
+    user: Annotated[str, Arg("MyFitnessPal username")], event: CommandEvent
+):
+    """returns macros from the MyFitnessPal food diary of <user>"""
+    request = get_session().get(scrape_url.format(user))
 
     try:
         request.raise_for_status()
     except HTTPError as e:
-        reply(f"Failed to fetch info ({e.response.status_code})")
+        event.reply(f"Failed to fetch info ({e.response.status_code})")
         raise
 
     if request.status_code != requests.codes.ok:
         return f"Failed to fetch info ({request.status_code})"
 
-    output = f"Diary for {text}: "
+    output = f"Diary for {user}: "
 
     try:
         soup = parse_soup(request.text)
@@ -33,9 +38,9 @@ def mfp(text, reply):
         title = soup.find("h1", {"class": "main-title"})
         if title:
             if title.text == "This Food Diary is Private":
-                return f"{text}'s food diary is private."
+                return f"{user}'s food diary is private."
             if title.text == "This Username is Invalid":
-                return f"User {text} does not exist."
+                return f"User {user} does not exist."
 
         # the output of table depends on the user's MFP profile configuration
         headers = get_headers(soup)
@@ -55,10 +60,10 @@ def mfp(text, reply):
                 **kwargs
             )
 
-        output += f" ({scrape_url.format(text)})"
+        output += f" ({scrape_url.format(user)})"
 
     except Exception:
-        reply("Error parsing results.")
+        event.reply("Error parsing results.")
         raise
 
     return output

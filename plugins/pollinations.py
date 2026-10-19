@@ -1,10 +1,14 @@
 from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.ai_common import (
     APP_HTML_PROMPT_SUFFIX,
@@ -202,11 +206,11 @@ def on_start():
 
 
 @hook.command("plbalance", autohelp=False)
-def plbalance_command(bot, notice) -> str:
+def plbalance_command(bot: CloudBot, event: CommandEvent) -> str:
     """- - Check your Pollinations pollen balance."""
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
     client = get_client(api_key)
@@ -222,11 +226,11 @@ def plbalance_command(bot, notice) -> str:
 
 
 @hook.command("plmodels", autohelp=False)
-def plmodels_command(bot, notice) -> str:
+def plmodels_command(bot: CloudBot, event: CommandEvent) -> str:
     """- List the text generation models."""
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
     client = get_client(api_key)
@@ -240,20 +244,26 @@ def plmodels_command(bot, notice) -> str:
 
 
 @hook.command("plmodel", autohelp=False)
-def plmodel_command(text: str, nick: str, chan: str, bot, notice) -> str:
-    """[model] - Show or set text generation model for this channel."""
+def plmodel_command(
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    model: Annotated[str | None, Arg("Model to switch to")] = None,
+) -> str:
+    """Show or set text generation model for this channel."""
 
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
     current_model = user_models.get((chan, nick), "openai")
 
-    if not text.strip():
+    if not model:
         return f"Current model: {current_model}. Use '.plmodels' to list available models."
 
-    new_model = text.strip()
+    new_model = model
     client = get_client(api_key)
 
     try:
@@ -271,11 +281,13 @@ def plmodel_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
 
 @hook.command("plimage")
-def plimage_command(text: str, nick: str, chan: str, bot, notice) -> str:
+def plimage_command(
+    text: str, nick: str, chan: str, bot: CloudBot, event: CommandEvent
+) -> str:
     """<[model] prompt> - Generate an image. Use '.plimage list' to see available models."""
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
     client = get_client(api_key)
@@ -321,26 +333,26 @@ VIDEO_MODELS = {
 
 
 @hook.command("plvideo")
-def plvideo_command(text: str, nick: str, chan: str, bot, notice) -> str | None:
-    """<[model] prompt> [duration] - Generate video. Models: veo (max 8s), seedance (max 10s, default)"""
+def plvideo_command(
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    *,
+    model: Annotated[
+        str | None, Arg("Video model", choices=tuple(VIDEO_MODELS))
+    ] = None,
+    prompt: Annotated[str, Arg("What to generate, then an optional duration")],
+) -> str | None:
+    """Generate video. Models: veo (max 8s), seedance (max 10s, default). End the prompt with a duration in seconds"""
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
-    prompt = text.strip()
-    if not prompt:
-        return "Usage: .plvideo <[model] prompt> [duration]"
-
-    model = "seedance"
+    model = model or "seedance"
     duration = VIDEO_MODELS[model]["default_duration"]
     parts = prompt.split()
-
-    if len(parts) > 0 and parts[0].lower() in VIDEO_MODELS:
-        model = parts[0].lower()
-        prompt = " ".join(parts[1:])
-        duration = VIDEO_MODELS[model]["default_duration"]
-        parts = prompt.split()
 
     if len(parts) > 0 and parts[-1].isdigit():
         requested_duration = int(parts[-1])
@@ -369,11 +381,13 @@ def plvideo_command(text: str, nick: str, chan: str, bot, notice) -> str | None:
 
 
 @hook.command("plaudio")
-def plaudio_command(text: str, nick: str, chan: str, bot, notice) -> str:
+def plaudio_command(
+    text: str, nick: str, chan: str, bot: CloudBot, event: CommandEvent
+) -> str:
     """<[voice] text> - Generate TTS audio. Use '.plaudio list' to see available voices."""
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
     if text.strip().lower() == "list":
@@ -396,11 +410,13 @@ def plaudio_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
 
 @hook.command("plmusic")
-def plmusic_command(text: str, nick: str, chan: str, bot, notice) -> str:
+def plmusic_command(
+    text: str, nick: str, chan: str, bot: CloudBot, event: CommandEvent
+) -> str:
     """<prompt> [duration] - Generate instrumental music (3-300 seconds, default: 30)."""
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
     parts = text.strip().split()
@@ -434,16 +450,16 @@ def plmusic_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
 
 @hook.command("pltranscribe")
-def pltranscribe_command(text: str, bot, notice) -> str:
-    """<url> - Transcribe audio from URL to text using Whisper."""
+def pltranscribe_command(
+    url: Annotated[str, Arg("URL of the audio to transcribe")],
+    bot: CloudBot,
+    event: CommandEvent,
+) -> str:
+    """Transcribe audio from URL to text using Whisper."""
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
-
-    url = text.strip()
-    if not url:
-        return "Usage: .pltranscribe <audio_url>"
 
     client = get_client(api_key)
 
@@ -465,13 +481,17 @@ def pltranscribe_command(text: str, bot, notice) -> str:
 
 @hook.command("pltext")
 def pltext_command(
-    text: str, nick: str, chan: str, bot, notice
+    text: Annotated[str, Arg("What to ask")],
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
 ) -> str | list[str]:
-    """<text> - Generate text using Pollinations AI. Use '.plmodel' to change model."""
+    """Generate text using Pollinations AI. Use '.plmodel' to change model."""
 
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
     model = user_models.get((chan, nick), "openai")
@@ -503,12 +523,18 @@ def pltext_command(
 
 
 @hook.command("plapp")
-def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
-    """<prompt> - Create a single page HTML web app on the fly with Pollinations AI."""
+def plapp_command(
+    prompt: Annotated[str, Arg("What the app should do")],
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+) -> str:
+    """Create a single page HTML web app on the fly with Pollinations AI."""
 
     api_key = get_pollinations_config(bot)
     if not api_key:
-        notice("Pollinations API key not configured.")
+        event.notice("Pollinations API key not configured.")
         return None
 
     model = user_models.get((chan, nick), "openai")
@@ -517,7 +543,9 @@ def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
     history = get_or_create_history(
         pollinations_messages_cache, chan, nick, MAX_HISTORY_LENGTH
     )
-    history.append(Message(role="user", content=text + APP_HTML_PROMPT_SUFFIX))
+    history.append(
+        Message(role="user", content=prompt + APP_HTML_PROMPT_SUFFIX)
+    )
 
     try:
         messages = [msg.as_dict() for msg in history]
@@ -540,12 +568,17 @@ def plapp_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
 
 @hook.command("plpaste", "pollipaste", autohelp=False)
-def plpaste_command(nick: str, chan: str, text: str) -> str:
-    """[nick] - Pastes the Pollinations conversation history with nick if specified fy."""
+def plpaste_command(
+    nick: str,
+    chan: str,
+    user: Annotated[
+        str | None, Arg("Nick whose history to paste", kind="user")
+    ] = None,
+) -> str:
+    """Pastes the Pollinations conversation history with nick if specified fy."""
 
-    text = text.strip()
-    if text:
-        nick = text
+    if user:
+        nick = user
 
     channick = (chan, nick)
     if channick in pollinations_messages_cache:
@@ -558,15 +591,15 @@ def plpaste_command(nick: str, chan: str, text: str) -> str:
 
 
 @hook.command("plcopy")
-def plcopy_command(text: str, nick: str, chan: str) -> str:
-    """<user> - Copy another user's conversation history into yours, replacing your own."""
-
-    target = text.strip()
-    if not target:
-        return "Usage: .plcopy <user>"
+def plcopy_command(
+    user: Annotated[str, Arg("Nick whose history to copy", kind="user")],
+    nick: str,
+    chan: str,
+) -> str:
+    """Copy another user's conversation history into yours, replacing your own."""
 
     return copy_history(
-        pollinations_messages_cache, chan, nick, target, MAX_HISTORY_LENGTH
+        pollinations_messages_cache, chan, nick, user, MAX_HISTORY_LENGTH
     )
 
 

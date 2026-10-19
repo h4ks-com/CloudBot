@@ -14,24 +14,29 @@ License:
 """
 
 import datetime
+from typing import Annotated
 
 import requests
 from lxml import html
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import timeformat
 from cloudbot.util.web import get_session
 
 
 @hook.command("pre", "scene")
-def pre(text, reply):
-    """<query> - searches scene releases using orlydb.com"""
+def pre(
+    query: Annotated[str, Arg("Release to search for")], event: CommandEvent
+):
+    """searches scene releases using orlydb.com"""
 
     try:
-        request = get_session().get("http://orlydb.com/", params={"q": text})
+        request = get_session().get("http://orlydb.com/", params={"q": query})
         request.raise_for_status()
     except requests.exceptions.HTTPError as e:
-        reply(f"Unable to fetch results: {e}")
+        event.reply(f"Unable to fetch results: {e}")
         raise
 
     h = html.fromstring(request.text)

@@ -1,18 +1,20 @@
+from typing import Annotated
+
 import requests
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 
 @hook.command("chess", "lichess", autohelp=False)
-def lichess(text: str) -> list[str] | str:
-    """[minutes] - Create a random lichess game link to play with a friend, with optional time limit in minutes"""
-    text = text.strip()
+def lichess(
+    minutes: Annotated[int | None, Arg("Time limit in minutes")] = None,
+) -> list[str] | str:
+    """Create a random lichess game link to play with a friend, with optional time limit in minutes"""
     data = {}
-    if text:
-        if not text.isdigit():
-            return "Usage: .chess [time-limit]"
-        time_limit = int(text) * 60
+    if minutes is not None:
+        time_limit = minutes * 60
         if time_limit < 180:
             return "Time limit must be at least 3 minutes"
         data["clock.limit"] = time_limit

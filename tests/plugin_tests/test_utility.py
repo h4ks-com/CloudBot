@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import pytest
 
 from cloudbot.util.http import compare_urls
@@ -8,14 +10,6 @@ from plugins import utility
 ESCAPE_DATA = [
     ("\x00\x01345\x05", r"\x00\x01345\x05"),
 ]
-
-
-class MockFunction:
-    def __init__(self):
-        self.args = []
-
-    def __call__(self, *args, **kwargs):
-        self.args.append((args, kwargs))
 
 
 @pytest.mark.parametrize(
@@ -191,12 +185,11 @@ def test_base64_encode(text, output):
     ],
 )
 def test_base64_decode(text, out):
-    mock_notice = MockFunction()
-    ret = utility.base64_decode(text, mock_notice)
+    event = MagicMock()
+    ret = utility.base64_decode(event, text)
     if out is None:
         assert ret is None
-        assert len(mock_notice.args) == 1
-        assert mock_notice.args[0][0][0] == f"Invalid base64 string '{text}'"
+        event.notice.assert_called_once_with(f"Invalid base64 string '{text}'")
     else:
         assert ret == out
 

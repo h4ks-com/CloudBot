@@ -246,11 +246,11 @@ class TestGetVideoDescription:
             status=500,
         )
 
-        reply = MagicMock()
+        event = MagicMock()
 
         with pytest.raises(youtube.APIError):
-            youtube.youtube("test video", "nick", "#chan", reply)
+            youtube.youtube("test video", "nick", "#chan", event)
 
-        reply.assert_called_with("API Error (foo/bar)")
+        event.reply.assert_called_with("API Error (foo/bar)")
 
-        reply.assert_called_with("API Error (foo/bar)")
+        event.reply.assert_called_with("API Error (foo/bar)")

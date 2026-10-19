@@ -1,6 +1,7 @@
 import re
 from datetime import datetime, timedelta
 from threading import RLock
+from typing import Annotated
 
 from requests import HTTPError
 from requests.auth import HTTPBasicAuth
@@ -8,6 +9,8 @@ from yarl import URL
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 spotify_re = re.compile(
@@ -171,21 +174,27 @@ def set_keys():
 
 
 @hook.command("spotify", "sptrack")
-def spotify(text, reply):
-    """<song> - Search Spotify for <song>"""
-    return _format_search(text, "track", reply)
+def spotify(
+    song: Annotated[str, Arg("Song to search for")], event: CommandEvent
+):
+    """Search Spotify for <song>"""
+    return _format_search(song, "track", event.reply)
 
 
 @hook.command("spalbum")
-def spalbum(text, reply):
-    """<album> - Search Spotify for <album>"""
-    return _format_search(text, "album", reply)
+def spalbum(
+    album: Annotated[str, Arg("Album to search for")], event: CommandEvent
+):
+    """Search Spotify for <album>"""
+    return _format_search(album, "album", event.reply)
 
 
 @hook.command("spartist", "artist")
-def spartist(text, reply):
-    """<artist> - Search Spotify for <artist>"""
-    return _format_search(text, "artist", reply)
+def spartist(
+    artist: Annotated[str, Arg("Artist to search for")], event: CommandEvent
+):
+    """Search Spotify for <artist>"""
+    return _format_search(artist, "artist", event.reply)
 
 
 @hook.regex(http_re)

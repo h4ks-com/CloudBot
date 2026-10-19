@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import time
+from typing import Annotated
 
 from cachetools import TTLCache
 from openrouter import OpenRouter
@@ -24,8 +25,11 @@ from sqlalchemy import (
     delete,
     select,
 )
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.hook import Arg
 from cloudbot.util import database, web
 from cloudbot.util.ai_common import format_reply_lines
 from plugins.agent_tools import upload_markdown_paste
@@ -293,12 +297,15 @@ def handle_openrouter_error(e: Exception) -> str:
     return f"Error: {e}"
 
 
-@hook.command("llm", autohelp=False)
-def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
-    """<message> - Chat with AI using your selected model"""
-    if not text:
-        return "Usage: .llm <message>"
-
+@hook.command("llm")
+def llm_chat(
+    chan: str,
+    conn: IrcClient,
+    db: Session,
+    nick: str,
+    message: Annotated[str, Arg("What to say to the AI")],
+) -> str | list[str]:
+    """Chat with AI using your selected model"""
     user_model = get_user_model(db, conn.name, chan, nick)
     model = user_model or conn.bot.config.get("plugins", {}).get(
         "openrouter", {}
@@ -311,7 +318,7 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
     try:
         with OpenRouter(api_key=api_key) as client:
             history = get_chat_history(db, conn.name, chan, nick)
-            messages = history[-10:] + [{"role": "user", "content": text}]
+            messages = history[-10:] + [{"role": "user", "content": message}]
 
             response = client.chat.send(model=model, messages=messages)
 
@@ -332,7 +339,7 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
             if not isinstance(content, str):
                 content = str(content)
 
-            add_chat_message(db, conn.name, chan, nick, model, "user", text)
+            add_chat_message(db, conn.name, chan, nick, model, "user", message)
             add_chat_message(
                 db, conn.name, chan, nick, model, "assistant", content
             )
@@ -375,13 +382,19 @@ def llm_chat(text: str, chan: str, conn, db, nick: str) -> str | list[str]:
 
 
 @hook.command("llmmodel", autohelp=False)
-def llm_set_model(text: str, chan: str, conn, db, nick: str) -> str:
-    """<model> - Change your AI model"""
+def llm_set_model(
+    chan: str,
+    conn: IrcClient,
+    db: Session,
+    nick: str,
+    model_name: Annotated[str | None, Arg("Model to switch to")] = None,
+) -> str:
+    """Change your AI model"""
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
         return "OpenRouter API key not configured."
 
-    if not text:
+    if not model_name:
         current = get_user_model(db, conn.name, chan, nick)
         default = (
             conn.bot.config.get("plugins", {})
@@ -416,15 +429,15 @@ def llm_set_model(text: str, chan: str, conn, db, nick: str) -> str:
     if not free_models:
         return "No free models available."
 
-    if text not in free_models:
-        return f"Model '{text}' not available. Use .llmlist to see available models."
+    if model_name not in free_models:
+        return f"Model '{model_name}' not available. Use .llmlist to see available models."
 
-    set_user_model(db, conn.name, chan, nick, text)
-    return f"Model set to {text}"
+    set_user_model(db, conn.name, chan, nick, model_name)
+    return f"Model set to {model_name}"
 
 
 @hook.command("llmlist", "llmmodels", autohelp=False)
-def llm_list_models(conn) -> str:
+def llm_list_models(conn: IrcClient) -> str:
     """- List the free AI models"""
     api_key = conn.bot.config.get_api_key("openrouter")
     if not api_key:
@@ -464,12 +477,15 @@ def llm_list_models(conn) -> str:
     return f"Free models: {first_models} (+{len(free_models) - 5} more): {paste_url}"
 
 
-@hook.command("llmapp", autohelp=False)
-def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
-    """<description> - Create an HTML app"""
-    if not text:
-        return "Usage: .llmapp <app description>"
-
+@hook.command("llmapp")
+def llm_create_app(
+    chan: str,
+    conn: IrcClient,
+    db: Session,
+    nick: str,
+    description: Annotated[str, Arg("What the app should do")],
+) -> str:
+    """Create an HTML app"""
     user_model = get_user_model(db, conn.name, chan, nick)
     model = user_model or conn.bot.config.get("plugins", {}).get(
         "openrouter", {}
@@ -480,7 +496,7 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
         return "OpenRouter API key not configured."
 
     app_prompt = (
-        f"{text}\n\n"
+        f"{description}\n\n"
         "Create a single HTML file with all CSS and JavaScript inline. "
         "The app should be fully functional and self-contained. "
         "Return only the HTML code in a single code block."
@@ -558,7 +574,9 @@ def llm_create_app(text: str, chan: str, conn, db, nick: str) -> str:
 
 
 @hook.command("llmpaste", autohelp=False)
-def llm_paste_history(chan: str, conn, db, nick: str) -> str:
+def llm_paste_history(
+    chan: str, conn: IrcClient, db: Session, nick: str
+) -> str:
     """- Paste your chat history"""
     history = get_chat_history(db, conn.name, chan, nick)
     if not history:
@@ -574,7 +592,9 @@ def llm_paste_history(chan: str, conn, db, nick: str) -> str:
 
 
 @hook.command("llmclear", autohelp=False)
-def llm_clear_history(chan: str, conn, db, nick: str) -> str:
+def llm_clear_history(
+    chan: str, conn: IrcClient, db: Session, nick: str
+) -> str:
     """- - Clear your chat history"""
     clear_chat_history(db, conn.name, chan, nick)
     return "Chat history cleared."

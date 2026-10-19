@@ -6,11 +6,13 @@ search step and no HTML to parse.
 """
 
 import re
+from typing import Annotated
 from urllib.parse import quote
 
 import requests
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 
 MAN_URL = "https://man.archlinux.org/man"
 SEARCH_URL = "https://man.archlinux.org/search"
@@ -47,13 +49,12 @@ def fetch(page: str) -> str:
 
 
 @hook.command("man")
-def man(text: str) -> str:
-    """<page[.section]> - looks up a Linux man page. e.g. .man grep, .man printf.3, .man systemd.service"""
-    words = text.split()
-    if not words:
-        return "Usage: .man <page[.section]>"
-
-    page = words[0]
+def man(
+    page: Annotated[
+        str, Arg("Man page, optionally followed by .section", rest=False)
+    ],
+) -> str:
+    """looks up a Linux man page. e.g. .man grep, .man printf.3, .man systemd.service"""
     try:
         body = fetch(page)
     except requests.RequestException as e:

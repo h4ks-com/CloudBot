@@ -5,6 +5,7 @@
 from time import time
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
 from cloudbot.util.web import get_session
 
 GETS = {
@@ -95,7 +96,7 @@ for cmds in GETS:
 
 
 @hook.command("pop", autohelp=False)
-def pop(text, bot, chan, nick):
+def pop(text: str, bot: CloudBot, chan: str, nick: str):
     """- returns a estimative of the current world population"""
     r = get_session().get(
         f"https://www.census.gov/popclock/data/population.php/world?_={int(time())}"
@@ -105,7 +106,7 @@ def pop(text, bot, chan, nick):
 
 
 @hook.command("fake", autohelp=False)
-def fake(text, bot, chan, nick):
+def fake(text: str, bot: CloudBot, chan: str, nick: str):
     """- returns a fake user"""
     r = get_session().get("https://randomuser.me/api/")
     data = r.json()["results"][0]
@@ -113,7 +114,7 @@ def fake(text, bot, chan, nick):
 
 
 @hook.command("commit", autohelp=False)
-def commit(text, bot, chan, nick):
+def commit(text: str, bot: CloudBot, chan: str, nick: str):
     """- returns a random commit message"""
     r = get_session().get("http://whatthecommit.com/index.txt")
     return r.text

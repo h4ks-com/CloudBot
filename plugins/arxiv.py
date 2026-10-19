@@ -2,6 +2,7 @@ import io
 import tempfile
 import time
 from dataclasses import dataclass
+from typing import Annotated
 
 import feedparser
 import requests
@@ -9,6 +10,10 @@ import validators
 from pypdf import PdfReader
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.http import ua_firefox
 from cloudbot.util.web import get_session
@@ -135,10 +140,15 @@ def arxiv(text: str, nick: str):
 
 
 @hook.command("arxiv_next", "axn", autohelp=False)
-def arxiv_next(text: str, nick: str):
-    """- Show the next page of results"""
-    if text.strip():
-        nick = text.strip()
+def arxiv_next(
+    nick: str,
+    target: Annotated[
+        str | None, Arg("Whose results to page, yours by default", kind="user")
+    ] = None,
+):
+    """Show the next page of results"""
+    if target and target.strip():
+        nick = target.strip()
 
     page = user_pages.get(nick)
     if not page:
@@ -154,14 +164,21 @@ def arxiv_next(text: str, nick: str):
 
 @hook.command("axsummarize", "axsummary", "axs", autohelp=False)
 def summarize_command(
-    bot, reply, text: str, chan: str, nick: str, conn
+    bot: CloudBot,
+    event: CommandEvent,
+    chan: str,
+    nick: str,
+    conn: IrcClient,
+    article: Annotated[
+        str | None, Arg("Result number from your search, or an arxiv URL")
+    ] = None,
 ) -> str | list[str] | None:
-    """[number] - Summarize an article from your results"""
+    """Summarize an article from your results"""
     api_key = bot.config.get_api_key("huggingface")
     if not api_key:
         return "error: missing api key for huggingface"
 
-    article = text.strip()
+    article = article or ""
 
     if article.isdigit() and int(article) > 0:
         results = displayed_results.get(nick)
@@ -226,6 +243,6 @@ def summarize_command(
         nick,
         chan,
         bot,
-        reply,
+        event.reply,
         "article",
     )

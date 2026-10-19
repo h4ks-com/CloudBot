@@ -14,7 +14,7 @@ from weakref import WeakValueDictionary
 import sqlalchemy
 from sqlalchemy import Table
 
-from cloudbot.event import Event, EventType, PostHookEvent
+from cloudbot.event import CommandEvent, Event, EventType, PostHookEvent
 from cloudbot.plugin_hooks import (
     CapHook,
     CommandHook,
@@ -560,6 +560,9 @@ class PluginManager:
         :return: a tuple of (ok, result) where ok is a boolean that determines if the hook ran without error and result
             is the result from the hook
         """
+        if isinstance(event, CommandEvent) and not event.parse_command_args():
+            return True, None
+
         if hook.threaded:
             coro = self.bot.loop.run_in_executor(
                 None, self._execute_hook_threaded, hook, event

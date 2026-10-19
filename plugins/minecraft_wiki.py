@@ -1,10 +1,13 @@
 import re
+from typing import Annotated
 from urllib.parse import quote
 
 import requests
 from lxml import html
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.web import get_session
 
@@ -13,21 +16,23 @@ mc_url = "http://minecraft.gamepedia.com/"
 
 
 @hook.command()
-def mcwiki(text, reply):
-    """<phrase> - gets the first paragraph of the Minecraft Wiki article on <phrase>"""
+def mcwiki(
+    phrase: Annotated[str, Arg("Article to look up")], event: CommandEvent
+):
+    """gets the first paragraph of the Minecraft Wiki article on <phrase>"""
 
     try:
-        request = get_session().get(api_url, params={"search": text.strip()})
+        request = get_session().get(api_url, params={"search": phrase.strip()})
         request.raise_for_status()
         j = request.json()
     except (
         requests.exceptions.HTTPError,
         requests.exceptions.ConnectionError,
     ) as e:
-        reply(f"Error fetching search results: {e}")
+        event.reply(f"Error fetching search results: {e}")
         raise
     except ValueError as e:
-        reply(f"Error reading search results: {e}")
+        event.reply(f"Error reading search results: {e}")
         raise
 
     if not j[1]:
@@ -53,7 +58,7 @@ def mcwiki(text, reply):
         requests.exceptions.HTTPError,
         requests.exceptions.ConnectionError,
     ) as e:
-        reply(f"Error fetching wiki page: {e}")
+        event.reply(f"Error fetching wiki page: {e}")
         raise
 
     page = html.fromstring(request_.text)

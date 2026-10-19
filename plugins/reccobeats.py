@@ -3,7 +3,11 @@ ReccoBeats plugin - Free music recommendation API
 https://reccobeats.com
 """
 
+from typing import Annotated
+
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 RECCO_URL = "https://api.reccobeats.com/v1/track/recommendation"
@@ -26,19 +30,18 @@ def _get_spotify_track_id(query, reply):
 
 
 @hook.command("recco", "similar")
-def recco(text, reply):
-    """<song name or Spotify track ID> - Get similar song recommendations via ReccoBeats"""
-    query = text.strip()
-    if not query:
-        return "Usage: .recco <song name>"
-
+def recco(
+    event: CommandEvent,
+    query: Annotated[str, Arg("Song name or Spotify track ID")],
+):
+    """Get similar song recommendations via ReccoBeats"""
     # If the input looks like a Spotify track ID (22 char alphanumeric), use it directly
     # otherwise resolve via spotify search
     if len(query) == 22 and query.isalnum():
         track_id = query
         seed_label = f"Spotify ID {track_id}"
     else:
-        track_id = _get_spotify_track_id(query, reply)
+        track_id = _get_spotify_track_id(query, event.reply)
         if track_id is None:
             return f"Could not find a Spotify track for '{query}' - try .spotify to search."
         seed_label = query

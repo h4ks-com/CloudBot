@@ -10,10 +10,10 @@ def test_cats(mock_requests):
         json={"fact": "foobar"},
     )
     bot = MagicMock(user_agent="user agent")
-    reply = MagicMock()
-    assert cats.cats(reply, bot) == "foobar"
+    event = MagicMock()
+    assert cats.cats(event, bot) == "foobar"
     assert bot.mock_calls == []
-    assert reply.mock_calls == []
+    assert event.mock_calls == []
 
 
 def test_catgifs(mock_requests):
@@ -26,7 +26,7 @@ def test_catgifs(mock_requests):
         adding_headers={"Location": url},
     )
     bot = MagicMock(user_agent="user agent")
-    reply = MagicMock()
-    assert cats.catgifs(reply, bot) == ("OMG A CAT GIF: " + url)
+    event = MagicMock()
+    assert cats.catgifs(event, bot) == ("OMG A CAT GIF: " + url)
     assert bot.mock_calls == []
-    assert reply.mock_calls == []
+    assert event.mock_calls == []

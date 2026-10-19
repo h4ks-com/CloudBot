@@ -1,6 +1,10 @@
+from typing import Annotated
+
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.web import get_session
 
@@ -68,11 +72,13 @@ def list_langs():
 
 
 @hook.command("tran", "translate")
-def trans(text, reply):
-    """<language or language code> - text to translate. Translation is Powered by Yandex https://translate.yandex.com"""
-    inp = text.split(" ", 1)
-    lang = inp[0].replace(":", "")
-    text = inp[1]
+def trans(
+    language: Annotated[str, Arg("Language or language code")],
+    text: Annotated[str, Arg("Text to translate")],
+    event: CommandEvent,
+):
+    """translates text into the language. Translation is Powered by Yandex https://translate.yandex.com"""
+    lang = language.replace(":", "")
     if lang.title() in _State.lang_dict.keys():
         lang = _State.lang_dict[lang.title()]
     elif lang not in _State.lang_dict.values() and lang not in _State.lang_dir:
@@ -89,10 +95,10 @@ def trans(text, reply):
         r = get_session().get(url, params=params)
         r.raise_for_status()
     except HTTPError as e:
-        reply(check_code(e.response.status_code))
+        event.reply(check_code(e.response.status_code))
         raise
     except Exception:
-        reply("Unknown error occurred.")
+        event.reply("Unknown error occurred.")
         raise
 
     data = r.json()

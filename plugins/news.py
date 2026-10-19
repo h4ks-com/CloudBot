@@ -5,6 +5,7 @@
 import re
 from dataclasses import dataclass
 from random import choice
+from typing import Annotated
 
 import feedparser
 from bs4 import BeautifulSoup
@@ -12,6 +13,8 @@ from newsapi import NewsApiClient, const
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.formatting import truncate
 from cloudbot.util.queue import Queue
 
@@ -73,10 +76,16 @@ def pop_many(results, reply):
 
 
 @hook.command("newsn", autohelp=False)
-def newsn(text, chan, nick, reply):
-    """<nick> - Returns next search result for news command for nick or yours by default"""
+def newsn(
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    user: Annotated[
+        str | None, Arg("Nick whose results to show", kind="user")
+    ] = None,
+):
+    """Returns next search result for news command for nick or yours by default"""
     results = results_queue[chan][nick]
-    user = text.strip().split()[0] if text.strip() else ""
     if user:
         if user in results_queue[chan]:
             results = results_queue[chan][user]
@@ -86,11 +95,11 @@ def newsn(text, chan, nick, reply):
     if len(results) == 0:
         return "No [more] results found."
 
-    return pop_many(results, reply)
+    return pop_many(results, event.reply)
 
 
 @hook.command("news", autohelp=False)
-def news(text, chan, nick, reply):
+def news(text: str, chan: str, nick: str, event: CommandEvent):
     """<category> <query> - Get news from newsapi.org"""
     api = bot.config.get_api_key("newsapi")
     if not api:
@@ -122,11 +131,11 @@ def news(text, chan, nick, reply):
     results_queue[chan][nick] = [
         Article.from_json(json) for json in top_headlines["articles"]
     ]
-    return pop_many(results_queue[chan][nick], reply)
+    return pop_many(results_queue[chan][nick], event.reply)
 
 
 @hook.command("fakenews", autohelp=False)
-def fakenews(text, chan, nick, reply):
+def fakenews(text: str, chan: str, nick: str, event: CommandEvent):
     """- Show random news from a fake news website."""
     rss = choice(fakenews_feeds)
     feed = feedparser.parse(rss)

@@ -5,21 +5,26 @@ Provides a command to allow users to look up information on domain names.
 
 from contextlib import suppress
 from datetime import datetime
+from typing import Annotated
 
 import asyncwhois
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 
 @hook.command()
-def whois(text, reply):
-    """<domain> - Does a whois query on <domain>."""
-    domain = text.strip().lower()
+def whois(
+    domain: Annotated[str, Arg("Domain to look up")], event: CommandEvent
+):
+    """Does a whois query on <domain>."""
+    domain = domain.strip().lower()
 
     try:
         _, data = asyncwhois.whois(domain)
     except Exception as e:
-        reply(f"Invalid input or domain not found: {e}")
+        event.reply(f"Invalid input or domain not found: {e}")
         raise
 
     info = []

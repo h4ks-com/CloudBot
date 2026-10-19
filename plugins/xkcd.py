@@ -1,10 +1,12 @@
 import datetime
 import re
+from typing import Annotated
 
 from bs4 import Tag
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
 
@@ -69,6 +71,6 @@ def xkcd_url(match):
 
 
 @hook.command()
-def xkcd(text):
-    """<search term> - Search for xkcd comic matching <search term>"""
-    return xkcd_search(text)
+def xkcd(term: Annotated[str, Arg("What to search for")]):
+    """Search for xkcd comic matching <search term>"""
+    return xkcd_search(term)

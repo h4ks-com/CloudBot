@@ -20,13 +20,14 @@ Token setup on the Django side:
 """
 
 import asyncio
-from typing import Any
+from typing import Annotated, Any
 
 import aiohttp
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
 from cloudbot.clients.irc import IrcClient
+from cloudbot.hook import Arg
 
 _TIMEOUT = aiohttp.ClientTimeout(total=8.0)
 _SYNC_DEFAULT = 20
@@ -37,12 +38,12 @@ def _cfg(bot: CloudBot) -> dict[str, Any]:
 
 
 @hook.command("announce", permissions=["botcontrol"])
-async def announce_cmd(text: str, nick: str, bot: CloudBot) -> str:
-    """<message> - post an announcement to the h4ks.com portal"""
-    message = text.strip()
-    if not message:
-        return "usage: .announce <message>"
-
+async def announce_cmd(
+    nick: str,
+    bot: CloudBot,
+    message: Annotated[str, Arg("Announcement text")],
+) -> str:
+    """post an announcement to the h4ks.com portal"""
     cfg = _cfg(bot)
     api_url: str | None = cfg.get("announce_api_url")
     api_token: str | None = cfg.get("announce_api_token")
@@ -78,8 +79,12 @@ def register_cmd(bot: CloudBot) -> str:
 
 
 @hook.command("syncchat", permissions=["botcontrol"], autohelp=False)
-async def syncchat_cmd(text: str, bot: CloudBot, conn: IrcClient) -> str:
-    """[n] - push the last N lobby messages from history to the h4ks.com portal (default 20)"""
+async def syncchat_cmd(
+    bot: CloudBot,
+    conn: IrcClient,
+    count: Annotated[int, Arg("How many messages to push")] = _SYNC_DEFAULT,
+) -> str:
+    """push the last N lobby messages from history to the h4ks.com portal (default 20)"""
     cfg = _cfg(bot)
     api_url: str | None = cfg.get("chat_api_url")
     api_token: str | None = cfg.get("announce_api_token")
@@ -87,11 +92,6 @@ async def syncchat_cmd(text: str, bot: CloudBot, conn: IrcClient) -> str:
 
     if not api_url or not api_token:
         return "syncchat: not configured (missing h4ks.chat_api_url or announce_api_token)"
-
-    try:
-        count = int(text.strip()) if text.strip() else _SYNC_DEFAULT
-    except ValueError:
-        return "usage: .syncchat [n]"
 
     try:
         channel_history = conn.history[lobby]

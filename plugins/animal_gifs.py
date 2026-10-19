@@ -6,6 +6,7 @@ import random
 from urllib.parse import urljoin
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 from cloudbot.util.http import get_soup
 
 BASE_URL = "http://bestanimations.com/Animals/Mammals/Dogs/"
@@ -35,12 +36,12 @@ def get_random_gif(url):
 
 
 @hook.command(autohelp=False)
-def doggifs(reply):
+def doggifs(event: CommandEvent):
     """- Returns a random dog GIF from http://bestanimations.com/"""
     page = random.choice(DOG_PAGES)
     url = urljoin(BASE_URL, page)
     try:
         return get_random_gif(url)
     except Exception:
-        reply("Error occurred when retrieving GIF")
+        event.reply("Error occurred when retrieving GIF")
         raise

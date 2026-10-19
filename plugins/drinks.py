@@ -1,9 +1,11 @@
 import json
 import random
-from typing import Any
+from typing import Annotated, Any
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, web
 
 drink_data: list[dict[str, Any]] = []
@@ -18,8 +20,12 @@ def load_drinks(bot: CloudBot) -> None:
 
 
 @hook.command("drink")
-def drink_cmd(text, chan, action):
-    """<nick> - makes the user a random cocktail."""
+def drink_cmd(
+    chan: str,
+    event: CommandEvent,
+    target: Annotated[str, Arg("Who gets the drink", kind="user", rest=True)],
+):
+    """makes the user a random cocktail."""
     index = random.randint(0, len(drink_data) - 1)
     drink = drink_data[index]["title"]
     url = web.try_shorten(drink_data[index]["url"])
@@ -35,5 +41,5 @@ def drink_cmd(text, chan, action):
     else:
         article = "a"
 
-    out += f"\x0f and makes {text} {article} \x02{drink}\x02. {url}"
-    action(out, chan)
+    out += f"\x0f and makes {target} {article} \x02{drink}\x02. {url}"
+    event.action(out, chan)

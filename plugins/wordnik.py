@@ -4,12 +4,14 @@ import re
 import urllib.parse
 from collections.abc import Iterable
 from json import JSONDecodeError
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, web
 from cloudbot.util.http import GetParams
 from cloudbot.util.web import get_session
@@ -245,15 +247,15 @@ def format_attrib(attr_id):
 
 
 @hook.command("define", "dictionary")
-def define(text, event):
-    """<word> - Returns a dictionary definition from Wordnik for <word>."""
-    lookup = DefinitionsLookupRequest(text)
+def define(word: Annotated[str, Arg("Word to define")], event: CommandEvent):
+    """Returns a dictionary definition from Wordnik for <word>."""
+    lookup = DefinitionsLookupRequest(word)
     try:
         data = lookup.first()
     except WordNotFound:
         return colors.parse(
             "I could not find a definition for $(b){}$(b)."
-        ).format(text)
+        ).format(word)
     except WordnikAPIError as e:
         event.reply(e.user_msg())
         raise
@@ -270,44 +272,48 @@ def define(text, event):
 
 
 @hook.command("wordusage", "wordexample", "usage")
-def word_usage(text, event):
-    """<word> - Returns an example sentence showing the usage of <word>."""
-    lookup = ExamplesLookupRequest(text)
+def word_usage(
+    word: Annotated[str, Arg("Word to look up")], event: CommandEvent
+):
+    """Returns an example sentence showing the usage of <word>."""
+    lookup = ExamplesLookupRequest(word)
     try:
         example = lookup.random()
     except WordNotFound:
         return colors.parse(
             "I could not find any usage examples for $(b){}$(b)."
-        ).format(text)
+        ).format(word)
     except WordnikAPIError as e:
         event.reply(e.user_msg())
         raise
 
     out = colors.parse("$(b){word}$(b): {text}").format(
-        word=text, text=example["text"]
+        word=word, text=example["text"]
     )
     return out
 
 
 @hook.command("pronounce", "sounditout")
-def pronounce(text, event):
-    """<word> - Returns instructions on how to pronounce <word> with an audio
+def pronounce(
+    word: Annotated[str, Arg("Word to pronounce")], event: CommandEvent
+):
+    """Returns instructions on how to pronounce <word> with an audio
     example."""
-    lookup = PronounciationLookupRequest(text)
+    lookup = PronounciationLookupRequest(word)
     try:
         pronounce_response = list(lookup.get_filtered_results())[:5]
     except WordNotFound:
         return colors.parse(
             "Sorry, I don't know how to pronounce $(b){}$(b)."
-        ).format(text)
+        ).format(word)
     except WordnikAPIError as e:
         event.reply(e.user_msg())
         raise
 
-    out = colors.parse("$(b){}$(b): ").format(text)
+    out = colors.parse("$(b){}$(b): ").format(word)
     out += " • ".join([i["raw"] for i in pronounce_response])
 
-    audio_lookup = AudioLookupRequest(text)
+    audio_lookup = AudioLookupRequest(word)
     try:
         audio_response = audio_lookup.first()
     except WordNotFound:
@@ -323,41 +329,41 @@ def pronounce(text, event):
 
 
 @hook.command()
-def synonym(text, event):
-    """<word> - Returns a list of synonyms for <word>."""
-    lookup = RelatedLookupRequest(text, "synonym")
+def synonym(word: Annotated[str, Arg("Word to look up")], event: CommandEvent):
+    """Returns a list of synonyms for <word>."""
+    lookup = RelatedLookupRequest(word, "synonym")
     try:
         data = lookup.first()
     except WordNotFound:
         return colors.parse(
             "Sorry, I couldn't find any synonyms for $(b){}$(b)."
-        ).format(text)
+        ).format(word)
     except WordnikAPIError as e:
         event.reply(e.user_msg())
         raise
 
-    out = colors.parse("$(b){}$(b): ").format(text)
+    out = colors.parse("$(b){}$(b): ").format(word)
     out += " • ".join(data["words"])
 
     return out
 
 
 @hook.command()
-def antonym(text, event):
-    """<word> - Returns a list of antonyms for <word>."""
-    lookup = RelatedLookupRequest(text, "antonym")
+def antonym(word: Annotated[str, Arg("Word to look up")], event: CommandEvent):
+    """Returns a list of antonyms for <word>."""
+    lookup = RelatedLookupRequest(word, "antonym")
     lookup.extra_params["useCanonical"] = "false"
     try:
         data = lookup.first()
     except WordNotFound:
         return colors.parse(
             "Sorry, I couldn't find any antonyms for $(b){}$(b)."
-        ).format(text)
+        ).format(word)
     except WordnikAPIError as e:
         event.reply(e.user_msg())
         raise
 
-    out = colors.parse("$(b){}$(b): ").format(text)
+    out = colors.parse("$(b){}$(b): ").format(word)
     out += " • ".join(data["words"])
 
     return out
@@ -365,11 +371,14 @@ def antonym(text, event):
 
 # word of the day
 @hook.command("word", "wordoftheday", autohelp=False)
-def wordoftheday(text, event):
-    """[date] - returns the word of the day. To see past word of the day
+def wordoftheday(
+    event: CommandEvent,
+    date_text: Annotated[str | None, Arg("Date as yyyy-MM-dd")] = None,
+):
+    """returns the word of the day. To see past word of the day
     enter use the format yyyy-MM-dd. The specified date must be after
     2009-08-10."""
-    match = re.search(r"(\d\d\d\d-\d\d-\d\d)", text)
+    match = re.search(r"(\d\d\d\d-\d\d-\d\d)", date_text or "")
     date = ""
     if match:
         date = match.group(1)
@@ -406,7 +415,7 @@ def wordoftheday(text, event):
 
 # random word
 @hook.command("wordrandom", "randomword", autohelp=False)
-def random_word(event):
+def random_word(event: CommandEvent):
     """- Grabs a random word from wordnik.com"""
     try:
         json = api_request_single(

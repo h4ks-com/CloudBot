@@ -1,6 +1,8 @@
+import asyncio
 import re
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
 
@@ -37,7 +39,7 @@ async def refresh_fml_cache(loop):
 
 
 @hook.command(autohelp=False)
-async def fml(reply, loop):
+async def fml(event: CommandEvent, loop: asyncio.AbstractEventLoop):
     """- gets a random quote from fmylife.com"""
 
     if not fml_cache:
@@ -46,7 +48,7 @@ async def fml(reply, loop):
     # grab the last item in the fml cache and remove it
     fml_id, text = fml_cache.pop()
     # reply with the fml we grabbed
-    reply(f"(#{fml_id}) {text}")
+    event.reply(f"(#{fml_id}) {text}")
 
     # refresh fml cache if its getting empty
     if len(fml_cache) < 3:

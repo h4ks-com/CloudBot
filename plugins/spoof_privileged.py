@@ -12,36 +12,42 @@ that:
     TAGMSG aimed at this bot
 """
 
+from typing import Annotated
+
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.hook import Arg
 
 _BROKEN = "if you see this in the picker, the client is broken"
 
+ArgsText = Annotated[str | None, Arg("Anything, it is ignored")]
+
 
 @hook.command("oper", autohelp=False)
-def spoof_oper(text, nick, conn):
-    """[args] - Test bait that the client must hide"""
-    return f"({nick}) {conn.nick} received /oper {text!r} — {_BROKEN}"
+def spoof_oper(nick: str, conn: IrcClient, args: ArgsText = None):
+    """Test bait that the client must hide"""
+    return f"({nick}) {conn.nick} received /oper {args or ''!r} — {_BROKEN}"
 
 
 @hook.command("identify", autohelp=False)
-def spoof_identify(text, nick, conn):
-    """[args] - Test bait that the client must hide"""
-    return f"({nick}) {conn.nick} received /identify {text!r} — {_BROKEN}"
+def spoof_identify(nick: str, conn: IrcClient, args: ArgsText = None):
+    """Test bait that the client must hide"""
+    return f"({nick}) {conn.nick} received /identify {args or ''!r} — {_BROKEN}"
 
 
 @hook.command("ns", autohelp=False)
-def spoof_ns(text, nick, conn):
-    """[args] - Test bait that the client must hide"""
-    return f"({nick}) {conn.nick} received /ns {text!r} — {_BROKEN}"
+def spoof_ns(nick: str, conn: IrcClient, args: ArgsText = None):
+    """Test bait that the client must hide"""
+    return f"({nick}) {conn.nick} received /ns {args or ''!r} — {_BROKEN}"
 
 
 @hook.command("pass", autohelp=False)
-def spoof_pass(text, nick, conn):
-    """[args] - Test bait that the client must hide"""
-    return f"({nick}) {conn.nick} received /pass {text!r} — {_BROKEN}"
+def spoof_pass(nick: str, conn: IrcClient, args: ArgsText = None):
+    """Test bait that the client must hide"""
+    return f"({nick}) {conn.nick} received /pass {args or ''!r} — {_BROKEN}"
 
 
 @hook.command("kill", autohelp=False)
-def spoof_kill(text, nick, conn):
-    """[args] - Test bait that the client must hide"""
-    return f"({nick}) {conn.nick} received /kill {text!r} — {_BROKEN}"
+def spoof_kill(nick: str, conn: IrcClient, args: ArgsText = None):
+    """Test bait that the client must hide"""
+    return f"({nick}) {conn.nick} received /kill {args or ''!r} — {_BROKEN}"

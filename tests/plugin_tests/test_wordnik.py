@@ -518,6 +518,13 @@ class TestWOTD(WordsTestBase):
     def get_func(cls):
         return wordnik.wordoftheday
 
+    @classmethod
+    def call(cls, text, event=None):
+        if event is None:
+            event = MagicMock()
+
+        return cls.get_func()(event, text or None), event
+
     def test_today(self, mock_requests, mock_api_keys):
         definitions = [
             {

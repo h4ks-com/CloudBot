@@ -6,7 +6,9 @@ import pytest
 
 from cloudbot.event import EventType
 from cloudbot.util import web
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import beans
+from tests.util import call_command
 from tests.util.mock_conn import MockConn
 
 BASE_URL = "http://beapin.test"
@@ -386,7 +388,7 @@ class TestBeansCmd:
             users_url(),
             json=[{"username": "alice", "bean_amount": 12}],
         )
-        result = beans.beans_cmd("", "alice", bot)
+        result = beans.beans_cmd("alice", bot)
         assert result == "🌟 alice has 🫘 12 beans! 🌟"
 
     def test_with_text_strips_network(self, mock_requests):
@@ -396,13 +398,13 @@ class TestBeansCmd:
             users_url(),
             json=[{"username": "bob", "bean_amount": 1000}],
         )
-        result = beans.beans_cmd(" net/bob ", "alice", bot)
+        result = beans.beans_cmd("alice", bot, "net/bob")
         assert result == "🌟 bob has 🫘 1,000 beans! 🌟"
 
     def test_balance_unavailable(self, mock_requests):
         bot = make_bot()
         mock_requests.add("GET", users_url(), json=[])
-        result = beans.beans_cmd("bob", "alice", bot)
+        result = beans.beans_cmd("alice", bot, "bob")
         assert result == "🚫 Could not fetch bean balance for bob! 🚫"
 
 
@@ -562,46 +564,36 @@ class TestTopBeans:
     def test_no_users(self, mock_requests):
         bot = make_bot()
         mock_requests.add("GET", users_url(), json=[])
-        notice = MagicMock()
-        message = MagicMock()
-        result = beans.top_beans("", "alice", "#chan", bot, notice, message)
+        event = MagicMock()
+        result = beans.top_beans("alice", "#chan", bot, event)
         assert result == "😢 No one has any beans yet! 😢"
 
     def test_invalid_number(self):
-        bot = make_bot()
-        notice = MagicMock()
-        message = MagicMock()
-        result = beans.top_beans(
-            "notanumber", "alice", "#chan", bot, notice, message
-        )
-        assert result == (
-            "🚫 Please provide a valid number for the top users to display. 🚫"
-        )
+        with pytest.raises(CommandArgError):
+            build_spec(beans.top_beans).parse_text("notanumber")
 
     def test_default_top_ten(self, mock_requests):
         bot = make_bot()
         users = [{"username": f"user{i}", "bean_amount": i} for i in range(5)]
         mock_requests.add("GET", users_url(), json=users)
-        notice = MagicMock()
-        message = MagicMock()
-        result = beans.top_beans("", "alice", "#chan", bot, notice, message)
+        event = MagicMock()
+        result = beans.top_beans("alice", "#chan", bot, event)
         assert result == (
             "🏆 Top 10 Bean Holders: 1. user4 🫘 (4 beans) "
             "2. user3 🫘 (3 beans) 3. user2 🫘 (2 beans) "
             "4. user1 🫘 (1 beans) 5. user0 🫘 (0 beans)"
         )
-        notice.assert_not_called()
-        message.assert_not_called()
+        event.notice.assert_not_called()
+        event.message.assert_not_called()
 
     def test_over_ten_sends_dm_in_chunks(self, mock_requests):
         bot = make_bot()
         users = [{"username": f"user{i}", "bean_amount": i} for i in range(15)]
         mock_requests.add("GET", users_url(), json=users)
-        notice = MagicMock()
-        message = MagicMock()
-        result = beans.top_beans("15", "alice", "#chan", bot, notice, message)
+        event = MagicMock()
+        result = beans.top_beans("alice", "#chan", bot, event, 15)
         assert result is None
-        notice.assert_called_once_with(
+        event.notice.assert_called_once_with(
             "📩 alice, check your DM for the top 15 bean holders!"
         )
 
@@ -612,7 +604,7 @@ class TestTopBeans:
         lines[0] = "🏆 Top 15 Bean Holders: " + lines[0]
         chunk1 = " ".join(lines[0:10])
         chunk2 = " ".join(lines[10:15])
-        assert message.mock_calls == [
+        assert event.message.mock_calls == [
             call(chunk1, "alice"),
             call(chunk2, "alice"),
         ]
@@ -933,14 +925,18 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "", nick="alice", db=db, conn=conn
+        )
         assert result[0] == "🎮 Trivia Commands 🎮"
 
     def test_help_subcommand(self, mock_db):
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("help", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "help", nick="alice", db=db, conn=conn
+        )
         assert result[0] == "🎮 Trivia Commands 🎮"
         assert "- Use -> to separate your question from the answer" in result
 
@@ -948,7 +944,9 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("add", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "add", nick="alice", db=db, conn=conn
+        )
         assert result == (
             "❌ Missing arguments. Use '.trivia help' for usage information."
         )
@@ -957,7 +955,13 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("add not the right format", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd,
+            "add not the right format",
+            nick="alice",
+            db=db,
+            conn=conn,
+        )
         assert result == (
             "❌ Invalid format. Use: .trivia add <prize_amount> "
             "<question> -> <answer>"
@@ -967,8 +971,12 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd(
-            "add 0 What is 2+2? -> four", "alice", db, conn
+        result = call_command(
+            beans.trivia_cmd,
+            "add 0 What is 2+2? -> four",
+            nick="alice",
+            db=db,
+            conn=conn,
         )
         assert result == "❌ Prize must be a positive number of beans."
 
@@ -976,8 +984,12 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd(
-            "add 5 What is 2+2? -> four_2", "alice", db, conn
+        result = call_command(
+            beans.trivia_cmd,
+            "add 5 What is 2+2? -> four_2",
+            nick="alice",
+            db=db,
+            conn=conn,
         )
         assert result == "❌ Answer must contain only letters and numbers."
 
@@ -986,8 +998,12 @@ class TestTriviaCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         beans.set_beans("alice", 2, db)
-        result = beans.trivia_cmd(
-            "add 5 What is 2+2? -> four", "alice", db, conn
+        result = call_command(
+            beans.trivia_cmd,
+            "add 5 What is 2+2? -> four",
+            nick="alice",
+            db=db,
+            conn=conn,
         )
         assert result == (
             "❌ You don't have enough beans. You have 2, but the prize is 5."
@@ -998,8 +1014,12 @@ class TestTriviaCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         beans.set_beans("alice", 10, db)
-        result = beans.trivia_cmd(
-            "add 5 What is 2+2? -> Four", "alice", db, conn
+        result = call_command(
+            beans.trivia_cmd,
+            "add 5 What is 2+2? -> Four",
+            nick="alice",
+            db=db,
+            conn=conn,
         )
         assert result.startswith("✅ Trivia question #") and result.endswith(
             "added with a prize of 🫘 5 beans!"
@@ -1016,8 +1036,12 @@ class TestTriviaCmd:
         conn = MockConn(nick="cloudbot")
         beans.set_beans("alice", 10, db)
         with patch.object(beans, "transfer_beans", return_value=False):
-            result = beans.trivia_cmd(
-                "add 5 What is 2+2? -> four", "alice", db, conn
+            result = call_command(
+                beans.trivia_cmd,
+                "add 5 What is 2+2? -> four",
+                nick="alice",
+                db=db,
+                conn=conn,
             )
         assert result == "❌ Failed to transfer beans. Please try again."
 
@@ -1025,7 +1049,9 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("question", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "question", nick="alice", db=db, conn=conn
+        )
         assert result == "❌ You haven't created any trivia questions yet."
 
     def test_question_latest_found(self, mock_db):
@@ -1034,7 +1060,9 @@ class TestTriviaCmd:
         conn = MockConn(nick="cloudbot")
         beans.set_beans("alice", 10, db)
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
-        result = beans.trivia_cmd("question", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "question", nick="alice", db=db, conn=conn
+        )
         assert result == [
             f"📝 Trivia #{tid} (created by alice)",
             "Question: 2+2?",
@@ -1045,14 +1073,18 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("question 42", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "question 42", nick="alice", db=db, conn=conn
+        )
         assert result == "❌ Trivia question #42 not found."
 
     def test_question_invalid_id(self, mock_db):
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("question abc", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "question abc", nick="alice", db=db, conn=conn
+        )
         assert result == "❌ Invalid trivia ID. Please provide a number."
 
     def test_question_by_id_found(self, mock_db):
@@ -1061,7 +1093,9 @@ class TestTriviaCmd:
         conn = MockConn(nick="cloudbot")
         beans.set_beans("alice", 10, db)
         tid = beans.add_trivia("alice", "What is 2+2?", "four", 5, db)
-        result = beans.trivia_cmd(f"question {tid}", "bob", db, conn)
+        result = call_command(
+            beans.trivia_cmd, f"question {tid}", nick="bob", db=db, conn=conn
+        )
         assert result == [
             f"📝 Trivia #{tid} (created by alice)",
             "Question: What is 2+2?",
@@ -1072,7 +1106,9 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("list", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "list", nick="alice", db=db, conn=conn
+        )
         assert result == "❌ No trivia questions found."
 
     def test_list_with_data(self, mock_db):
@@ -1080,7 +1116,9 @@ class TestTriviaCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
-        result = beans.trivia_cmd("list", "bob", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "list", nick="bob", db=db, conn=conn
+        )
         assert result == [
             "🎯 Latest Trivia Questions 🎯",
             f'#{tid}: "2+2?" - Prize: 🫘 5 beans (by alice)',
@@ -1090,7 +1128,9 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("user bob", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "user bob", nick="alice", db=db, conn=conn
+        )
         assert result == "❌ No trivia questions found for user bob."
 
     def test_user_with_trivias(self, mock_db):
@@ -1098,7 +1138,9 @@ class TestTriviaCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         tid = beans.add_trivia("bob", "2+2?", "four", 5, db)
-        result = beans.trivia_cmd("user bob", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "user bob", nick="alice", db=db, conn=conn
+        )
         assert result == [
             "🧩 Trivia Questions by bob 🧩",
             f'#{tid}: "2+2?" - Prize: 🫘 5 beans',
@@ -1108,14 +1150,18 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("delete 5", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "delete 5", nick="alice", db=db, conn=conn
+        )
         assert result == "❌ Trivia question #5 not found."
 
     def test_delete_invalid_id(self, mock_db):
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("delete abc", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, "delete abc", nick="alice", db=db, conn=conn
+        )
         assert result == "❌ Invalid trivia ID. Please provide a number."
 
     def test_delete_not_owner(self, mock_db):
@@ -1124,7 +1170,9 @@ class TestTriviaCmd:
         conn = MockConn(nick="cloudbot")
         beans.set_beans("alice", 10, db)
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
-        result = beans.trivia_cmd(f"delete {tid}", "bob", db, conn)
+        result = call_command(
+            beans.trivia_cmd, f"delete {tid}", nick="bob", db=db, conn=conn
+        )
         assert result == "❌ You can only delete your own trivia questions."
 
     def test_delete_bot_cannot_refund(self, mock_db):
@@ -1134,7 +1182,9 @@ class TestTriviaCmd:
         beans.set_beans("alice", 10, db)
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
         beans.set_beans(conn.nick, 0, db)
-        result = beans.trivia_cmd(f"delete {tid}", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, f"delete {tid}", nick="alice", db=db, conn=conn
+        )
         assert result == (
             "❌ The bot doesn't have enough beans to refund your prize. "
             "Try again later."
@@ -1148,7 +1198,13 @@ class TestTriviaCmd:
         beans.set_beans(conn.nick, 5, db)
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
         with patch.object(beans, "transfer_beans", return_value=False):
-            result = beans.trivia_cmd(f"delete {tid}", "alice", db, conn)
+            result = call_command(
+                beans.trivia_cmd,
+                f"delete {tid}",
+                nick="alice",
+                db=db,
+                conn=conn,
+            )
         assert result == "❌ Failed to refund beans. Please try again later."
 
     def test_delete_success(self, mock_db):
@@ -1158,7 +1214,9 @@ class TestTriviaCmd:
         beans.set_beans("alice", 10, db)
         beans.set_beans(conn.nick, 5, db)
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
-        result = beans.trivia_cmd(f"delete {tid}", "alice", db, conn)
+        result = call_command(
+            beans.trivia_cmd, f"delete {tid}", nick="alice", db=db, conn=conn
+        )
         assert result == (
             f"✅ Trivia question #{tid} deleted. You've been refunded "
             "🫘 5 beans."
@@ -1174,7 +1232,13 @@ class TestTriviaCmd:
         beans.set_beans(conn.nick, 5, db)
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
         with patch.object(beans, "delete_trivia", return_value=False):
-            result = beans.trivia_cmd(f"delete {tid}", "alice", db, conn)
+            result = call_command(
+                beans.trivia_cmd,
+                f"delete {tid}",
+                nick="alice",
+                db=db,
+                conn=conn,
+            )
         assert result == (
             "❌ Failed to delete trivia question. Please try again."
         )
@@ -1185,11 +1249,14 @@ class TestTriviaCmd:
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
-        result = beans.trivia_cmd("frobnicate blah", "alice", db, conn)
-        assert result == (
-            "❌ Unknown subcommand: frobnicate. Use '.trivia help' for "
-            "usage information."
-        )
+        with pytest.raises(CommandArgError, match="must be one of"):
+            call_command(
+                beans.trivia_cmd,
+                "frobnicate blah",
+                nick="alice",
+                db=db,
+                conn=conn,
+            )
 
 
 class TestTrackTriviaAnswers:
@@ -1370,7 +1437,9 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd("", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd, "", nick="alice", db=db, conn=conn, event=event
+        )
         assert result == self.HELP
 
     def test_help_subcommand(self, mock_db):
@@ -1378,7 +1447,9 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd("help", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd, "help", nick="alice", db=db, conn=conn, event=event
+        )
         assert result == self.HELP
 
     def test_missing_arguments(self, mock_db):
@@ -1386,7 +1457,9 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd("trivia", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd, "trivia", nick="alice", db=db, conn=conn, event=event
+        )
         assert result == (
             "❌ Missing arguments. Use '.bet help' for usage information."
         )
@@ -1396,17 +1469,29 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd("foo bar", "alice", db, conn, event)
-        assert result == (
-            "❌ Unknown subcommand: foo. Use '.bet help' for usage information."
-        )
+        with pytest.raises(CommandArgError, match="must be one of"):
+            call_command(
+                beans.bet_cmd,
+                "foo bar",
+                nick="alice",
+                db=db,
+                conn=conn,
+                event=event,
+            )
 
     def test_trivia_list_empty(self, mock_db):
         create_trivia_tables(mock_db)
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd("trivia list", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd,
+            "trivia list",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
+        )
         assert result == "❌ No active bets found."
 
     def test_trivia_list_skips_deleted_trivia(self, mock_db):
@@ -1448,7 +1533,14 @@ class TestBetCmd:
                 timestamp=ts,
             )
 
-        result = beans.bet_cmd("trivia list", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd,
+            "trivia list",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
+        )
         assert result == [
             "🎯 Recent Trivias with Bets 🎯",
             'Trivia #10: "Question Ten..." - 2 bets, 🫘 30 beans total',
@@ -1460,7 +1552,14 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd("trivia 42", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd,
+            "trivia 42",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
+        )
         assert result == "❌ Trivia question #42 not found."
 
     def test_trivia_by_id_no_bets(self, mock_db):
@@ -1469,7 +1568,14 @@ class TestBetCmd:
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
-        result = beans.bet_cmd(f"trivia {tid}", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd,
+            f"trivia {tid}",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
+        )
         assert result == f"❌ No bets found for Trivia #{tid}."
 
     def test_trivia_by_id_with_bets_truncated(self, mock_db):
@@ -1495,7 +1601,14 @@ class TestBetCmd:
                 timestamp=ts,
             )
 
-        result = beans.bet_cmd(f"trivia {tid}", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd,
+            f"trivia {tid}",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
+        )
         assert result == [
             f"🎯 Bets for Trivia #{tid} 🎯",
             "Question: 2+2?",
@@ -1515,7 +1628,14 @@ class TestBetCmd:
         tid = beans.add_trivia("alice", "2+2?", "four", 5, db)
         beans.add_trivia_bet("bob", tid, 10, "winner", db)
 
-        result = beans.bet_cmd(f"trivia {tid}", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd,
+            f"trivia {tid}",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
+        )
         assert result == [
             f"🎯 Bets for Trivia #{tid} 🎯",
             "Question: 2+2?",
@@ -1529,7 +1649,14 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd("trivia user bob", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd,
+            "trivia user bob",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
+        )
         assert result == "❌ No bets found for user bob."
 
     def test_trivia_user_with_bets_and_deleted_trivia(self, mock_db):
@@ -1555,7 +1682,14 @@ class TestBetCmd:
             timestamp=datetime.datetime(2020, 1, 1),
         )
 
-        result = beans.bet_cmd("trivia user bob", "alice", db, conn, event)
+        result = call_command(
+            beans.bet_cmd,
+            "trivia user bob",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
+        )
         assert result == [
             "🎯 Bets placed by bob 🎯",
             "Total bet amount: 🫘 13 beans",
@@ -1569,8 +1703,13 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd(
-            "trivia 1 place 5 bean on", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            "trivia 1 place 5 bean on",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == (
             "❌ Missing arguments. Use '.bet help' for usage information."
@@ -1581,8 +1720,13 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd(
-            "trivia 1 wager 5 bean on bob", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            "trivia 1 wager 5 bean on bob",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == (
             "❌ Invalid syntax. Use '.bet trivia <trivia_id> place "
@@ -1594,8 +1738,13 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd(
-            "trivia abc place five beans on bob", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            "trivia abc place five beans on bob",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == "❌ Trivia ID and bet amount must be numbers."
 
@@ -1605,8 +1754,13 @@ class TestBetCmd:
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
         tid = beans.add_trivia("carol", "2+2?", "four", 5, db)
-        result = beans.bet_cmd(
-            f"trivia {tid} place 0 beans on bob", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            f"trivia {tid} place 0 beans on bob",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == "❌ Bet amount must be positive."
 
@@ -1615,8 +1769,13 @@ class TestBetCmd:
         db = mock_db.session()
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
-        result = beans.bet_cmd(
-            "trivia 999 place 5 beans on bob", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            "trivia 999 place 5 beans on bob",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == "❌ Trivia question #999 not found."
 
@@ -1626,8 +1785,13 @@ class TestBetCmd:
         conn = MockConn(nick="cloudbot")
         event = MagicMock()
         tid = beans.add_trivia("carol", "2+2?", "four", 5, db)
-        result = beans.bet_cmd(
-            f"trivia {tid} place 5 beans on Carol", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            f"trivia {tid} place 5 beans on Carol",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == "❌ You can't bet on the creator of the trivia."
 
@@ -1639,8 +1803,13 @@ class TestBetCmd:
         beans.set_beans("alice", 100, db)
         tid = beans.add_trivia("carol", "2+2?", "four", 5, db)
         beans.add_trivia_bet("alice", tid, 5, "bob", db)
-        result = beans.bet_cmd(
-            f"trivia {tid} place 10 beans on dave", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            f"trivia {tid} place 10 beans on dave",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == (
             "❌ You already bet 🫘 5 beans on bob for this trivia. Only "
@@ -1654,8 +1823,13 @@ class TestBetCmd:
         event = MagicMock()
         beans.set_beans("alice", 2, db)
         tid = beans.add_trivia("carol", "2+2?", "four", 5, db)
-        result = beans.bet_cmd(
-            f"trivia {tid} place 10 beans on bob", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            f"trivia {tid} place 10 beans on bob",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == "❌ You don't have enough beans. You have 🫘 2 beans."
 
@@ -1667,12 +1841,13 @@ class TestBetCmd:
         beans.set_beans("alice", 100, db)
         tid = beans.add_trivia("carol", "2+2?", "four", 5, db)
         with patch.object(beans, "transfer_beans", return_value=False):
-            result = beans.bet_cmd(
+            result = call_command(
+                beans.bet_cmd,
                 f"trivia {tid} place 10 beans on bob",
-                "alice",
-                db,
-                conn,
-                event,
+                nick="alice",
+                db=db,
+                conn=conn,
+                event=event,
             )
         assert result == "❌ Failed to transfer beans. Please try again."
 
@@ -1683,8 +1858,13 @@ class TestBetCmd:
         event = MagicMock()
         beans.set_beans("alice", 100, db)
         tid = beans.add_trivia("carol", "2+2?", "four", 5, db)
-        result = beans.bet_cmd(
-            f"trivia {tid} place 10 beans on Bob", "alice", db, conn, event
+        result = call_command(
+            beans.bet_cmd,
+            f"trivia {tid} place 10 beans on Bob",
+            nick="alice",
+            db=db,
+            conn=conn,
+            event=event,
         )
         assert result == (
             f"✅ You bet 🫘 10 beans on Bob to win trivia #{tid}."
@@ -1718,24 +1898,17 @@ class TestSlots:
         mock_bot_balance(mock_requests, bot_beans)
         return db, conn, bot
 
-    def test_invalid_bet_text(self, mock_db, mock_requests):
-        db, conn, bot = self._setup(mock_db, mock_requests, player_beans=None)
-        result = beans.slots(
-            "not-a-number",
-            "alice",
-            "#chan",
-            MagicMock(),
-            db,
-            conn,
-            bot,
-            MagicMock(),
-        )
-        assert result == "Please provide a valid number for your bet."
+    def test_invalid_bet_text(self):
+        spec = build_spec(beans.slots)
+        with pytest.raises(CommandArgError):
+            spec.parse_text("not-a-number")
+        assert spec.parse_text("") == {"bet": None}
+        assert spec.parse_text("7") == {"bet": 7}
 
     def test_below_min_bet(self, mock_db, mock_requests):
         db, conn, bot = self._setup(mock_db, mock_requests, player_beans=None)
         result = beans.slots(
-            "1", "alice", "#chan", MagicMock(), db, conn, bot, MagicMock()
+            "alice", "#chan", MagicMock(), db, conn, bot, bet=1
         )
         assert result == "Minimum bet is 3 beans."
 
@@ -1746,7 +1919,7 @@ class TestSlots:
         bot = make_bot()
         mock_requests.add("GET", users_url(), json=[])
         result = beans.slots(
-            "3", "alice", "#chan", MagicMock(), db, conn, bot, MagicMock()
+            "alice", "#chan", MagicMock(), db, conn, bot, bet=3
         )
         assert result == (
             "🚫 Could not fetch bot wallet balance! Try again later. 🚫"
@@ -1760,7 +1933,7 @@ class TestSlots:
         beans.set_beans("otheruser", 1000, db)
         mock_bot_balance(mock_requests, 400)
         result = beans.slots(
-            "1", "alice", "#chan", MagicMock(), db, conn, bot, MagicMock()
+            "alice", "#chan", MagicMock(), db, conn, bot, bet=1
         )
         assert result == "Minimum bet is 2 beans."
 
@@ -1772,14 +1945,14 @@ class TestSlots:
         beans.set_beans("otheruser", 1000, db)
         mock_bot_balance(mock_requests, 600)
         result = beans.slots(
-            "0", "alice", "#chan", MagicMock(), db, conn, bot, MagicMock()
+            "alice", "#chan", MagicMock(), db, conn, bot, bet=0
         )
         assert result == "Minimum bet is 1 beans."
 
     def test_insufficient_user_beans(self, mock_db, mock_requests):
         db, conn, bot = self._setup(mock_db, mock_requests, player_beans=None)
         result = beans.slots(
-            "3", "alice", "#chan", MagicMock(), db, conn, bot, MagicMock()
+            "alice", "#chan", MagicMock(), db, conn, bot, bet=3
         )
         assert result == (
             "You don't have enough beans to bet 3. You only have 0 beans."
@@ -1788,7 +1961,7 @@ class TestSlots:
     def test_insufficient_bot_payout(self, mock_db, mock_requests):
         db, conn, bot = self._setup(mock_db, mock_requests, bot_beans=50)
         result = beans.slots(
-            "3", "alice", "#chan", MagicMock(), db, conn, bot, MagicMock()
+            "alice", "#chan", MagicMock(), db, conn, bot, bet=3
         )
         assert result == (
             "The bot doesn't have enough beans to pay out a potential "
@@ -1799,14 +1972,7 @@ class TestSlots:
         db, conn, bot = self._setup(mock_db, mock_requests)
         with patch.object(beans, "transfer_beans", return_value=False):
             result = beans.slots(
-                "3",
-                "alice",
-                "#chan",
-                MagicMock(),
-                db,
-                conn,
-                bot,
-                MagicMock(),
+                "alice", "#chan", MagicMock(), db, conn, bot, bet=3
             )
         assert result == (
             "You don't have enough beans to play! You need at least 3 "
@@ -1821,14 +1987,7 @@ class TestSlots:
             side_effect=["🍒", "🍋", "🍉", "🍋", "🍉", "🍒"],
         ):
             result = beans.slots(
-                "3",
-                "alice",
-                "#chan",
-                MagicMock(),
-                db,
-                conn,
-                bot,
-                MagicMock(),
+                "alice", "#chan", MagicMock(), db, conn, bot, bet=3
             )
         assert result == (
             "🍒 🍋 | 🍋 🍉 | 🍉 🍒 Better luck next time! You lost 3 beans."
@@ -1843,14 +2002,7 @@ class TestSlots:
             side_effect=["🍒", "🍋", "🍉", "🍒", "🍇", "🍊"],
         ):
             result = beans.slots(
-                "3",
-                "alice",
-                "#chan",
-                MagicMock(),
-                db,
-                conn,
-                bot,
-                MagicMock(),
+                "alice", "#chan", MagicMock(), db, conn, bot, bet=3
             )
         assert result == (
             "🍒 🍒 | 🍋 🍇 | 🍉 🍊 Almost there! Keep trying! You lost 3 beans."
@@ -1865,14 +2017,7 @@ class TestSlots:
             side_effect=["🍒", "🍋", "🍉", "🍒", "🍋", "🍓"],
         ):
             result = beans.slots(
-                "3",
-                "alice",
-                "#chan",
-                MagicMock(),
-                db,
-                conn,
-                bot,
-                MagicMock(),
+                "alice", "#chan", MagicMock(), db, conn, bot, bet=3
             )
         assert result == (
             "🍒 🍒 | 🍋 🍋 | 🍉 🍓 🎰 You won! Check your DM to claim "
@@ -1888,14 +2033,7 @@ class TestSlots:
             side_effect=["🍒", "🍋", "🍉", "🍒", "🍋", "🍓"],
         ):
             result = beans.slots(
-                "3",
-                "alice",
-                "#chan",
-                MagicMock(),
-                db,
-                conn,
-                bot,
-                MagicMock(),
+                "alice", "#chan", MagicMock(), db, conn, bot, bet=3
             )
         assert result == (
             "🍒 🍒 | 🍋 🍋 | 🍉 🍓 🎰 You won! But "
@@ -1912,14 +2050,7 @@ class TestSlots:
             side_effect=["🍒", "🍒", "🍒", "🍒", "🍒", "🍒"],
         ):
             result = beans.slots(
-                "3",
-                "alice",
-                "#chan",
-                MagicMock(),
-                db,
-                conn,
-                bot,
-                MagicMock(),
+                "alice", "#chan", MagicMock(), db, conn, bot, bet=3
             )
         assert result == (
             "🍒 🍒 | 🍒 🍒 | 🍒 🍒 🎰 JACKPOT! Check your DM to claim "
@@ -1950,14 +2081,7 @@ class TestSlots:
             side_effect=["🍒", "🍒", "🍒", "🍒", "🍒", "🍒"],
         ):
             result = beans.slots(
-                "3",
-                "alice",
-                "#chan",
-                MagicMock(),
-                db,
-                conn,
-                bot,
-                MagicMock(),
+                "alice", "#chan", MagicMock(), db, conn, bot, bet=3
             )
         assert result == (
             "🍒 🍒 | 🍒 🍒 | 🍒 🍒 🎰 JACKPOT! But ❌ Bot doesn't have "
@@ -1975,19 +2099,12 @@ class TestSlots:
                 beans.random, "choice", side_effect=list(loss_calls)
             ):
                 result = beans.slots(
-                    "",
-                    "alice",
-                    "#chan",
-                    MagicMock(),
-                    db,
-                    conn,
-                    bot,
-                    MagicMock(),
+                    "alice", "#chan", MagicMock(), db, conn, bot
                 )
             assert result.endswith("Better luck next time! You lost 3 beans.")
 
         cooldown_entered = beans.slots(
-            "", "alice", "#chan", MagicMock(), db, conn, bot, MagicMock()
+            "alice", "#chan", MagicMock(), db, conn, bot
         )
         assert cooldown_entered == (
             "⏳ You entered a cooldown! You can play again in 22.00 "
@@ -1995,7 +2112,7 @@ class TestSlots:
         )
 
         still_waiting = beans.slots(
-            "", "alice", "#chan", MagicMock(), db, conn, bot, MagicMock()
+            "alice", "#chan", MagicMock(), db, conn, bot
         )
         assert still_waiting == (
             "⏳ You need to wait 22 seconds before playing again. "
@@ -2008,14 +2125,7 @@ class TestSlots:
             side_effect=["🍒", "🍋", "🍉", "🍒", "🍋", "🍓"],
         ):
             win_during_cooldown = beans.slots(
-                "6",
-                "alice",
-                "#chan",
-                MagicMock(),
-                db,
-                conn,
-                bot,
-                MagicMock(),
+                "alice", "#chan", MagicMock(), db, conn, bot, bet=6
             )
         assert win_during_cooldown == (
             "🍒 🍒 | 🍋 🍋 | 🍉 🍓 🎰 You won! Check your DM to claim "

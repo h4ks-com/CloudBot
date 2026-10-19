@@ -18,14 +18,15 @@ from decimal import Decimal
 from numbers import Real
 from operator import itemgetter
 from threading import RLock
-from typing import Any, TypeVar, cast
+from typing import Annotated, Any, TypeVar, cast
 
 from requests import Response
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, web
-from cloudbot.util.func_utils import call_with_args
 from cloudbot.util.web import get_session
 
 
@@ -608,8 +609,8 @@ ALIASES = (
 
 def alias_wrapper(alias):
     def func(text, event):
-        event.text = alias.name + " " + text
-        return call_with_args(crypto_command, event)
+        currency = (text.split() or ["USD"])[0]
+        return quote_reply(event, alias.name, currency.upper())
 
     func.__doc__ = f"""- Returns the current {alias.name} value"""
     func.__name__ = alias.name + "_alias"
@@ -619,16 +620,18 @@ def alias_wrapper(alias):
 
 # main command
 @hook.command("crypto", "cryptocurrency")
-def crypto_command(text, event):
-    """<symbol> [currency] - Returns current value of a cryptocurrency"""
-    args = text.split()
-    ticker = args.pop(0)
+def crypto_command(
+    event: CommandEvent,
+    symbol: Annotated[str, Arg("Cryptocurrency symbol")],
+    currency: Annotated[
+        str, Arg("Fiat currency to quote in", rest=False)
+    ] = "USD",
+):
+    """Returns current value of a cryptocurrency"""
+    return quote_reply(event, symbol, currency.upper())
 
-    if args:
-        currency = args.pop(0).upper()
-    else:
-        currency = "USD"
 
+def quote_reply(event, ticker, currency):
     try:
         data = api.get_quote(ticker, currency)
     except UnknownFiatCurrencyError as e:

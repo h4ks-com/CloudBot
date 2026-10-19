@@ -1,13 +1,23 @@
 import base64
 import dataclasses
+from typing import Annotated, Literal
 from unittest.mock import MagicMock
 
 import pytest
 from irclib.parser import Message, MessageTag
 
-from cloudbot.event import Event
+from cloudbot import hook
+from cloudbot.clients.irc import _IrcProtocol
+from cloudbot.event import CommandEvent, Event
+from cloudbot.hook import Arg
 from cloudbot.plugin import PluginManager
 from cloudbot.plugin_hooks import CommandHook, CommandInfo
+from cloudbot.util import HOOK_ATTR
+from cloudbot.util.command_args import (
+    NAMED_ARGS_TAG,
+    build_spec,
+    decode_named_args,
+)
 from cloudbot.util.irc import is_channel
 from plugins.core import bot_cmds
 
@@ -48,12 +58,19 @@ class _RecordingConn:
         self.cmd("TAGMSG", target, tags=tags)
 
 
-def make_command_hook(name, aliases=(), doc=None, permissions=()):
+def make_command_hook(
+    name, aliases=(), doc=None, permissions=(), takes_text=False
+):
     def fn():
         pass
 
+    def fn_text(text):
+        pass
+
     raw = MagicMock()
-    raw.function = fn
+    func = fn_text if takes_text else fn
+    raw.function = func
+    raw.spec = build_spec(func)
     raw.main_alias = name
     raw.aliases = [name, *aliases]
     raw.doc = doc
@@ -112,6 +129,7 @@ def test_command_hook_info():
         description="does foo",
         aliases=["bar", "baz"],
         permissions=["admin"],
+        takes_text=False,
     )
 
 
@@ -426,3 +444,116 @@ async def test_handle_tagmsg_ignores_own_echo(monkeypatch):
     await bot_cmds.handle_tagmsg(conn, event)
 
     assert sent == []
+
+
+def ping_cmd(
+    reply,
+    host: Annotated[str, Arg("Host to ping")],
+    count: Annotated[int, Arg("How many pings")] = 5,
+    mode: Annotated[Literal["fast", "slow"] | None, Arg("Speed")] = None,
+):
+    """pings <host>"""
+
+
+def _typed_hook(func):
+    hook.command()(func)
+    return CommandHook(MagicMock(), getattr(func, HOOK_ATTR).pop("command"))
+
+
+def test_build_command_list_options_from_args():
+    bot = MagicMock()
+    bot.plugin_manager.command_infos.return_value = [
+        _typed_hook(ping_cmd).info(),
+        make_command_hook("plain", takes_text=True).info(),
+        make_command_hook("bare").info(),
+    ]
+    commands = bot_cmds.build_command_list(bot, ".")["commands"]
+    assert isinstance(commands, list)
+    by_name = {c["name"]: c for c in commands}
+    assert by_name["ping_cmd"]["options"] == [
+        {
+            "name": "host",
+            "type": "string",
+            "required": True,
+            "description": "Host to ping",
+        },
+        {
+            "name": "count",
+            "type": "int",
+            "required": False,
+            "description": "How many pings",
+        },
+        {
+            "name": "mode",
+            "type": "string",
+            "required": False,
+            "description": "Speed",
+            "choices": ["fast", "slow"],
+        },
+    ]
+    assert by_name["plain"]["options"] == [bot_cmds._DEFAULT_OPTION]
+    assert by_name["bare"]["options"] == []
+
+
+def _invoke(monkeypatch, options):
+    """Run an invocation through bot_cmds and the command dispatch, returning
+    the error lines sent and the parsed Arg values (None if nothing ran)."""
+    cmd_hook = _typed_hook(ping_cmd)
+    conn = _RecordingConn()
+    conn.bot = MagicMock()
+    conn.bot.plugin_manager.commands = {"ping_cmd": cmd_hook}
+    replayed = []
+    conn._protocol = MagicMock()
+    conn._protocol.parse_line.side_effect = replayed.append
+    monkeypatch.setattr(bot_cmds.async_util, "wrap_future", MagicMock())
+    event = MagicMock()
+    event.nick = "alice"
+    event.mask = "alice!u@h"
+
+    bot_cmds._dispatch_invocation(
+        conn,
+        event,
+        {"name": "ping_cmd", "options": options},
+        "mid",
+        raw_target="#chan",
+    )
+    if not replayed:
+        return conn.lines, None
+
+    line_event = _IrcProtocol(conn=MagicMock()).parse_line(replayed[0])
+    cmd_event = CommandEvent(
+        hook=cmd_hook,
+        text=line_event.content.split(None, 1)[1],
+        triggered_command="ping_cmd",
+        cmd_prefix=".",
+        base_event=line_event,
+        named_args=decode_named_args(line_event.tag_value(NAMED_ARGS_TAG)),
+    )
+    assert cmd_event.parse_command_args()
+    return conn.lines, cmd_event.command_args
+
+
+def test_invocation_named_round_trip(monkeypatch):
+    lines, values = _invoke(
+        monkeypatch, {"host": "a b", "count": "3", "mode": "SLOW"}
+    )
+    assert lines == []
+    assert values == {"host": "a b", "count": 3, "mode": "slow"}
+
+
+def test_invocation_text_from_older_client(monkeypatch):
+    lines, values = _invoke(monkeypatch, {"text": "example.com 2"})
+    assert lines == []
+    assert values == {"host": "example.com", "count": 2, "mode": None}
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"host": "a", "count": "many"}, {"text": "a b c d"}, {"bogus": 1}],
+)
+def test_invocation_invalid_args_fail(monkeypatch, options):
+    lines, values = _invoke(monkeypatch, options)
+    assert values is None
+    assert len(lines) == 1
+    assert "+draft/bot-cmd-error=INVALID_CMD_ARGS" in lines[0]
+    assert "+reply=mid" in lines[0]

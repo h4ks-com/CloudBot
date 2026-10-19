@@ -17,8 +17,11 @@ License:
 
 import base64
 import binascii
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 
 def encode(password, text):
@@ -48,26 +51,19 @@ def decode(password, encoded, event):
 
 
 @hook.command("cypher", "cipher")
-def cypher(text, event):
-    """<pass> <string> - cyphers <string> with <password>"""
-    split = text.split(None, 1)
-    if len(split) < 2:
-        event.notice_doc()
-        return None
-
-    password = split[0]
-    plaintext = split[1]
-    return encode(password, plaintext)
+def cypher(
+    password: Annotated[str, Arg("Password to cypher with")],
+    string: Annotated[str, Arg("Text to cypher")],
+):
+    """cyphers <string> with <password>"""
+    return encode(password, string)
 
 
 @hook.command("decypher", "decipher")
-def decypher(text, event):
-    """<pass> <string> - decyphers <string> with <password>"""
-    split = text.split(None, 1)
-    if len(split) < 2:
-        event.notice_doc()
-        return None
-
-    password = split[0]
-    encoded = split[1]
-    return decode(password, encoded, event)
+def decypher(
+    password: Annotated[str, Arg("Password it was cyphered with")],
+    string: Annotated[str, Arg("Text to decypher")],
+    event: CommandEvent,
+):
+    """decyphers <string> with <password>"""
+    return decode(password, string, event)

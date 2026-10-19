@@ -1,15 +1,32 @@
 import inspect
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from cloudbot.util.command_args import build_spec
 from cloudbot.util.func_utils import call_with_args
 
 __all__ = (
     "HookResult",
+    "call_command",
+    "command_hook",
     "wrap_hook_response",
     "get_data_file",
 )
+
+
+def command_hook(func: Callable[..., object]) -> MagicMock:
+    """A stand-in hook whose spec parses arguments the way func declares them."""
+    hook = MagicMock()
+    hook.spec = build_spec(func)
+    return hook
+
+
+def call_command(
+    func: Callable[..., object], text: str, **injected: object
+) -> object:
+    """Run a command on raw chat text, filling its arguments like the bot does."""
+    return func(**build_spec(func).parse_text(text), **injected)
 
 
 class HookResult:

@@ -5,7 +5,7 @@ from responses.matchers import query_param_matcher
 
 from cloudbot.event import CommandEvent
 from plugins import librefm
-from tests.util import wrap_hook_response
+from tests.util import command_hook, wrap_hook_response
 from tests.util.mock_db import MockDB
 
 
@@ -145,7 +145,7 @@ class TestTopArtists:
             },
         )
 
-        out = librefm.topweek("", "foo")
+        out = librefm.topweek("foo")
 
         assert out == "bar's favorite artists: foo [5] bar [2] "
 
@@ -182,7 +182,7 @@ class TestTopTrack:
             },
         )
 
-        out = librefm.toptrack("", "foo")
+        out = librefm.toptrack("foo")
 
         expected = "bar's favorite songs: some song by some artist listened to 10 times. "
 
@@ -198,10 +198,9 @@ def test_save_account(
 ):
     librefm.table.create(mock_db.engine)
     librefm.load_cache(mock_db.session())
-    hook = MagicMock()
     event = CommandEvent(
         bot=mock_bot,
-        hook=hook,
+        hook=command_hook(librefm.librefm),
         text="myaccount",
         triggered_command="np",
         cmd_prefix=".",
@@ -254,6 +253,7 @@ def test_save_account(
         ],
     )
 
+    assert event.parse_command_args()
     results = wrap_hook_response(librefm.librefm, event)
     assert results == [
         (
@@ -276,10 +276,9 @@ def test_update_account(
     librefm.table.create(mock_db.engine)
     mock_db.add_row(librefm.table, nick="foo", acc="oldaccount")
     librefm.load_cache(mock_db.session())
-    hook = MagicMock()
     event = CommandEvent(
         bot=mock_bot,
-        hook=hook,
+        hook=command_hook(librefm.librefm),
         text="myaccount",
         triggered_command="np",
         cmd_prefix=".",
@@ -332,6 +331,7 @@ def test_update_account(
         ],
     )
 
+    assert event.parse_command_args()
     results = wrap_hook_response(librefm.librefm, event)
     assert results == [
         (

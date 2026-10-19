@@ -7,9 +7,12 @@ Author:
 
 from collections import defaultdict
 from collections.abc import Callable
+from typing import Annotated, Literal
 
 from cloudbot import hook
-from cloudbot.hook import Priority
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg, Priority
 from cloudbot.util import web
 from cloudbot.util.formatting import gen_markdown_table
 
@@ -103,23 +106,27 @@ stats_funcs: dict[str, tuple[Handler, int]] = {
 
 
 @hook.command(permissions=["snoonetstaff", "botcontrol"])
-def hookstats(text, bot, notice_doc):
-    """{global|network <name>|channel <network> <channel>|hook <hook>} - Get hook usage statistics"""
-    args = text.split()
-    stats_type = args.pop(0).lower()
-
-    data = get_stats(bot)
-
-    try:
-        handler, arg_count = stats_funcs[stats_type]
-    except LookupError:
-        notice_doc()
-        return None
+def hookstats(
+    bot: CloudBot,
+    event: CommandEvent,
+    stats_type: Annotated[
+        Literal["global", "network", "channel", "hook"],
+        Arg("Kind of statistics to show"),
+    ],
+    scope: Annotated[
+        str | None,
+        Arg("Network name, network and channel, or hook name"),
+    ] = None,
+):
+    """Get hook usage statistics"""
+    args = (scope or "").split()
+    handler, arg_count = stats_funcs[stats_type]
 
     if len(args) < arg_count:
-        notice_doc()
+        event.notice_doc()
         return None
 
+    data = get_stats(bot)
     headers, data = handler(data, *args[:arg_count])
 
     if not data:

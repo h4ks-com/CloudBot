@@ -1,7 +1,10 @@
 import html
 import re
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import http
 
 twitch_re = re.compile(r"(.*:)//(twitch.tv|www.twitch.tv)(:[0-9]+)?(.*)", re.I)
@@ -103,15 +106,17 @@ def twitch_url(match, reply):
 
 
 @hook.command("twitch", "twitchtv")
-def twitch(text, reply):
-    """<channel name> - Show whether the channel is live"""
-    text = text.split("/")[-1]
-    if test_name(text):
-        location = text
+def twitch(
+    channel: Annotated[str, Arg("Channel name or URL")], event: CommandEvent
+):
+    """Show whether the channel is live"""
+    name = channel.split("/")[-1]
+    if test_name(name):
+        location = name
     else:
         return "Not a valid channel name."
     return (
-        twitch_lookup(location, reply)
+        twitch_lookup(location, event.reply)
         .split("(")[-1]
         .split(")")[0]
         .replace("Online now! ", "")

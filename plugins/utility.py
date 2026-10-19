@@ -22,8 +22,11 @@ import random
 import re
 import shlex
 import urllib.parse
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, formatting, web
 
 COLORS = collections.OrderedDict(
@@ -61,13 +64,13 @@ def translate(text, dic):
 
 
 @hook.command("qrcode", "qr")
-def qrcode(text):
-    """<link> - returns a link to a QR code image for <link>"""
+def qrcode(link: Annotated[str, Arg("Link to encode")]):
+    """returns a link to a QR code image for the link"""
 
     args = {
         "cht": "qr",  # chart type (QR)
         "chs": "200x200",  # dimensions
-        "chl": text,  # data
+        "chl": link,  # data
     }
 
     argstring = urllib.parse.urlencode(args)
@@ -80,68 +83,70 @@ def qrcode(text):
 
 
 @hook.command("capitalize", "capitalise")
-def capitalize(text):
-    """<string> - Capitalizes <string>."""
-    return ". ".join([sentence.capitalize() for sentence in text.split(". ")])
+def capitalize(string: Annotated[str, Arg("Text to process")]):
+    """Capitalizes the string."""
+    return ". ".join([sentence.capitalize() for sentence in string.split(". ")])
 
 
 @hook.command()
-def upper(text):
-    """<string> - Convert string to uppercase."""
-    return text.upper()
+def upper(string: Annotated[str, Arg("Text to process")]):
+    """Convert string to uppercase."""
+    return string.upper()
 
 
 @hook.command()
-def lower(text):
-    """<string> - Convert string to lowercase."""
-    return text.lower()
+def lower(string: Annotated[str, Arg("Text to process")]):
+    """Convert string to lowercase."""
+    return string.lower()
 
 
 @hook.command()
-def titlecase(text):
-    """<string> - Convert string to title case."""
-    return text.title()
+def titlecase(string: Annotated[str, Arg("Text to process")]):
+    """Convert string to title case."""
+    return string.title()
 
 
 @hook.command()
-def swapcase(text):
-    """<string> - Swaps the capitalization of <string>."""
-    return text.swapcase()
+def swapcase(string: Annotated[str, Arg("Text to process")]):
+    """Swaps the capitalization of the string."""
+    return string.swapcase()
 
 
 @hook.command("aesthetic", "vapor", "fw")
-def fullwidth(text):
-    """<string> - Converts <string> to full width characters."""
+def fullwidth(string: Annotated[str, Arg("Text to process")]):
+    """Converts the string to full width characters."""
     HALFWIDTH_TO_FULLWIDTH = str.maketrans(
         '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&()*+,-./:;<=>?@[]^_`{|}~ ',
         "０１２３４５６７８９ａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺ！゛＃＄％＆（）＊＋、ー。／：；〈＝〉？＠［］＾＿‘｛｜｝～　",
     )
-    return text.translate(HALFWIDTH_TO_FULLWIDTH)
+    return string.translate(HALFWIDTH_TO_FULLWIDTH)
 
 
 # encoding
 
 
 @hook.command("rot13")
-def rot13_encode(text):
-    """<string> - Encode <string> with rot13."""
+def rot13_encode(string: Annotated[str, Arg("Text to process")]):
+    """Encode the string with rot13."""
     encoder = codecs.getencoder("rot-13")
-    return encoder(text)[0]
+    return encoder(string)[0]
 
 
 @hook.command("base64")
-def base64_encode(text):
-    """<string> - Encode <string> with base64."""
-    return base64.b64encode(text.encode()).decode()
+def base64_encode(string: Annotated[str, Arg("Text to process")]):
+    """Encode the string with base64."""
+    return base64.b64encode(string.encode()).decode()
 
 
 @hook.command("debase64", "unbase64")
-def base64_decode(text, notice):
-    """<string> - Decode <string> with base64."""
+def base64_decode(
+    event: CommandEvent, string: Annotated[str, Arg("Text to process")]
+):
+    """Decode the string with base64."""
     try:
-        decoded = base64.b64decode(text.encode()).decode(errors="ignore")
+        decoded = base64.b64decode(string.encode()).decode(errors="ignore")
     except binascii.Error:
-        notice(f"Invalid base64 string '{text}'")
+        event.notice(f"Invalid base64 string '{string}'")
         return None
 
     if repr(decoded)[1:-1] != decoded:
@@ -154,56 +159,56 @@ def base64_decode(text, notice):
 
 
 @hook.command("isbase64", "checkbase64")
-def base64_check(text):
-    """<string> - Checks if <string> is a valid base64 encoded string"""
+def base64_check(string: Annotated[str, Arg("Text to process")]):
+    """Checks if the string is a valid base64 encoded string"""
     try:
-        base64.b64decode(text.encode())
+        base64.b64decode(string.encode())
     except binascii.Error:
-        return f"'{text}' is not a valid base64 encoded string"
+        return f"'{string}' is not a valid base64 encoded string"
     else:
-        return f"'{text}' is a valid base64 encoded string"
+        return f"'{string}' is a valid base64 encoded string"
 
 
 @hook.command()
-def unescape(text):
-    """<string> - Unicode unescapes <string>."""
+def unescape(string: Annotated[str, Arg("Text to process")]):
+    """Unicode unescapes the string."""
     decoder = codecs.getdecoder("unicode_escape")
-    return " ".join(decoder(text)[0].splitlines())
+    return " ".join(decoder(string)[0].splitlines())
 
 
 @hook.command()
-def escape(text):
-    """<string> - Unicode escapes <string>."""
+def escape(string: Annotated[str, Arg("Text to process")]):
+    """Unicode escapes the string."""
     encoder = codecs.getencoder("unicode_escape")
-    return " ".join(encoder(text)[0].decode().splitlines())
+    return " ".join(encoder(string)[0].decode().splitlines())
 
 
 # length
 
 
 @hook.command()
-def length(text):
-    """<string> - Gets the length of <string>"""
-    return f"The length of that string is {len(text)} characters."
+def length(string: Annotated[str, Arg("Text to process")]):
+    """Gets the length of the string"""
+    return f"The length of that string is {len(string)} characters."
 
 
 # reverse
 
 
 @hook.command()
-def reverse(text):
-    """<string> - Reverses <string>."""
-    return text[::-1]
+def reverse(string: Annotated[str, Arg("Text to process")]):
+    """Reverses the string."""
+    return string[::-1]
 
 
 # hashing
 
 
 @hook.command("hash")
-def hash_command(text):
-    """<string> - Returns hashes of <string>."""
+def hash_command(string: Annotated[str, Arg("Text to process")]):
+    """Returns hashes of the string."""
     return ", ".join(
-        x + ": " + getattr(hashlib, x)(text.encode("utf-8")).hexdigest()
+        x + ": " + getattr(hashlib, x)(string.encode("utf-8")).hexdigest()
         for x in ["md5", "sha1", "sha256"]
     )
 
@@ -212,15 +217,15 @@ def hash_command(text):
 
 
 @hook.command()
-def munge(text):
-    """<text> - Munges up <text>."""
+def munge(text: Annotated[str, Arg("Text to process")]):
+    """Munges up the text."""
     return formatting.munge(text)
 
 
 # Based on plugin by FurCode - <https://github.com/FurCode/RoboCop2>
 @hook.command()
-def derpify(text):
-    """<text> - returns some amusing responses from your input."""
+def derpify(text: Annotated[str, Arg("Text to process")]):
+    """returns some amusing responses from your input."""
     string = text.upper()
     pick_the = random.choice(["TEH", "DA"])
     pick_e = random.choice(["E", "3", "A"])
@@ -272,15 +277,15 @@ def derpify(text):
 
 # colors
 @hook.command()
-def color_parse(text):
-    """<text> - Parse colors and formatting in <text> using $(thing) syntax"""
+def color_parse(text: Annotated[str, Arg("Text to process")]):
+    """Parse colors and formatting in the text using $(thing) syntax"""
     return colors.parse(text)
 
 
 # colors - based on code by Reece Selwood - <https://github.com/hitzler/homero>
 @hook.command()
-def rainbow(text):
-    """<text> - Gives <text> rainbow colors."""
+def rainbow(text: Annotated[str, Arg("Text to process")]):
+    """Gives the text rainbow colors."""
     text = str(text)
     text = strip(text)
     col = list(COLORS.items())
@@ -295,8 +300,8 @@ def rainbow(text):
 
 
 @hook.command()
-def wrainbow(text):
-    """<text> - Gives each word in <text> rainbow colors."""
+def wrainbow(text: Annotated[str, Arg("Text to process")]):
+    """Gives each word in the text rainbow colors."""
     text = str(text)
     col = list(COLORS.items())
     text = strip(text).split(" ")
@@ -308,8 +313,8 @@ def wrainbow(text):
 
 
 @hook.command()
-def usa(text):
-    """<text> - Makes <text> more patriotic."""
+def usa(text: Annotated[str, Arg("Text to process")]):
+    """Makes the text more patriotic."""
     text = strip(text)
     c = [COLORS["red"], "\x0300", COLORS["blue"]]
     l = len(c)
@@ -320,8 +325,8 @@ def usa(text):
 
 
 @hook.command()
-def superscript(text):
-    """<text> - Makes <text> superscript."""
+def superscript(text: Annotated[str, Arg("Text to process")]):
+    """Makes the text superscript."""
     regular = "abcdefghijklmnoprstuvwxyzABDEGHIJKLMNOPRTUVW0123456789+-=()"
     super_script = "ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿᵀᵁⱽᵂ⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾"
     result = []
@@ -356,7 +361,7 @@ def levenshtein_distance(s1, s2):
 
 
 @hook.command("distance", "levenshtein")
-def distance_command(text):
+def distance_command(text: str):
     """<string1> <string2> - Calculate the Levenshtein distance between two strings. Arguments can be quoted."""
     try:
         args = shlex.split(text)

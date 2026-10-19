@@ -9,6 +9,7 @@ from datetime import timedelta
 
 import pytest
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import gemini, ratelimit
 from tests.core_tests.test_plugin_hooks import get_plugins
 
@@ -74,10 +75,9 @@ def test_gemt_missing_key(mock_bot, db):
     assert "Gemini API key not configured" in res
 
 
-def test_gemt_empty_prompt(mock_bot, db):
-    _set_key(mock_bot)
-    res = gemini.gemt_command("   ", "nick", "#chan", db)
-    assert res == "Usage: .gemt <text>"
+def test_gemt_blank_prompt_is_rejected_by_the_parser():
+    with pytest.raises(CommandArgError):
+        build_spec(gemini.gemt_command).parse_text("   ")
 
 
 # ---------- .gemt: happy path + recording ----------

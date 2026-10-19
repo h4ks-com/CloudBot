@@ -11,8 +11,12 @@ License:
 """
 
 import json
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, textgen
 
 
@@ -26,13 +30,19 @@ def get_generator(_json):
 
 
 @hook.command(autohelp=False)
-def namegen(text, bot, notice):
-    """[generator|list] - generates some names using the chosen generator, or lists all generators
+def namegen(
+    bot: CloudBot,
+    event: CommandEvent,
+    generator_name: Annotated[
+        str | None, Arg("Name generator to use, or list to see them all")
+    ] = None,
+):
+    """generates some names using the chosen generator, or lists all generators
     if 'list' is specified
     """
 
     # clean up the input
-    inp = text.strip().lower()
+    inp = (generator_name or "").strip().lower()
 
     # get a list of available name generators
     path = bot.data_path / "name_files"
@@ -45,7 +55,7 @@ def namegen(text, bot, notice):
     if inp == "list":
         message = "Available generators: "
         message += formatting.get_text_list(all_modules, "and")
-        notice(message)
+        event.notice(message)
         return None
 
     if inp:

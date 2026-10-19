@@ -8,11 +8,14 @@ Commands:
 import logging
 import re
 from pathlib import Path
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
 from cloudbot.agent.sketchfab_client import download_model, search
+from cloudbot.bot import CloudBot
+from cloudbot.hook import Arg
 from cloudbot.util import web
 
 logger = logging.getLogger("cloudbot")
@@ -97,17 +100,17 @@ def _process_result(api_key: str, model: dict) -> str:
     )
 
 
-@hook.command("sketchfab", "sk", autohelp=False)
-def sketchfab_search(text: str, nick: str, bot, reply) -> str:
-    """<query> - Search Sketchfab for free downloadable 3D models"""
+@hook.command("sketchfab", "sk")
+def sketchfab_search(
+    query: Annotated[str, Arg("Model to search for")], nick: str, bot: CloudBot
+) -> str:
+    """Search Sketchfab for free downloadable 3D models"""
     api_key = bot.config.get_api_key("sketchfab") or ""
     if not api_key:
         return "Sketchfab API key not configured."
-    if not text.strip():
-        return "Usage: .sk <query>"
 
     try:
-        results = search(api_key, text.strip())
+        results = search(api_key, query.strip())
     except requests.RequestException as e:
         return f"Search error: {e}"
 
@@ -119,7 +122,7 @@ def sketchfab_search(text: str, nick: str, bot, reply) -> str:
 
 
 @hook.command("sketchfabn", "skn", autohelp=False)
-def sketchfab_next(nick: str, bot, reply) -> str:
+def sketchfab_next(nick: str, bot: CloudBot) -> str:
     """- Next Sketchfab search result"""
     api_key = bot.config.get_api_key("sketchfab") or ""
     if not api_key:

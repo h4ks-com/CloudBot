@@ -2,12 +2,14 @@ import json
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Annotated, Literal
 from urllib.parse import quote, unquote
 
 import requests
 from bs4 import BeautifulSoup
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.queue import Queue
 from cloudbot.util.web import get_session
 
@@ -16,7 +18,14 @@ HEADERS = {
 }
 BASE_URL = "https://www.metacritic.com"
 # Metacritic's own search page is Cloudflare-protected; use DuckDuckGo instead.
-CATEGORY_MAP = {"all": None, "games": 13, "movies": 2, "shows": 1, "people": 3}
+Category = Literal["all", "games", "movies", "shows", "people"]
+CATEGORY_MAP: dict[Category, int | None] = {
+    "all": None,
+    "games": 13,
+    "movies": 2,
+    "shows": 1,
+    "people": 3,
+}
 # Category slugs used in Metacritic URLs, for filtering DDG results
 CATEGORY_SLUG = {
     "games": "/game/",
@@ -126,11 +135,15 @@ def get_queue():
 
 
 @hook.command("metan", autohelp=False)
-def metan(text, chan, nick):
-    """[nick] - gets the next result from the last metacritic search"""
-    args = text.strip().split()
-    if len(args) > 0:
-        nick = args[0]
+def metan(
+    chan: str,
+    nick: str,
+    user: Annotated[
+        str | None, Arg("Nick whose search to continue", kind="user")
+    ] = None,
+):
+    """gets the next result from the last metacritic search"""
+    nick = user or nick
 
     results_queue = get_queue()
     urls = results_queue[chan][nick]
@@ -150,25 +163,21 @@ def metan(text, chan, nick):
 
 
 @hook.command("metacritic", "meta")
-def metacritic(text, chan, nick):
-    """[list|all|games|movies|shows|people] <title> - gets rating for <title> from
-    metacritic on the specified catetory"""
+def metacritic(
+    chan: str,
+    nick: str,
+    *,
+    category: Annotated[
+        Category | None, Arg("Category to search, all by default")
+    ] = None,
+    title: Annotated[str, Arg("Title to rate")],
+):
+    """gets the metacritic rating of a title in a category"""
     results_queue = get_queue()
-    args = text.strip()
-
-    all_platforms = list(CATEGORY_MAP.keys())
-    if args.casefold() == "list".casefold():
-        return "Categoties: {}".format(", ".join(all_platforms))
-
-    first = args.split()[0]
-    category = None
-    query = args
-    if first in CATEGORY_MAP:
-        category = CATEGORY_MAP[first]
-        query = " ".join(args.split()[1:])
-
-    results_queue[chan][nick] = search_metacritic(query, category)
-    return metan("", chan, nick)
+    results_queue[chan][nick] = search_metacritic(
+        title, CATEGORY_MAP[category] if category else None
+    )
+    return metan(chan, nick)
 
 
 if __name__ == "__main__":

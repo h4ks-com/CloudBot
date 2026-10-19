@@ -8,6 +8,7 @@ def cmd_autohelp(bot, event, _hook):
         _hook.type == "command"
         and _hook.auto_help
         and not event.text
+        and not event.named_args
         and _hook.doc is not None
     ):
         event.notice_doc()

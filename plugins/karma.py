@@ -1,6 +1,7 @@
 import operator
 import re
 from collections import defaultdict
+from typing import Annotated, Literal
 
 import sqlalchemy
 from sqlalchemy import (
@@ -12,9 +13,11 @@ from sqlalchemy import (
     and_,
     select,
 )
+from sqlalchemy.orm import Session
 from sqlalchemy.sql.base import Executable
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import database
 
 karmaplus_re = re.compile(r"^.*\+\+$")
@@ -68,9 +71,14 @@ def update_score(nick, chan, thing, score, db):
 
 
 @hook.command("pp", "addpoint")
-def addpoint(text, nick, chan, db):
-    """<thing> - adds a point to the <thing>"""
-    update_score(nick, chan, text, 1, db)
+def addpoint(
+    thing: Annotated[str, Arg("What to add a point to")],
+    nick: str,
+    chan: str,
+    db: Session,
+):
+    """adds a point to the <thing>"""
+    update_score(nick, chan, thing, 1, db)
 
 
 @hook.regex(karmaplus_re)
@@ -86,13 +94,18 @@ def re_addpt(match, nick, chan, db, notice):
 
 
 @hook.command("mm", "rmpoint")
-def rmpoint(text, nick, chan, db):
-    """<thing> - subtracts a point from the <thing>"""
-    update_score(nick, chan, text, -1, db)
+def rmpoint(
+    thing: Annotated[str, Arg("What to subtract a point from")],
+    nick: str,
+    chan: str,
+    db: Session,
+):
+    """subtracts a point from the <thing>"""
+    update_score(nick, chan, thing, -1, db)
 
 
 @hook.command("pluspts", autohelp=False)
-def pluspts(nick, chan, db):
+def pluspts(nick: str, chan: str, db: Session):
     """- prints the things you have liked and their scores"""
     output = ""
     clause = and_(
@@ -114,7 +127,7 @@ def pluspts(nick, chan, db):
 
 
 @hook.command("minuspts", autohelp=False)
-def minuspts(nick, chan, db):
+def minuspts(nick: str, chan: str, db: Session):
     """- prints the things you have disliked and their scores"""
     output = ""
     clause = and_(
@@ -148,8 +161,13 @@ def re_rmpt(match, nick, chan, db, notice):
 
 
 @hook.command("points")
-def points_cmd(text, chan, db):
-    """<thing> - will print the total points for <thing> in the channel."""
+def points_cmd(
+    thing: Annotated[str, Arg("What to look up, add global for all channels")],
+    chan: str,
+    db: Session,
+):
+    """will print the total points for <thing> in the channel."""
+    text = thing
     score = 0
     thing = ""
     if text.endswith(("-global", " global")):
@@ -219,14 +237,26 @@ def do_list(text, db, chan, loved=True):
 
 
 @hook.command("topten", "pointstop", "loved", autohelp=False)
-def pointstop(text, chan, db):
-    """- prints the top 10 things with the highest points in the channel. To see the top 10 items in all of the
+def pointstop(
+    chan: str,
+    db: Session,
+    scope: Annotated[
+        Literal["global"] | None, Arg("Use global for all channels")
+    ] = None,
+):
+    """prints the top 10 things with the highest points in the channel. To see the top 10 items in all of the
     channels the bot sits in use .topten global."""
-    return do_list(text, db, chan)
+    return do_list(scope or "", db, chan)
 
 
 @hook.command("bottomten", "pointsbottom", "hated", autohelp=False)
-def pointsbottom(text, chan, db):
-    """- prints the top 10 things with the lowest points in the channel. To see the bottom 10 items in all of the
+def pointsbottom(
+    chan: str,
+    db: Session,
+    scope: Annotated[
+        Literal["global"] | None, Arg("Use global for all channels")
+    ] = None,
+):
+    """prints the top 10 things with the lowest points in the channel. To see the bottom 10 items in all of the
     channels the bot sits in use .bottomten global."""
-    return do_list(text, db, chan, False)
+    return do_list(scope or "", db, chan, False)

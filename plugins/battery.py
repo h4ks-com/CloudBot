@@ -117,7 +117,7 @@ def get_random_number() -> str:
 
 
 @hook.command("lick", autohelp=False)
-def battery_lick(text: str, nick: str, chan: str, message) -> str:
+def battery_lick(text: str, nick: str, chan: str) -> str:
     """- Lick a battery for science! (Warning: Do not actually lick batteries)"""
 
     # Small chance the bot licks the user instead

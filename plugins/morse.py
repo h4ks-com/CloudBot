@@ -1,6 +1,9 @@
+from typing import Annotated
+
 import unidecode
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 
 # Stolen from https://www.geeksforgeeks.org/morse-code-translator-python/
 
@@ -107,19 +110,19 @@ def morse2text(message):
 
 
 @hook.command("morse", "morsecode")
-def morse(text):
-    """<text> - Converts text to morse code."""
+def morse(message: Annotated[str, Arg("Text to convert")]):
+    """Converts text to morse code."""
     try:
-        return text2morse(text)
+        return text2morse(message)
     except CharacterNotFount as e:
         return f"Error: Character not decodable {e.char}"
 
 
 @hook.command("morsetrans")
-def morse2(text):
-    """<text> - Converts morse code to text."""
+def morse2(code: Annotated[str, Arg("Morse code to convert")]):
+    """Converts morse code to text."""
     try:
-        return morse2text(text)
+        return morse2text(code)
     except CharacterNotFount as e:
         return f"Error: Character not decodable {e.char}"
 

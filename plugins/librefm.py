@@ -1,9 +1,14 @@
 from datetime import datetime
+from typing import Annotated, Literal
 
 import requests
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database, timeformat, web
 from cloudbot.util.web import get_session
 
@@ -56,16 +61,19 @@ def get_account(nick):
 
 
 @hook.command("librefm", "librelast", "librenp", autohelp=False)
-def librefm(text, nick, db, event):
-    """[user] [dontsave] - displays the now playing (or last played) track of libre.fm user [user]"""
-
-    # check if the user asked us not to save his details
-    dontsave = text.endswith(" dontsave")
-    if dontsave:
-        user = text[:-9].strip().lower()
-    else:
-        user = text
-
+def librefm(
+    nick: str,
+    db: Session,
+    event: CommandEvent,
+    user: Annotated[
+        str | None, Arg("libre.fm user, your saved one by default", rest=True)
+    ] = None,
+    dontsave: Annotated[
+        Literal["dontsave"] | None, Arg("Skip saving [user] as your account")
+    ] = None,
+):
+    """displays the now playing (or last played) track of libre.fm user [user]"""
+    save = bool(user) and not dontsave
     if not user:
         user = get_account(nick)
         if not user:
@@ -138,7 +146,7 @@ def librefm(text, nick, db, event):
     # append ending based on what type it was
     out += ending
 
-    if text and not dontsave:
+    if save:
         res = db.execute(
             table.update().values(acc=user).where(table.c.nick == nick.lower())
         )
@@ -183,16 +191,16 @@ def getuserartistplaycount():
 
 
 @hook.command("libreband", "librela")
-def displaybandinfo(text, bot):
-    """[artist] - displays information about [artist]."""
-    artist, err = getartistinfo(text, bot)
+def displaybandinfo(bot: CloudBot, artist: Annotated[str, Arg("Artist name")]):
+    """displays information about [artist]."""
+    info, err = getartistinfo(artist, bot)
     if err:
         return err
 
-    if "error" in artist:
+    if "error" in info:
         return "No such artist."
 
-    a = artist["artist"]
+    a = info["artist"]
     summary = a["bio"]["summary"]
     tags = getartisttags(a)
 
@@ -223,12 +231,12 @@ def librefmcompare():
 @hook.command(
     "libretoptrack", "libretoptracks", "libretop", "librett", autohelp=False
 )
-def toptrack(text, nick):
-    """[username] - Grabs a list of the top tracks for a libre.fm username"""
-    if text:
-        username = get_account(text)
-        if not username:
-            username = text
+def toptrack(
+    nick: str, username: Annotated[str | None, Arg("libre.fm username")] = None
+):
+    """Grabs a list of the top tracks for a libre.fm username"""
+    if username:
+        username = get_account(username) or username
     else:
         username = get_account(nick)
 
@@ -252,13 +260,13 @@ def toptrack(text, nick):
 
 
 @hook.command("libretopartists", "libreta", autohelp=False)
-def libretopartists(text, nick):
-    """[username] - Grabs a list of the top artists for a libre.fm username. You can set your libre.fm username
+def libretopartists(
+    nick: str, username: Annotated[str | None, Arg("libre.fm username")] = None
+):
+    """Grabs a list of the top artists for a libre.fm username. You can set your libre.fm username
     with .librefm username"""
-    if text:
-        username = get_account(text)
-        if not username:
-            username = text
+    if username:
+        username = get_account(username) or username
     else:
         username = get_account(nick)
 
@@ -281,31 +289,35 @@ def libretopartists(text, nick):
 
 
 @hook.command("libreltw", "libretopweek", autohelp=False)
-def topweek(text, nick):
-    """[username] - Grabs a list of the top artists in the last week for a libre.fm username. You can set your
+def topweek(
+    nick: str, username: Annotated[str | None, Arg("libre.fm username")] = None
+):
+    """Grabs a list of the top artists in the last week for a libre.fm username. You can set your
     librefm username with .l username"""
-    return topartists(text, nick, "7day")
+    return topartists(username, nick, "7day")
 
 
 @hook.command("libreltm", "libretopmonth", autohelp=False)
-def topmonth(text, nick):
-    """[username] - Grabs a list of the top artists in the last month for a libre.fm username. You can set your
+def topmonth(
+    nick: str, username: Annotated[str | None, Arg("libre.fm username")] = None
+):
+    """Grabs a list of the top artists in the last month for a libre.fm username. You can set your
     librefm username with .l username"""
-    return topartists(text, nick, "1month")
+    return topartists(username, nick, "1month")
 
 
 @hook.command("librelibrelta", "libretopall", autohelp=False)
-def topall(text, nick):
-    """[username] - Grabs a list of the top artists in the last year for a libre.fm username. You can set your
+def topall(
+    nick: str, username: Annotated[str | None, Arg("libre.fm username")] = None
+):
+    """Grabs a list of the top artists in the last year for a libre.fm username. You can set your
     librefm username with .l username"""
-    return topartists(text, nick, "12month")
+    return topartists(username, nick, "12month")
 
 
-def topartists(text, nick, period):
-    if text:
-        username = get_account(text)
-        if not username:
-            username = text
+def topartists(username, nick, period):
+    if username:
+        username = get_account(username) or username
     else:
         username = get_account(nick)
 

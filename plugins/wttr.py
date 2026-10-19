@@ -1,10 +1,12 @@
 from datetime import datetime
+from typing import Annotated
 
 import pytz
 import requests
 from timezonefinder import TimezoneFinder
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 tf = TimezoneFinder()
@@ -40,12 +42,8 @@ def get_moon_phase(date: datetime | None = None) -> tuple[str, str]:
 
 
 @hook.command("time", "tz")
-def time_command(text: str) -> str:
-    """<location> - Gets the current time in <location> using reliable geocoding."""
-    if not text or not text.strip():
-        return "Please provide a location. Usage: .time <location>"
-
-    location = text.strip()
+def time_command(location: Annotated[str, Arg("Place to look up")]) -> str:
+    """Gets the current time in the location using reliable geocoding."""
 
     url = "https://nominatim.openstreetmap.org/search"
     params: dict[str, str | int] = {"q": location, "format": "json", "limit": 1}
@@ -99,12 +97,8 @@ def time_command(text: str) -> str:
 
 
 @hook.command("astronomy", "ast")
-def astronomy(text: str) -> str:
-    """<location> - Get sunrise, sunset, and moon phase information for <location>."""
-    if not text or not text.strip():
-        return "Please provide a location. Usage: .ast <location>"
-
-    location = text.strip()
+def astronomy(location: Annotated[str, Arg("Place to look up")]) -> str:
+    """Get sunrise, sunset, and moon phase information for the location."""
 
     geo_url = "https://nominatim.openstreetmap.org/search"
     geo_params: dict[str, str | int] = {

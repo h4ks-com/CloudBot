@@ -7,6 +7,7 @@ import pytest
 import pytz
 import responses
 
+from cloudbot.util.command_args import build_spec
 from plugins import gmaps
 from plugins.locate import GeolocationException, GoogleLocation
 from plugins.ratelimit import ratelimit_table
@@ -39,7 +40,9 @@ def exceed_hourly_limit(db):
 
 def collecting_reply():
     replies = []
-    return replies, (lambda *a: replies.extend(a))
+    event = MagicMock()
+    event.reply.side_effect = lambda *a: replies.extend(a)
+    return replies, event
 
 
 def make_location(**overrides):
@@ -74,51 +77,45 @@ def test_ratelimit_message_when_over_hourly_limit(db):
 
 def test_directions_rate_limited(db):
     exceed_hourly_limit(db)
-    replies, reply = collecting_reply()
-    result = gmaps.directions(
-        "A to B", None, reply, make_bot(), "nick", "#chan", db
-    )
+    replies, event = collecting_reply()
+    result = gmaps.directions("A to B", event, make_bot(), "nick", "#chan", db)
     assert result == "Too many gmaps requests this hour. Try later."
     assert replies == []
 
 
 def test_directions_no_api_key(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.directions(
-        "A to B", None, reply, make_bot(api_key=None), "nick", "#chan", db
+        "A to B", event, make_bot(api_key=None), "nick", "#chan", db
     )
     assert result == "No or wrong Google API key configured."
 
 
 def test_directions_empty_text(db):
-    replies, reply = collecting_reply()
-    result = gmaps.directions(
-        "  ", None, reply, make_bot(), "nick", "#chan", db
-    )
+    replies, event = collecting_reply()
+    result = gmaps.directions("  ", event, make_bot(), "nick", "#chan", db)
     assert result == "Usage: gd [mode] <origin> to <destination>"
 
 
 def test_directions_bad_quoted_args(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.directions(
-        '"A" "B" "C" "D" "E"', None, reply, make_bot(), "nick", "#chan", db
+        '"A" "B" "C" "D" "E"', event, make_bot(), "nick", "#chan", db
     )
     assert result == "Usage: gd [mode] <origin> to <destination>"
 
 
 def test_directions_quoted_unknown_mode(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.directions(
-        'teleport "A" to "B"', None, reply, make_bot(), "nick", "#chan", db
+        'teleport "A" to "B"', event, make_bot(), "nick", "#chan", db
     )
     assert result == "Unknown mode: 'teleport'. Possible modes: " + gmaps.modes
 
 
 def test_directions_points_length_invalid(db):
-    replies, reply = collecting_reply()
-    result = gmaps.directions(
-        "nowhere", None, reply, make_bot(), "nick", "#chan", db
-    )
+    replies, event = collecting_reply()
+    result = gmaps.directions("nowhere", event, make_bot(), "nick", "#chan", db)
     assert result == "Usage: gd [mode] <origin> to <destination>"
 
 
@@ -158,35 +155,35 @@ def _transit_step():
 
 
 def test_directions_api_error(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with patch("plugins.gmaps.googlemaps.Client") as mock_client_cls:
         mock_client_cls.return_value.directions.side_effect = (
             googlemaps.exceptions.ApiError("MAX_ROUTE_LENGTH_EXCEEDED")
         )
         result = gmaps.directions(
-            "driving A to B", None, reply, make_bot(), "nick", "#chan", db
+            "driving A to B", event, make_bot(), "nick", "#chan", db
         )
     assert result == "Error: MAX_ROUTE_LENGTH_EXCEEDED"
 
 
 def test_directions_no_results(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with patch("plugins.gmaps.googlemaps.Client") as mock_client_cls:
         mock_client_cls.return_value.directions.return_value = []
         result = gmaps.directions(
-            "driving A to B", None, reply, make_bot(), "nick", "#chan", db
+            "driving A to B", event, make_bot(), "nick", "#chan", db
         )
     assert result == "No results found."
 
 
 def test_directions_success_with_transit_step(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with patch("plugins.gmaps.googlemaps.Client") as mock_client_cls:
         mock_client_cls.return_value.directions.return_value = [
             _route([_walk_step(), _transit_step()])
         ]
         result = gmaps.directions(
-            "driving A to B", None, reply, make_bot(), "nick", "#chan", db
+            "driving A to B", event, make_bot(), "nick", "#chan", db
         )
     assert result is None
     assert any(
@@ -200,15 +197,14 @@ def test_directions_success_with_transit_step(db):
 
 
 def test_directions_success_quoted_len3_no_mode(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with patch("plugins.gmaps.googlemaps.Client") as mock_client_cls:
         mock_client_cls.return_value.directions.return_value = [
             _route([_walk_step()])
         ]
         result = gmaps.directions(
             '"New York" to "Boston"',
-            None,
-            reply,
+            event,
             make_bot(),
             "nick",
             "#chan",
@@ -219,13 +215,13 @@ def test_directions_success_quoted_len3_no_mode(db):
 
 
 def test_directions_success_unquoted_no_mode(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with patch("plugins.gmaps.googlemaps.Client") as mock_client_cls:
         mock_client_cls.return_value.directions.return_value = [
             _route([_walk_step()])
         ]
         result = gmaps.directions(
-            "A to B", None, reply, make_bot(), "nick", "#chan", db
+            "A to B", event, make_bot(), "nick", "#chan", db
         )
     assert result is None
     call_kwargs = mock_client_cls.return_value.directions.call_args.kwargs
@@ -233,12 +229,12 @@ def test_directions_success_unquoted_no_mode(db):
 
 
 def test_directions_truncates_steps_in_channel(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     steps = [_walk_step(f"Step {i}") for i in range(15)]
     with patch("plugins.gmaps.googlemaps.Client") as mock_client_cls:
         mock_client_cls.return_value.directions.return_value = [_route(steps)]
         result = gmaps.directions(
-            "driving A to B", None, reply, make_bot(), "nick", "#chan", db
+            "driving A to B", event, make_bot(), "nick", "#chan", db
         )
     assert result is None
     assert any("More steps" in line for line in replies)
@@ -247,12 +243,12 @@ def test_directions_truncates_steps_in_channel(db):
 
 
 def test_directions_no_truncation_in_private_message(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     steps = [_walk_step(f"Step {i}") for i in range(15)]
     with patch("plugins.gmaps.googlemaps.Client") as mock_client_cls:
         mock_client_cls.return_value.directions.return_value = [_route(steps)]
         result = gmaps.directions(
-            "driving A to B", None, reply, make_bot(), "nick", "bob", db
+            "driving A to B", event, make_bot(), "nick", "bob", db
         )
     assert result is None
     assert not any("More steps" in line for line in replies)
@@ -279,41 +275,39 @@ def test_upload_image_uses_file_wrapper():
 
 
 def test_sv_empty_text(db):
-    replies, reply = collecting_reply()
-    assert (
-        gmaps.streetview("  ", reply, make_bot(), db) == "Usage: sv <location>"
-    )
+    replies, event = collecting_reply()
+    assert gmaps.streetview("  ", make_bot(), db) == "Usage: sv <location>"
 
 
 def test_sv_no_api_key(db):
-    replies, reply = collecting_reply()
-    result = gmaps.streetview("Place", reply, make_bot(api_key=None), db)
+    replies, event = collecting_reply()
+    result = gmaps.streetview("Place", make_bot(api_key=None), db)
     assert result == "This command requires a Google API key."
 
 
 def test_sv_rate_limited(db):
     exceed_hourly_limit(db)
-    replies, reply = collecting_reply()
-    result = gmaps.streetview("Place", reply, make_bot(), db)
+    replies, event = collecting_reply()
+    result = gmaps.streetview("Place", make_bot(), db)
     assert result == "Too many gmaps requests this hour. Try later."
 
 
 def test_sv_invalid_parameter(db):
-    replies, reply = collecting_reply()
-    result = gmaps.streetview("Place foo:1", reply, make_bot(), db)
+    replies, event = collecting_reply()
+    result = gmaps.streetview("Place foo:1", make_bot(), db)
     assert result == "Invalid parameter: foo"
 
 
 def test_sv_invalid_value_for_known_param(db):
-    replies, reply = collecting_reply()
-    result = gmaps.streetview("Place fov:12.5", reply, make_bot(), db)
+    replies, event = collecting_reply()
+    result = gmaps.streetview("Place fov:12.5", make_bot(), db)
     assert (
         result == "Invalid value for parameter 'fov'. Must be a integer number."
     )
 
 
 def test_sv_lat_lng_direct(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     location = make_location(location_name="Nowhereville")
     with (
         patch(
@@ -326,12 +320,12 @@ def test_sv_lat_lng_direct(db):
         patch("plugins.gmaps.get_streetview", return_value=MagicMock()),
         patch("plugins.gmaps.upload_image", return_value="http://img/1"),
     ):
-        result = gmaps.streetview("12.34, -56.78", reply, make_bot(), db)
+        result = gmaps.streetview("12.34, -56.78", make_bot(), db)
     assert result == "📸 Nowhereville - http://img/1"
 
 
 def test_sv_lat_lng_geolocation_exception_falls_back_to_coords(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with (
         patch(
             "plugins.gmaps.GoogleLocation.from_lat_lng",
@@ -344,12 +338,12 @@ def test_sv_lat_lng_geolocation_exception_falls_back_to_coords(db):
         patch("plugins.gmaps.get_streetview", return_value=MagicMock()),
         patch("plugins.gmaps.upload_image", return_value="http://img/1"),
     ):
-        result = gmaps.streetview("12.34, -56.78", reply, make_bot(), db)
+        result = gmaps.streetview("12.34, -56.78", make_bot(), db)
     assert result == "📸 12.34, -56.78 - http://img/1"
 
 
 def test_sv_address_input(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     location = make_location(location_name="Some Address Place")
     with (
         patch(
@@ -362,22 +356,22 @@ def test_sv_address_input(db):
         patch("plugins.gmaps.get_streetview", return_value=MagicMock()),
         patch("plugins.gmaps.upload_image", return_value="http://img/2"),
     ):
-        result = gmaps.streetview("Eiffel Tower", reply, make_bot(), db)
+        result = gmaps.streetview("Eiffel Tower", make_bot(), db)
     assert result == "📸 Some Address Place - http://img/2"
 
 
 def test_sv_address_geolocation_exception_returns_message(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with patch(
         "plugins.gmaps.GoogleLocation.from_address",
         side_effect=GeolocationException("No results found."),
     ):
-        result = gmaps.streetview("Nowhere at all", reply, make_bot(), db)
+        result = gmaps.streetview("Nowhere at all", make_bot(), db)
     assert result == "No results found."
 
 
 def test_sv_no_panoramas_found(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     location = make_location()
     with (
         patch(
@@ -385,14 +379,14 @@ def test_sv_no_panoramas_found(db):
         ),
         patch("plugins.gmaps.search_panoramas", return_value=[]),
     ):
-        result = gmaps.streetview("Somewhere", reply, make_bot(), db)
+        result = gmaps.streetview("Somewhere", make_bot(), db)
     assert result == "No panoramas found for this location."
 
 
 def test_sv_move_shifts_coordinates(db):
     from pyproj import Geod
 
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     location = make_location(lat=10.0, lng=20.0, location_name="Place")
     geod = Geod(ellps="WGS84")
     expected_lng, expected_lat, _ = geod.fwd(20.0, 10.0, 90.0, 100.0)
@@ -406,7 +400,7 @@ def test_sv_move_shifts_coordinates(db):
     ):
         mock_search.return_value = [MagicMock(pano_id="p1")]
         result = gmaps.streetview(
-            "Place move:100 move_heading:90", reply, make_bot(), db
+            "Place move:100 move_heading:90", make_bot(), db
         )
     kwargs = mock_search.call_args.kwargs
     assert kwargs["lat"] == pytest.approx(expected_lat)
@@ -415,7 +409,7 @@ def test_sv_move_shifts_coordinates(db):
 
 
 def test_sv_success_records_ratelimit_usage(db):
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     location = make_location()
     with (
         patch(
@@ -428,7 +422,7 @@ def test_sv_success_records_ratelimit_usage(db):
         patch("plugins.gmaps.get_streetview", return_value=MagicMock()),
         patch("plugins.gmaps.upload_image", return_value="http://img/1"),
     ):
-        gmaps.streetview("Somewhere", reply, make_bot(), db)
+        gmaps.streetview("Somewhere", make_bot(), db)
     rows = db.execute(ratelimit_table.select()).fetchall()
     assert len(rows) == 1
     assert rows[0].bucket == gmaps.GMAPS_BUCKET
@@ -438,9 +432,9 @@ def test_sv_success_records_ratelimit_usage(db):
 
 
 def test_geo_guess_reveal_no_active_game():
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.geo_guess(
-        "reveal", "#chan", "alice", reply, make_bot(), MagicMock()
+        "#chan", "alice", event, make_bot(), MagicMock(), "reveal"
     )
     assert (
         result
@@ -453,18 +447,18 @@ def test_geo_guess_reveal_active_game(freeze_time):
     gmaps.guess_games["#chan"] = gmaps.GuessGame(
         location, datetime.now(pytz.timezone("UTC")), "http://img/1"
     )
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.geo_guess(
-        "reveal", "#chan", "alice", reply, make_bot(), MagicMock()
+        "#chan", "alice", event, make_bot(), MagicMock(), "reveal"
     )
     assert "Secret City" in result
     assert "#chan" not in gmaps.guess_games
 
 
 def test_geo_guess_no_active_game_for_guess():
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.geo_guess(
-        "France", "#chan", "alice", reply, make_bot(), MagicMock()
+        "#chan", "alice", event, make_bot(), MagicMock(), "France"
     )
     assert (
         result
@@ -477,9 +471,9 @@ def test_geo_guess_correct_guess_ends_game(freeze_time):
     gmaps.guess_games["#chan"] = gmaps.GuessGame(
         location, datetime.now(pytz.timezone("UTC")), "http://img/1"
     )
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.geo_guess(
-        "france", "#chan", "alice", reply, make_bot(), MagicMock()
+        "#chan", "alice", event, make_bot(), MagicMock(), "france"
     )
     assert "alice guessed the country correctly!" in result
     assert "Paris" in result
@@ -491,9 +485,9 @@ def test_geo_guess_incorrect_guess_keeps_game(freeze_time):
     gmaps.guess_games["#chan"] = gmaps.GuessGame(
         location, datetime.now(pytz.timezone("UTC")), "http://img/1"
     )
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.geo_guess(
-        "Antarctica", "#chan", "alice", reply, make_bot(), MagicMock()
+        "#chan", "alice", event, make_bot(), MagicMock(), "Antarctica"
     )
     assert result == "🔍 Incorrect guess. Try again!"
     assert "#chan" in gmaps.guess_games
@@ -504,9 +498,9 @@ def test_geo_guess_already_active_game(freeze_time):
     gmaps.guess_games["#chan"] = gmaps.GuessGame(
         location, datetime.now(pytz.timezone("UTC")), "http://img/1"
     )
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     result = gmaps.geo_guess(
-        "", "#chan", "alice", reply, make_bot(), MagicMock()
+        "#chan", "alice", event, make_bot(), MagicMock(), ""
     )
     assert "already an active GeoGuess game" in result
     assert "http://img/1" in result
@@ -518,10 +512,10 @@ def test_geo_guess_expired_game_starts_new(freeze_time):
     gmaps.guess_games["#chan"] = gmaps.GuessGame(
         location, old_start, "http://img/1"
     )
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with patch("plugins.gmaps.new_guess_game", return_value="STUB") as mock_new:
         result = gmaps.geo_guess(
-            "", "#chan", "alice", reply, make_bot(), MagicMock()
+            "#chan", "alice", event, make_bot(), MagicMock(), ""
         )
     mock_new.assert_called_once()
     assert result == "STUB"
@@ -529,10 +523,10 @@ def test_geo_guess_expired_game_starts_new(freeze_time):
 
 
 def test_geo_guess_starts_new_game_when_none_active():
-    replies, reply = collecting_reply()
+    replies, event = collecting_reply()
     with patch("plugins.gmaps.new_guess_game", return_value="STUB") as mock_new:
         result = gmaps.geo_guess(
-            "", "#chan", "alice", reply, make_bot(), MagicMock()
+            "#chan", "alice", event, make_bot(), MagicMock(), ""
         )
     mock_new.assert_called_once()
     assert result == "STUB"
@@ -628,3 +622,9 @@ def test_new_guess_game_bad_json_response_retries(db, mock_requests):
     ):
         result = gmaps.new_guess_game(make_bot(), "#chan", db)
     assert result == "Could not find a location with a street view image."
+
+
+def test_geo_guess_args():
+    spec = build_spec(gmaps.geo_guess)
+    assert spec.parse_text("") == {"country": None}
+    assert spec.parse_text("United States") == {"country": "United States"}

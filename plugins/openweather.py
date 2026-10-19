@@ -1,10 +1,12 @@
 from collections import defaultdict
 from datetime import datetime
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 
@@ -35,16 +37,13 @@ def weather_emoji(weather_id: int, icon: str) -> str:
 
 
 @hook.command("we", "weather")
-def weather(text: str) -> str:
-    """<city> - Get the current weather of <city>"""
+def weather(city: Annotated[str, Arg("City to look up")]) -> str:
+    """Get the current weather of <city>"""
     api_key = bot.config.get_api_key("openwheater")
     if not api_key:
         return "This command requires an OpenWeatherMap API key. Get one free at https://openweathermap.org/api"
 
-    if not text or not text.strip():
-        return "Please provide a city name"
-
-    location = text.strip()
+    location = city
 
     try:
         url = "https://api.openweathermap.org/data/2.5/weather"
@@ -90,16 +89,13 @@ def weather(text: str) -> str:
 
 
 @hook.command("forecast", "fc", "fcd")
-def forecast(text: str) -> list[str] | str:
-    """<city> - Get today's hourly forecast for <city> (every 3h, ~27h ahead)"""
+def forecast(city: Annotated[str, Arg("City to look up")]) -> list[str] | str:
+    """Get today's hourly forecast for <city> (every 3h, ~27h ahead)"""
     api_key = bot.config.get_api_key("openwheater")
     if not api_key:
         return "This command requires an OpenWeatherMap API key. Get one free at https://openweathermap.org/api"
 
-    if not text or not text.strip():
-        return "Please provide a city name"
-
-    location = text.strip()
+    location = city
 
     try:
         url = "https://api.openweathermap.org/data/2.5/forecast"
@@ -146,16 +142,15 @@ def forecast(text: str) -> list[str] | str:
 
 
 @hook.command("forecastweek", "fcw")
-def forecast_week(text: str) -> list[str] | str:
-    """<city> - Get a multi-day weather forecast for <city>"""
+def forecast_week(
+    city: Annotated[str, Arg("City to look up")],
+) -> list[str] | str:
+    """Get a multi-day weather forecast for <city>"""
     api_key = bot.config.get_api_key("openwheater")
     if not api_key:
         return "This command requires an OpenWeatherMap API key. Get one free at https://openweathermap.org/api"
 
-    if not text or not text.strip():
-        return "Please provide a city name"
-
-    location = text.strip()
+    location = city
 
     try:
         url = "https://api.openweathermap.org/data/2.5/forecast"

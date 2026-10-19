@@ -1,7 +1,9 @@
 import json
 import urllib.parse
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 API = "https://api.datamuse.com/words?"
@@ -30,57 +32,49 @@ def words(**params):
     return ", ".join([w["word"] for w in r[:MAX_DISPLAY_WORDS]])
 
 
-def targs(text):
-    return text.strip().split()
+@hook.command()
+def rhyme(word: Annotated[str, Arg("Word to rhyme with")]):
+    """get rhymes for the word."""
+    return words(rel_rhy=word.split()[0])
 
 
 @hook.command()
-def rhyme(text, bot, nick):
-    """<word> - get rhymes for the word."""
-    args = targs(text)
-    if not args:
-        return "This command requires one argument"
-    return words(rel_rhy=args[0])
+def adj(word: Annotated[str, Arg("Word to describe")]):
+    """get adjectives that are often used to describe input word."""
+    return words(rel_jjb=word.split()[0])
 
 
 @hook.command()
-def adj(text, bot, nick):
-    """<word> - get adjectives that are often used to describe input word."""
-    args = targs(text)
-    return words(rel_jjb=args[0])
+def noun(adjective: Annotated[str, Arg("Adjective that describes the nouns")]):
+    """nouns that are often described by the adjective."""
+    return words(rel_jja=adjective.split()[0])
 
 
 @hook.command()
-def noun(text, bot, nick):
-    """<noun> - nouns that are often described by the adjective <noun>."""
-    args = targs(text)
-    if not args:
-        return "This command requires one argument"
-    return words(rel_jja=args[0])
+def soundlike(word: Annotated[str, Arg("Word to match by sound")]):
+    """words that sound like the word."""
+    return words(sl=word.split()[0])
 
 
 @hook.command()
-def soundlike(text, bot, nick):
-    """<word> - words that sound like <word>."""
-    args = targs(text)
-    return words(sl=args[0])
+def mean(meaning: Annotated[str, Arg("Meaning to match")]):
+    """words with a meaning similar to the text."""
+    return words(ml=meaning)
 
 
 @hook.command()
-def mean(text, bot, nick):
-    """<text> - words with a meaning similar to <text>."""
-    return words(ml=text)
+def rhymerel(
+    word1: Annotated[str, Arg("Word to rhyme with")],
+    word2: Annotated[str, Arg("Word the rhymes relate to")],
+):
+    """words that rhyme with word1 that are related to word2."""
+    return words(ml=word1, rel_rhy=word1)
 
 
 @hook.command()
-def rhymerel(text, bot, nick):
-    """<word1> <word2> - words that rhyme with <word1> that are related to <word2>."""
-    args = targs(text)
-    return words(ml=args[0], rel_rhy=args[0])
-
-
-@hook.command()
-def adjrel(text, bot, nick):
-    """<word1> <word2> - adjectives describing word1 sorted by how related they are to word2."""
-    args = targs(text)
-    return words(rel_jjb=args[0], topics=args[1])
+def adjrel(
+    word1: Annotated[str, Arg("Word to describe")],
+    word2: Annotated[str, Arg("Word the adjectives relate to")],
+):
+    """adjectives describing word1 sorted by how related they are to word2."""
+    return words(rel_jjb=word1, topics=word2.split()[0])

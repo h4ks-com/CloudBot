@@ -1,7 +1,10 @@
 import random
+from typing import Annotated
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 fmklist: list[str] = []
 
@@ -16,11 +19,16 @@ def load_fmk(bot: CloudBot) -> None:
 
 
 @hook.command("fmk", autohelp=False)
-def fmk(text, message):
-    """[nick] - Fuck, Marry, Kill"""
-    message(
+def fmk(
+    event: CommandEvent,
+    target: Annotated[
+        str | None, Arg("Who to play with", kind="user", rest=True)
+    ] = None,
+):
+    """Fuck, Marry, Kill"""
+    event.message(
         " {} FMK - {}, {}, {}".format(
-            (text.strip() if text.strip() else ""),
+            (target or "").strip(),
             random.choice(fmklist),
             random.choice(fmklist),
             random.choice(fmklist),

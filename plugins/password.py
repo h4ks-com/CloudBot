@@ -1,7 +1,10 @@
 import random as std_random
 import string
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 try:
     from Crypto.Random import random
@@ -17,7 +20,7 @@ with open("data/password_words.txt", encoding="utf-8") as f:
 
 
 @hook.command(autohelp=False)
-def password(text, notice):
+def password(text: str, event: CommandEvent):
     """[length [types]] - generates a password of <length> (default 12).
     [types] can include 'alpha', 'no caps', 'numeric', 'symbols' or any combination: eg. 'numbers symbols'
     (default: alpha numeric no caps)"""
@@ -32,7 +35,7 @@ def password(text, notice):
         length = 12
 
     if length > 50:
-        notice("Maximum length is 50 characters.")
+        event.notice("Maximum length is 50 characters.")
         return
 
     # add alpha characters
@@ -63,19 +66,17 @@ def password(text, notice):
     for _ in range(length):
         chars.append(gen.choice(_okay))
 
-    notice("".join(chars))
+    event.notice("".join(chars))
 
 
 @hook.command("wpass", "wordpass", "wordpassword", autohelp=False)
-def word_password(text, notice):
-    """[length] - generates an easy to remember password with [length] (default 4) commonly used words"""
-    try:
-        length = int(text)
-    except ValueError:
-        length = 3
-
+def word_password(
+    event: CommandEvent,
+    length: Annotated[int, Arg("How many words, at most 10")] = 3,
+):
+    """generates an easy to remember password with [length] (default 3) commonly used words"""
     if length > 10:
-        notice("Maximum length is 50 characters.")
+        event.notice("Maximum length is 50 characters.")
         return
 
     words = []
@@ -83,7 +84,7 @@ def word_password(text, notice):
     for _ in range(length):
         words.append(gen.choice(common_words))
 
-    notice(
+    event.notice(
         "Your password is '{}'. Feel free to remove the spaces when using it.".format(
             " ".join(words)
         )

@@ -3,12 +3,16 @@ import shlex
 from collections.abc import Generator
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Annotated
 
 import pytz
 from github import Auth, Github, GithubException
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, formatting, web
 from cloudbot.util.web import get_session
 
@@ -37,20 +41,21 @@ def load_shortcuts(bot):
 
 
 @hook.command("ghissue", "issue")
-def issue_cmd(text, event):
-    """<username|repo> [number] - gets issue [number]'s summary, or the open issue count if no issue is specified"""
-    args = text.split()
-    first = args[0]
-    shortcut = shortcuts.get(first)
+def issue_cmd(
+    event: CommandEvent,
+    repository: Annotated[str, Arg("Repository, as owner/repo or a shortcut")],
+    issue: Annotated[int | None, Arg("Issue number")] = None,
+):
+    """gets issue [number]'s summary, or the open issue count if no issue is specified"""
+    shortcut = shortcuts.get(repository)
     if shortcut:
         data = shortcut
     else:
-        data = parse_url(first)
+        data = parse_url(repository)
 
     owner, repo = data
-    issue = args[1] if len(args) > 1 else None
 
-    if issue:
+    if issue is not None:
         r = get_session().get(
             f"https://api.github.com/repos/{owner}/{repo}/issues/{issue}"
         )
@@ -205,7 +210,7 @@ user_results: dict[str, dict[str, Generator[Result, None, None]]] = {}
 
 
 @hook.command("ghn", "ghnext", autohelp=False)
-def ghn_cmd(chan, nick):
+def ghn_cmd(chan: str, nick: str):
     """- Show the next GitHub search result"""
     next_result_generator = user_results.get(chan, {}).get(nick)
     if not next_result_generator:
@@ -218,7 +223,7 @@ def ghn_cmd(chan, nick):
 
 
 @hook.command("gh", "github", autohelp=False)
-def gh_cmd(text, event, reply, bot, nick, chan):
+def gh_cmd(text: str, bot: CloudBot, nick: str, chan: str):
     """<subcommand> [args] <query> - Search GitHub"""
     arguments = shlex.split(text)
     if not arguments:

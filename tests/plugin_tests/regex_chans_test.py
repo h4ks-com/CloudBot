@@ -7,6 +7,7 @@ from cloudbot.client import Client
 from cloudbot.event import CommandEvent, Event, RegexEvent
 from cloudbot.plugin import Plugin
 from cloudbot.plugin_hooks import CommandHook, EventHook, RegexHook
+from cloudbot.util.command_args import build_spec
 from plugins.core import regex_chans
 from tests.util import wrap_hook_response
 from tests.util.mock_conn import MockConn
@@ -149,7 +150,7 @@ class TestRegexStatus:
 
             conn = MockConn(name="net")
             assert (
-                regex_chans.regexstatus("", conn, "#chan")
+                regex_chans.regexstatus(conn, "#chan")
                 == "Regex status for #chan: DISABLED"
             )
 
@@ -191,7 +192,7 @@ class TestRegexStatus:
 
             conn = MockConn(name="net")
             assert (
-                regex_chans.regexstatus("#chan1", conn, "#chan")
+                regex_chans.regexstatus(conn, "#chan", "#chan1")
                 == "Regex status for #chan1: ENABLED"
             )
 
@@ -233,7 +234,7 @@ class TestRegexStatus:
 
             conn = MockConn(name="net")
             assert (
-                regex_chans.regexstatus("chan2", conn, "#chan")
+                regex_chans.regexstatus(conn, "#chan", "chan2")
                 == "Regex status for #chan2: DISABLED"
             )
 
@@ -542,7 +543,7 @@ class SetStatusBase:
         mock_db.load_data(regex_chans.table, self.get_initial_db_data())
 
         conn = MagicMock()
-        conn.configure_mock(name="net", config={})
+        conn.configure_mock(name="net", config={}, memory={})
         conn.mock_add_spec(spec=Client, spec_set=True)
 
         plugin = MagicMock()
@@ -551,7 +552,11 @@ class SetStatusBase:
 
         hook = MagicMock()
         hook.configure_mock(
-            type="event", plugin=plugin, function_name="my_func", doc="foo"
+            type="event",
+            plugin=plugin,
+            function_name="my_func",
+            doc="foo",
+            spec=build_spec(self.get_command_hook()),
         )
         hook.mock_add_spec(spec=CommandHook, spec_set=True)
 
@@ -565,6 +570,8 @@ class SetStatusBase:
             cmd_prefix=".",
             nick="testnick",
         )
+
+        assert event.parse_command_args()
 
         with mock_db.session() as session:
             event.db = session

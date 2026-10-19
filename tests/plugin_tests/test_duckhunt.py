@@ -4,8 +4,18 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import duckhunt
 from tests.util.mock_conn import MockConn
+
+
+def test_duck_kick_args():
+    spec = build_spec(duckhunt.no_duck_kick)
+    assert spec.parse_text("Enable") == {"mode": "enable"}
+    with pytest.raises(CommandArgError):
+        spec.parse_text("foo")
+    with pytest.raises(CommandArgError):
+        spec.parse_text("enable now")
 
 
 @pytest.mark.parametrize(
@@ -105,34 +115,23 @@ def test_display_scores(mock_db):
         " • \x02t\u200bestuser1\x02: 1"
     )
 
-    event = MagicMock()
+    assert duckhunt.friends(chan, conn, session) == chan_friends
 
-    assert duckhunt.friends("", event, chan, conn, session) == chan_friends
+    assert duckhunt.killers(chan, conn, session) == chan_kills
 
-    assert duckhunt.killers("", event, chan, conn, session) == chan_kills
+    assert duckhunt.friends(chan, conn, session, "global") == global_friends
 
-    assert (
-        duckhunt.friends("global", event, chan, conn, session) == global_friends
-    )
+    assert duckhunt.killers(chan, conn, session, "global") == global_kills
 
-    assert (
-        duckhunt.killers("global", event, chan, conn, session) == global_kills
-    )
+    assert duckhunt.friends(chan, conn, session, "average") == average_friends
 
-    assert (
-        duckhunt.friends("average", event, chan, conn, session)
-        == average_friends
-    )
+    assert duckhunt.killers(chan, conn, session, "average") == average_kills
 
-    assert (
-        duckhunt.killers("average", event, chan, conn, session) == average_kills
-    )
-
-    event.reset_mock()
-
-    assert duckhunt.killers("#channel", event, chan, conn, session) is None
-
-    assert event.notice_doc.call_count == 1
+    spec = build_spec(duckhunt.killers)
+    assert spec.parse_text("GLOBAL") == {"scope": "global"}
+    assert spec.parse_text("") == {"scope": None}
+    with pytest.raises(CommandArgError):
+        spec.parse_text("#channel")
 
 
 def test_ignore_integration(mock_db):
@@ -178,12 +177,9 @@ def test_no_duck_kick_opt_out(mock_db):
         mocked.return_value = True
         db = mock_db.session()
         conn = MockConn()
-        event = MagicMock()
-        chan = "#foo"
-        res = duckhunt.no_duck_kick(db, "foo", chan, conn, event.notice_doc)
+        res = duckhunt.no_duck_kick(db, "#foo", conn, mode="enable")
         assert res is None
         assert mock_db.get_data(duckhunt.status_table) == []
-        assert event.mock_calls == []
 
 
 def test_stop_hunt_opt_out(mock_db):
@@ -206,7 +202,7 @@ def test_start_hunt_opt_out(mock_db):
         conn = MockConn()
         event = MagicMock()
         chan = "#foo"
-        res = duckhunt.start_hunt(db, chan, event.mesage, conn)
+        res = duckhunt.start_hunt(db, chan, event, conn)
         assert res is None
         assert event.mock_calls == []
         assert mock_db.get_data(duckhunt.status_table) == []
@@ -218,10 +214,10 @@ def test_start_hunt(mock_db):
     conn = MockConn()
     event = MagicMock()
     chan = "#foo"
-    res = duckhunt.start_hunt(db, chan, event.mesage, conn)
+    res = duckhunt.start_hunt(db, chan, event, conn)
     assert res is None
     assert event.mock_calls == [
-        call.mesage(
+        call.message(
             "Ducks have been spotted nearby. See how many you can shoot or save. use .bang to shoot or .befriend to save them. NOTE: Ducks now appear as a function of time and channel activity.",
             "#foo",
         )
@@ -236,9 +232,7 @@ def test_duck_migrate_no_data(mock_db):
     conn = MockConn()
     event = MagicMock()
     db = mock_db.session()
-    text = "a b"
-    message = event.message
-    res = duckhunt.duck_merge(text, conn, db, message)
+    res = duckhunt.duck_merge(conn, db, event, "a", "b")
     assert res == "There are no duck scores to migrate from a"
     assert event.mock_calls == []
     assert mock_db.get_data(duckhunt.table) == []
@@ -277,9 +271,7 @@ def test_duck_migrate(mock_db):
 
     event = MagicMock()
     db = mock_db.session()
-    text = "bar other"
-    message = event.message
-    res = duckhunt.duck_merge(text, conn, db, message)
+    res = duckhunt.duck_merge(conn, db, event, "bar", "other")
 
     assert event.mock_calls == [
         call.message(
@@ -308,9 +300,7 @@ def test_duck_stats_user_single_chan(mock_db):
     )
     event = MagicMock()
     db = mock_db.session()
-    text = ""
-    message = event.message
-    res = duckhunt.ducks_user(text, nick, chan, conn, db, message)
+    res = duckhunt.ducks_user(nick, chan, conn, db, event)
     assert res is None
     assert event.mock_calls == [
         call.message(
@@ -325,7 +315,7 @@ def test_duck_stats_no_data(mock_db):
     event = MagicMock()
     chan = "#foo"
     db = mock_db.session()
-    res = duckhunt.duck_stats(chan, conn, db, event.message)
+    res = duckhunt.duck_stats(chan, conn, db, event)
     assert (
         res
         == "It looks like there has been no duck activity on this channel or network."
@@ -351,7 +341,7 @@ class TestOptOut:
 
         conn = MockConn(name="net")
         res = duckhunt.hunt_opt_out(
-            "add #chan", "#chan", mock_db.session(), conn
+            "#chan", mock_db.session(), conn, "add", "#chan"
         )
         assert res == "The duckhunt has been successfully disabled in #chan."
         assert mock_db.get_data(duckhunt.optout) == [("net", "#chan")]
@@ -368,7 +358,7 @@ class TestOptOut:
         conn = MockConn(name="net")
         assert duckhunt.is_opt_out("net", "#chan")
         res = duckhunt.hunt_opt_out(
-            "remove #chan", "#chan", mock_db.session(), conn
+            "#chan", mock_db.session(), conn, "remove", "#chan"
         )
         assert res is None
         assert mock_db.get_data(duckhunt.optout) == []
@@ -433,8 +423,9 @@ class TestStartHunt:
         duckhunt.status_table.create(mock_db.engine)
         duckhunt.load_status(mock_db.session())
         conn = MockConn(name="net")
-        message = MagicMock()
-        res = duckhunt.start_hunt(mock_db.session(), "#chan", message, conn)
+        event = MagicMock()
+        message = event.message
+        res = duckhunt.start_hunt(mock_db.session(), "#chan", event, conn)
         assert mock_db.get_data(duckhunt.status_table) == [
             ("net", "#chan", True, False)
         ]
@@ -484,9 +475,8 @@ class TestDuckKick:
         )
         duckhunt.load_status(mock_db.session())
         conn = MockConn(name="net")
-        notice_doc = MagicMock()
         res = duckhunt.no_duck_kick(
-            mock_db.session(), "enable", "#chan", conn, notice_doc
+            mock_db.session(), "#chan", conn, mode="enable"
         )
         assert mock_db.get_data(duckhunt.status_table) == [
             ("net", "#chan", True, True)
@@ -495,7 +485,6 @@ class TestDuckKick:
             res
             == "users will now be kicked for shooting or befriending non-existent ducks. The bot needs to have appropriate flags to be able to kick users for this to work."
         )
-        assert notice_doc.mock_calls == []
 
     def test_disable_duck_kick(self, mock_db):
         duckhunt.optout.create(mock_db.engine)
@@ -511,15 +500,13 @@ class TestDuckKick:
         )
         duckhunt.load_status(mock_db.session())
         conn = MockConn(name="net")
-        notice_doc = MagicMock()
         res = duckhunt.no_duck_kick(
-            mock_db.session(), "disable", "#chan", conn, notice_doc
+            mock_db.session(), "#chan", conn, mode="disable"
         )
         assert mock_db.get_data(duckhunt.status_table) == [
             ("net", "#chan", True, False)
         ]
         assert res == "kicking for non-existent ducks has been disabled."
-        assert notice_doc.mock_calls == []
 
 
 class TestAttack:
@@ -595,3 +582,30 @@ class TestAttack:
         assert mock_db.get_data(duckhunt.table) == [
             ("net", "nick", 0, 1, "#chan")
         ]
+
+
+@pytest.mark.parametrize(
+    "func,text,expected",
+    [
+        (duckhunt.hunt_opt_out, "", {"action": None, "channel": None}),
+        (duckhunt.hunt_opt_out, "list", {"action": "list", "channel": None}),
+        (
+            duckhunt.hunt_opt_out,
+            "ADD #chan",
+            {"action": "add", "channel": "#chan"},
+        ),
+        (duckhunt.duck_merge, "a b", {"user1": "a", "user2": "b"}),
+        (duckhunt.ducks_user, "", {"target": None}),
+        (duckhunt.ducks_user, "bob", {"target": "bob"}),
+        (duckhunt.duckforgive, "bob", {"nick": "bob"}),
+    ],
+)
+def test_typed_args_parse(func, text, expected):
+    assert build_spec(func).parse_text(text) == expected
+
+
+def test_typed_args_reject():
+    with pytest.raises(CommandArgError):
+        build_spec(duckhunt.duck_merge).parse_text("a")
+    with pytest.raises(CommandArgError):
+        build_spec(duckhunt.hunt_opt_out).parse_text("nope #chan")

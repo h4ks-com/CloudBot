@@ -21,7 +21,7 @@ The latest linux-next version of the Linux kernel is:         next-20210226
         """.strip(),
     )
     event = MagicMock()
-    res = linux.kernel(event.reply)
+    res = linux.kernel(event)
     assert res is None
     assert event.mock_calls == [
         call.reply(

@@ -12,10 +12,13 @@ License:
     GNU General Public License (Version 3)
 """
 
+from typing import Annotated
+
 import isodate
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, timeformat
 from cloudbot.util.web import get_session
 from plugins.youtube import get_client, get_video_id, get_video_info
@@ -68,10 +71,10 @@ def _format_one(result: dict) -> str:
 
 
 @hook.command("gse")
-def gse(text: str, nick: str, chan: str) -> str:
-    """<query> - Returns the top 3 search results using SearXNG."""
+def gse(nick: str, chan: str, query: Annotated[str, Arg("Search term")]) -> str:
+    """Returns the top 3 search results using SearXNG."""
 
-    results, error = searx_search(text, category="general", limit=3)
+    results, error = searx_search(query, category="general", limit=3)
     if error:
         return error
 
@@ -104,10 +107,10 @@ def gse(text: str, nick: str, chan: str) -> str:
 
 
 @hook.command("gseis", "image")
-def gse_gis(text):
-    """<query> - Returns first image result using SearXNG."""
+def gse_gis(query: Annotated[str, Arg("Search term")]):
+    """Returns first image result using SearXNG."""
 
-    result, error = searx_search(text, category="images")
+    result, error = searx_search(query, category="images")
     if error:
         return error
 

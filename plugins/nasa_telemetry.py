@@ -4,12 +4,13 @@ Provides real-time ISS telemetry data including urine tank levels.
 
 import asyncio
 from collections.abc import Callable
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 import aiohttp
 from lightstreamer.client import LightstreamerClient, Subscription
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.formatting import IRC_TAGS
 
 
@@ -277,10 +278,12 @@ async def iss_piss_level():
 
 
 @hook.command("iss", autohelp=False)
-async def iss_telemetry(text):
-    """<subcommand> - ISS telemetry data. Use 'list' to see available commands."""
+async def iss_telemetry(
+    subcommand: Annotated[str | None, Arg("Telemetry item, or list")] = None,
+):
+    """ISS telemetry data. Use 'list' to see available commands."""
 
-    if not text:
+    if not subcommand:
         # Show current ISS location and status
         try:
             location_data = await get_iss_location()
@@ -300,9 +303,7 @@ async def iss_telemetry(text):
                 f"❌ Unable to retrieve ISS location data: {type(e).__name__}"
             )
 
-    subcommand = text.strip().lower()
-
-    match subcommand:
+    match subcommand.lower():
         case "list":
             commands = ", ".join(TELEMETRY_CONFIG.keys())
             return f"Available commands: {bold(commands)}, {bold('source')}"

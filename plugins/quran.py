@@ -1,6 +1,10 @@
+from typing import Annotated
+
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 
@@ -28,35 +32,36 @@ def smart_truncate(content, length=425, suffix="...\n"):
 
 
 @hook.command("quran", "verse", singlethread=True)
-def quran(text, message, reply):
-    """<verse> - Prints the specified Qur'anic verse(s) and its/their translation(s)"""
+def quran(
+    verse: Annotated[str, Arg("Verse as chapter:number")], event: CommandEvent
+):
+    """Prints the specified Qur'anic verse(s) and its/their translation(s)"""
     api_url = "http://quranapi.azurewebsites.net/api/verse/"
-    chapter = text.split(":")[0]
-    verse = text.split(":")[1]
-    params = {"chapter": chapter, "number": verse, "lang": "ar"}
+    chapter = verse.split(":")[0]
+    number = verse.split(":")[1]
+    params = {"chapter": chapter, "number": number, "lang": "ar"}
     r = get_session().get(api_url, params=params)
     try:
         r.raise_for_status()
     except HTTPError as e:
-        reply(statuscheck(e.response.status_code, text))
+        event.reply(statuscheck(e.response.status_code, verse))
         raise
 
     if r.status_code != 200:
-        return statuscheck(r.status_code, text)
+        return statuscheck(r.status_code, verse)
     params["lang"] = "en"
     r2 = get_session().get(api_url, params=params)
 
     try:
         r2.raise_for_status()
     except HTTPError as e:
-        reply(statuscheck(e.response.status_code, text))
+        event.reply(statuscheck(e.response.status_code, verse))
         raise
 
     data = r.json()
     data2 = r2.json()
-    out = f"\x02{text}\x02: "
-    verse = data["Text"]
-    out += verse
-    message(out)
+    out = f"\x02{verse}\x02: "
+    out += data["Text"]
+    event.message(out)
     translation = smart_truncate(data2["Text"])
     return translation

@@ -1,9 +1,11 @@
 import socket
+from typing import Annotated
 
 # TODO(linuxdaemon): Implement bedrock support
 from mcstatus import JavaServer as MinecraftServer
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import colors
 
 DEFAULT_SERVER = "mc.h4ks.com"
@@ -82,6 +84,6 @@ def d_mcp():
 
 
 @hook.command("mcping", "mcp")
-def a_mcp(text):
-    """<server[:port]> - gets info about the Minecraft server at <server[:port]>"""
-    return mcping(text)
+def a_mcp(server: Annotated[str, Arg("Server address, optionally with :port")]):
+    """gets info about the Minecraft server at <server[:port]>"""
+    return mcping(server)

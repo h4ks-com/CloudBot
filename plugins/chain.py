@@ -1,9 +1,13 @@
 import itertools
+from typing import Annotated, Literal
 
 from sqlalchemy import Boolean, Column, PrimaryKeyConstraint, String, Table
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
 from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database
 from cloudbot.util.formatting import chunk_str, pluralize_auto
 
@@ -58,18 +62,10 @@ def get_hook_from_command(bot, hook_name):
     return possible[0] if len(possible) == 1 else None
 
 
-def handle_chainallow_add(args, notice_doc, hook_name, db):
+def handle_chainallow_add(policy, hook_name, db):
     values = {"hook": hook_name}
-    if args:
-        allow = args.pop(0).lower()
-        if allow == "allow":
-            allow = True
-        elif allow == "deny":
-            allow = False
-        else:
-            return notice_doc()
-
-        values["allowed"] = allow
+    if policy:
+        values["allowed"] = policy == "allow"
 
     updated = True
     res = db.execute(
@@ -90,7 +86,7 @@ def handle_chainallow_add(args, notice_doc, hook_name, db):
     return f"Added '{hook_name}' as a denied command"
 
 
-def handle_chainallow_del(args, notice_doc, hook_name, db):
+def handle_chainallow_del(policy, hook_name, db):
     res = db.execute(commands.delete().where(commands.c.hook == hook_name))
     db.commit()
     load_cache(db)
@@ -104,15 +100,18 @@ chainallow_subcmds = {
 
 
 @hook.command(permissions=["botcontrol", "snoonetstaff"])
-def chainallow(text, db, notice_doc, bot):
-    """{add [hook] [{allow|deny}]|del [hook]} - Manage the allowed list fo comands for the chain command"""
-    args = text.split()
-    subcmd = args.pop(0).lower()
-
-    if not args or subcmd not in chainallow_subcmds:
-        return notice_doc()
-
-    name = args.pop(0)
+def chainallow(
+    db: Session,
+    bot: CloudBot,
+    subcmd: Annotated[
+        Literal["add", "del"], Arg("What to do with the command")
+    ],
+    name: Annotated[str, Arg("Command to configure")],
+    policy: Annotated[
+        Literal["allow", "deny"] | None, Arg("Allow or deny it")
+    ] = None,
+):
+    """Manage the allowed list fo comands for the chain command"""
     _hook = get_hook_from_command(bot, name)
     if _hook is None:
         return f"Unable to find command '{name}'"
@@ -122,7 +121,7 @@ def chainallow(text, db, notice_doc, bot):
 
     hook_name = format_hook_name(_hook)
 
-    return chainallow_subcmds[subcmd](args, notice_doc, hook_name, db)
+    return chainallow_subcmds[subcmd](policy, hook_name, db)
 
 
 def parse_chain(text: str, bot):
@@ -155,7 +154,7 @@ def wrap_event(_hook, event, cmd, args, stdin=None):
 
 
 @hook.command()
-async def chain(text, bot, event):
+async def chain(text: str, bot: CloudBot, event: CommandEvent):
     """<cmd1> [args...] | <cmd2> [args...] | ... - Runs commands in a chain, piping the output from previous commands
     to tne next"""
     cmds = parse_chain(text, bot)
@@ -259,7 +258,7 @@ async def chain(text, bot, event):
 
 
 @hook.command("chainlist", autohelp=False)
-def chainlist(bot, event):
+def chainlist(bot: CloudBot, event: CommandEvent):
     """- Returns the list of commands allowed in 'chain'"""
     hooks = [
         get_hook_from_command(bot, name)

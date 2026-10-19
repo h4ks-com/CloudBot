@@ -19,6 +19,7 @@ from irclib.parser import Prefix, TagList
 
 import cloudbot.bot
 from cloudbot import hook
+from cloudbot.bot import CloudBot
 from cloudbot.client import Client
 from cloudbot.clients.irc import IrcClient
 from cloudbot.hook import Priority
@@ -537,28 +538,28 @@ def perm_check(chan, conn, nick):
 
 
 @hook.command(permissions=["botcontrol"], autohelp=False)
-def dumpchans(conn):
+def dumpchans(conn: IrcClient):
     """- Dumps all stored channel data for this connection to the console"""
     data = get_chans(conn)
     return web.paste(MappingSerializer().serialize(data, indent=2))
 
 
 @hook.command(permissions=["botcontrol"], autohelp=False)
-def dumpusers(conn):
+def dumpusers(conn: IrcClient):
     """- Dumps all stored user data for this connection to the console"""
     data = get_users(conn)
     return web.paste(MappingSerializer().serialize(data, indent=2))
 
 
 @hook.command(permissions=["botcontrol"], autohelp=False)
-def updateusers(bot):
+def updateusers(bot: CloudBot):
     """- Forces an update of all /NAMES data for all channels"""
     get_chan_data(bot)
     return "Updating all channel data"
 
 
 @hook.command(permissions=["botcontrol"], autohelp=False)
-def cleanusers(bot):
+def cleanusers(bot: CloudBot):
     """- Clean user data"""
     clean_data(bot)
     gc.collect()
@@ -566,7 +567,7 @@ def cleanusers(bot):
 
 
 @hook.command(permissions=["botcontrol"], autohelp=False)
-def clearusers(bot):
+def clearusers(bot: CloudBot):
     """- Clear all user data"""
     for conn in bot.connections.values():
         init_chan_data(conn)
@@ -576,7 +577,7 @@ def clearusers(bot):
 
 
 @hook.command("getdata", permissions=["botcontrol"], autohelp=False)
-def getdata_cmd(conn, chan, nick):
+def getdata_cmd(conn: IrcClient, chan: str, nick: str):
     """- Get data for current user"""
     chan_data = get_chans(conn).getchan(chan)
     user_data = get_users(conn).getuser(nick)

@@ -85,7 +85,7 @@ def test_grabrandom_no_data():
     target_nick = "bar"
     grab.grab_cache.clear()
     event = MagicMock()
-    res = grab.grabrandom(target_nick, chan, event.message)
+    res = grab.grabrandom(chan, event, target_nick)
     assert res == "I couldn't find any grabs in #foo."
     assert event.mock_calls == []
 
@@ -95,7 +95,7 @@ def test_grabrandom_no_data_no_text():
     grab.grab_cache.clear()
     grab.grab_cache[chan] = {"foo": []}
     event = MagicMock()
-    res = grab.grabrandom("", chan, event.message)
+    res = grab.grabrandom(chan, event)
     assert res == "I couldn't find any grabs in #foo."
     assert event.mock_calls == []
 
@@ -105,7 +105,7 @@ def test_grabrandom_no_text():
     grab.grab_cache.clear()
     grab.grab_cache[chan] = {"foo": ["bar baz"]}
     event = MagicMock()
-    res = grab.grabrandom("", chan, event.message)
+    res = grab.grabrandom(chan, event)
     assert res is None
     assert event.mock_calls == [call.message("<f\u200boo> bar baz")]
 
@@ -116,7 +116,7 @@ def test_grabsearch():
     grab.grab_cache[chan] = {"foo": ["bar baz"]}
     event = MagicMock()
     conn = MockConn()
-    res = grab.grabsearch("bar", chan, conn)
+    res = grab.grabsearch(chan, conn, "bar")
     assert res == ["<f\u200boo> bar baz"]
     assert event.mock_calls == []
 
@@ -127,7 +127,7 @@ def test_last_grab_none(mock_db):
     grab.grab_cache.clear()
     grab.grab_cache[chan] = {text: []}
     event = MagicMock()
-    res = grab.lastgrab(text, chan, event.message)
+    res = grab.lastgrab(text, chan, event)
     assert res == "bar has never been grabbed."
     assert event.mock_calls == []
 
@@ -138,7 +138,7 @@ def test_last_grab_empty(mock_db):
     grab.grab_cache.clear()
     grab.grab_cache[chan] = {text: [""]}
     event = MagicMock()
-    res = grab.lastgrab(text, chan, event.message)
+    res = grab.lastgrab(text, chan, event)
     assert res is None
     assert event.mock_calls == []
 
@@ -149,7 +149,7 @@ def test_last_grab(mock_db):
     grab.grab_cache.clear()
     grab.grab_cache[chan] = {text: ["bar baz"]}
     event = MagicMock()
-    res = grab.lastgrab(text, chan, event.message)
+    res = grab.lastgrab(text, chan, event)
     assert res is None
     assert event.mock_calls == [call.message("<b\u200bar> bar baz", "#foo")]
 
@@ -161,6 +161,6 @@ def test_grabsearch_nick():
     grab.grab_cache[chan] = {target_nick: ["bar baz"]}
     event = MagicMock()
     conn = MockConn()
-    res = grab.grabsearch(target_nick, chan, conn)
+    res = grab.grabsearch(chan, conn, target_nick)
     assert res == ["<f\u200boo> bar baz"]
     assert event.mock_calls == []

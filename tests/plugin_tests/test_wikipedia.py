@@ -5,7 +5,7 @@ from requests import RequestException
 
 from cloudbot.event import CommandEvent
 from plugins import wikipedia
-from tests.util import HookResult, wrap_hook_response
+from tests.util import HookResult, command_hook, wrap_hook_response
 
 
 def do_search(query, results=None):
@@ -13,17 +13,19 @@ def do_search(query, results=None):
     conn.config = {}
     conn.bot = None
 
+    hook = command_hook(wikipedia.wiki)
     cmd_event = CommandEvent(
         text=query,
         cmd_prefix=".",
         triggered_command="wiki",
-        hook=MagicMock(),
+        hook=hook,
         bot=conn.bot,
         conn=conn,
         channel="#foo",
         nick="foobaruser",
     )
 
+    assert cmd_event.parse_command_args()
     return wrap_hook_response(wikipedia.wiki, cmd_event, results=results)
 
 

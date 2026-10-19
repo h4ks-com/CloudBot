@@ -1,9 +1,11 @@
 from dataclasses import dataclass
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 # Define some constants
@@ -116,15 +118,15 @@ class GoogleLocation:
 
 
 @hook.command("locate", "maps")
-def locate(text):
-    """<location> - Finds <location> on Google Maps."""
+def locate(location: Annotated[str, Arg("Place to find")]):
+    """Finds <location> on Google Maps."""
     api_key = bot.config.get_api_key("google")
     if not api_key:
         return "This command requires a Google API key."
 
     try:
-        location = GoogleLocation.from_address(text, api_key)
+        found = GoogleLocation.from_address(location, api_key)
     except GeolocationException as e:
         return str(e)
 
-    return str(location)
+    return str(found)

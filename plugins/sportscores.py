@@ -1,7 +1,10 @@
 import re
 from collections import defaultdict
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.hook import Arg
 from cloudbot.util import http
 from cloudbot.util.pager import CommandPager, paginated_list
 
@@ -31,8 +34,12 @@ GAMES = (
 
 
 @hook.command("morescore", autohelp=False)
-def morescore(text, chan, conn):
-    """[pagenum] - if a score list has lots of results the results are pagintated. If the most recent search is
+def morescore(
+    chan: str,
+    conn: IrcClient,
+    pagenum: Annotated[str | None, Arg("Page number")] = None,
+):
+    """if a score list has lots of results the results are pagintated. If the most recent search is
     paginated the pages are stored for retreival. If no argument is given the next page will be returned else a page
     number can be specified."""
     chan_cf = chan.casefold()
@@ -40,7 +47,7 @@ def morescore(text, chan, conn):
     if not pages:
         return "There are no score pages to show."
 
-    return pages.handle_lookup(text)
+    return pages.handle_lookup(pagenum)
 
 
 def page_scores(conn, chan, scores):
@@ -75,12 +82,16 @@ def scrape_scores(conn, chan, game, text):
 
 
 def score_hook(game):
-    def func(conn, chan, text):
-        return scrape_scores(conn, chan, game.name, text)
+    def func(
+        conn,
+        chan,
+        team_city: Annotated[str | None, Arg("Team city to filter by")] = None,
+    ):
+        return scrape_scores(conn, chan, game.name, team_city)
 
     func.__name__ = f"{game.name}_scores"
     func.__doc__ = (
-        "[team city] - gets the score or next scheduled game for the specified team. "
+        "gets the score or next scheduled game for the specified team. "
         "If no team is specified all games will be included."
     )
     return func

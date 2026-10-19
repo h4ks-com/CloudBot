@@ -8,8 +8,11 @@ import ast
 import html
 import re
 from dataclasses import dataclass
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.queue import Queue
 from cloudbot.util.web import get_session
 
@@ -1103,7 +1106,7 @@ def find_best_code(chan, nick) -> tuple[Question | None, Answer | None]:
 
 
 @hook.command("son", autohelp=False)
-def sonext(reply, chan, nick, text) -> str:
+def sonext(event: CommandEvent, chan: str, nick: str, text: str) -> str:
     """- Show the next stack overflow result."""
     results = results_queue[chan][nick]
     user = text.strip().split()[0] if text.strip() else ""
@@ -1124,7 +1127,7 @@ def sonext(reply, chan, nick, text) -> str:
     ]
 
     if answer is None:
-        reply(*lines)
+        event.reply(*lines)
         return None
 
     code_lines = [line for line in answer.code.split("\n") if line.strip()]
@@ -1133,19 +1136,24 @@ def sonext(reply, chan, nick, text) -> str:
         lines.append(f"... {answer}")
     else:
         lines.append(f"{answer}")
-    reply(*lines)
+    event.reply(*lines)
     return None
 
 
 @hook.command("stackoverflow", "so")
-def sosearchhook(text, reply, chan, nick):
-    """<query> - Searches for <query> in stack overflow returning the first answer with code. If you want a more precise search start the query with a tag (separating words with '-') like 'python' or 'windows-10'"""
+def sosearchhook(
+    event: CommandEvent,
+    chan: str,
+    nick: str,
+    query: Annotated[str, Arg("What to search for")],
+):
+    """Searches for the query in stack overflow returning the first answer with code. If you want a more precise search start the query with a tag (separating words with '-') like 'python' or 'windows-10'"""
     results = results_queue[chan][nick]
     results.metadata.no_good_code = False
-    tag = text.split()[0] if text.split()[0] in TAGS else None
-    results.set(search(" ".join(text.split()[1:]), tag))
+    tag = query.split()[0] if query.split()[0] in TAGS else None
+    results.set(search(" ".join(query.split()[1:]), tag))
 
     if len(results) == 0:
         return "No stackoverflow questions found"
 
-    return sonext(reply, chan, nick, "")
+    return sonext(event, chan, nick, "")

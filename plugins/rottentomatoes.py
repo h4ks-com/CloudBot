@@ -1,11 +1,14 @@
 import json
 import re
-from typing import Any
+from typing import Annotated, Any
 
 import requests
 from bs4 import BeautifulSoup, Tag
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.web import get_session
 
@@ -145,12 +148,12 @@ def _extract_movie_data(
 
 
 @hook.command("rottentomatoes", "rt")
-def rotten_tomatoes(text: str, bot, reply) -> str:
-    """<title> - gets ratings for <title> from Rotten Tomatoes"""
-    title = text.strip()
-    if not title:
-        return "Please provide a movie title"
-
+def rotten_tomatoes(
+    bot: CloudBot,
+    event: CommandEvent,
+    title: Annotated[str, Arg("Movie title")],
+) -> str:
+    """gets ratings for <title> from Rotten Tomatoes"""
     movie_data = scrape_rotten_tomatoes(title)
 
     if not movie_data:

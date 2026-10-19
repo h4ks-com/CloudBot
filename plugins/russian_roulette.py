@@ -2,6 +2,8 @@ import random
 from functools import lru_cache
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
 from cloudbot.util.colors import get_color, get_format
 
 BULLETS = 6
@@ -14,21 +16,33 @@ def get_barrel():
 
 
 @hook.command("russian_roulette", "rr", autohelp=False)
-def rr(text, bot, chan, nick, reply):
+def rr(
+    text: str,
+    bot: CloudBot,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+):
     """- Start a game of Russian Roulette and test it."""
     barrel = get_barrel()
     shot = barrel.pop()
     if shot:
-        reply(f"BANG! 🩸🤯 🔫   -  {get_color('red')}You died")
+        event.reply(f"BANG! 🩸🤯 🔫   -  {get_color('red')}You died")
         get_barrel.cache_clear()
         return
-    reply(
+    event.reply(
         f"{get_color('green')}You live{get_format('clear')}. \x02{len(barrel)}\x02 bullets left. Use \x1d.rrs\x1d to re-spin the barrel."
     )
 
 
 @hook.command("rrspin", "rrs", autohelp=False)
-def respun(text, bot, chan, nick, reply):
+def respun(
+    text: str,
+    bot: CloudBot,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+):
     """- Respins the russian roulette gun's barrel."""
     get_barrel.cache_clear()
-    reply("Barrel re-spinning...")
+    event.reply("Barrel re-spinning...")

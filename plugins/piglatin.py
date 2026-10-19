@@ -15,10 +15,12 @@ License:
 """
 
 import string
+from typing import Annotated
 
 import nltk
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 
 pronunciations: dict[str, list[list[str]]] = {}
 
@@ -71,8 +73,8 @@ def load_nltk():
 
 
 @hook.command("pig", "piglatin")
-def piglatin(text):
-    """<text> - Converts <text> to pig latin."""
+def piglatin(text: Annotated[str, Arg("Text to convert")]):
+    """Converts <text> to pig latin."""
     if not pronunciations:
         return "Please wait, getting NLTK ready!"
 

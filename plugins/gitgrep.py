@@ -2,14 +2,16 @@
 # Replaces grep.app which is now blocked by a Vercel security checkpoint.
 # Author: Matheus Fillipe (rewrite 2026-05-04)
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.queue import Queue
 
 API = "https://api.github.com/search/code"
@@ -74,10 +76,16 @@ def grep(query: str, token: str, **params) -> tuple[list, list]:
 
 
 @hook.command("gitgrepn", "grepn", autohelp=False)
-def gitnext(text, reply, chan, nick) -> str | None:
-    """- Show the next gitgrep result."""
+def gitnext(
+    event: CommandEvent,
+    chan: str,
+    nick: str,
+    user: Annotated[
+        str | None, Arg("Nick whose queue to read", kind="user")
+    ] = None,
+) -> str | None:
+    """Show the next gitgrep result."""
     results = results_queue[chan][nick]
-    user = text.strip().split()[0] if text.strip() else ""
     if user:
         if user in results_queue[chan]:
             results = results_queue[chan][user]
@@ -90,12 +98,14 @@ def gitnext(text, reply, chan, nick) -> str | None:
     r = results.pop()
     lines = [line for line in r.lines[:3] if line.strip()]
     lines.append(f"-->  {r.url}")
-    reply(*lines)
+    event.reply(*lines)
     return None
 
 
 @hook.command("gitgrep", "grep")
-def gitgrep(text, bot, reply, chan, nick):
+def gitgrep(
+    text: str, bot: CloudBot, event: CommandEvent, chan: str, nick: str
+):
     """[args] <query> - Search code on GitHub.
     Optional flags: -l <lang> (filter by language, repeatable), -w (match whole phrase).
     -e (regex) and -i (case) are no-ops: GitHub code search is case-insensitive and
@@ -143,4 +153,4 @@ def gitgrep(text, bot, reply, chan, nick):
         return "No results found."
 
     results_queue[chan][nick] = results
-    return gitnext("", reply, chan, nick)
+    return gitnext(event, chan, nick)

@@ -1,18 +1,20 @@
 import random
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 api_url = "http://api.giphy.com/v1/gifs"
 
 
 @hook.command("gif", "giphy")
-def giphy(text, bot):
-    """<query> - Searches giphy.com for a gif using the provided search term."""
+def giphy(bot: CloudBot, query: Annotated[str, Arg("Search term")]):
+    """Searches giphy.com for a gif using the provided search term."""
     api_key = bot.config.get_api_key("giphy")
-    term = text.strip()
     search_url = api_url + "/search"
-    params = {"q": term, "limit": 10, "fmt": "json", "api_key": api_key}
+    params = {"q": query, "limit": 10, "fmt": "json", "api_key": api_key}
     results = get_session().get(search_url, params=params)
     results.raise_for_status()
     r = results.json()

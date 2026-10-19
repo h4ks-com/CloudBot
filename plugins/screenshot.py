@@ -1,15 +1,20 @@
+from typing import Annotated
+
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.browserless import is_configured, take_screenshot
 
 
 @hook.command("screenshot", "ss")
-def screenshot(text: str, bot: CloudBot) -> str:
-    """<url> - Take a screenshot of a webpage and upload it"""
-    url = text.strip()
+def screenshot(
+    bot: CloudBot, url: Annotated[str, Arg("Web page to capture")]
+) -> str:
+    """Take a screenshot of a webpage and upload it"""
+    url = url.strip()
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 

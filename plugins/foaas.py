@@ -1,7 +1,10 @@
 import json
 import random
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 BASE_URL = "http://www.foaas.com/{fuck}/{target}"
@@ -38,7 +41,13 @@ def load_fuck_offs(bot):
 
 
 @hook.command("fos", "fuckoff", "foaas", autohelp=False)
-def foaas(text, nick, message):
-    """[name] - tell some one to fuck off or just .fos for a generic fuckoff"""
-    out = get_fuck_off(nick, text)
-    message(out)
+def foaas(
+    nick: str,
+    event: CommandEvent,
+    name: Annotated[
+        str | None, Arg("Who to tell to fuck off", kind="user")
+    ] = None,
+):
+    """tell some one to fuck off or just .fos for a generic fuckoff"""
+    out = get_fuck_off(nick, name)
+    event.message(out)

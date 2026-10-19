@@ -1,6 +1,7 @@
 import random
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 
 topicchange_data: list[str] = []
 
@@ -15,6 +16,6 @@ def load_topicchange(bot):
 
 
 @hook.command("changetopic", "discuss", "question", autohelp=False)
-def topicchange(message):
+def topicchange(event: CommandEvent):
     """- generates a random question to help start a conversation or change a topic"""
-    message(random.choice(topicchange_data))
+    event.message(random.choice(topicchange_data))

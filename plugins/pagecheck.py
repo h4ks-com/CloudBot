@@ -1,35 +1,36 @@
 import urllib.parse
+from typing import Annotated
 
 import requests
 import requests.exceptions
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
 
 
 @hook.command("down", "offline", "up")
-def down(text):
-    """<url> - checks if <url> is online or offline"""
+def down(url: Annotated[str, Arg("Site to check")]):
+    """checks if <url> is online or offline"""
 
-    if "://" not in text:
-        text = "http://" + text
+    if "://" not in url:
+        url = "http://" + url
 
-    text = "http://" + urllib.parse.urlparse(text).netloc
+    url = "http://" + urllib.parse.urlparse(url).netloc
 
     try:
-        r = get_session().get(text)
+        r = get_session().get(url)
         r.raise_for_status()
     except requests.exceptions.ConnectionError:
-        return f"{text} seems to be down"
+        return f"{url} seems to be down"
     else:
-        return f"{text} seems to be up"
+        return f"{url} seems to be up"
 
 
 @hook.command()
-def isup(text):
-    """<url> - uses isup.me to check if <url> is online or offline"""
-    url = text.strip()
+def isup(url: Annotated[str, Arg("Site to check")]):
+    """uses isup.me to check if <url> is online or offline"""
 
     # slightly overcomplicated, esoteric URL parsing
     _, auth, path, _, _ = urllib.parse.urlsplit(url)

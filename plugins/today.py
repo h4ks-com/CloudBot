@@ -1,11 +1,12 @@
 import random
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 from cloudbot.util import http
 
 
 @hook.command(autohelp=False)
-def today(reply) -> str:
+def today(event: CommandEvent) -> str:
     """- Returns a random historical fact that happened on this day"""
     try:
         response = http.get_json("https://history.muffinlabs.com/date")
@@ -21,5 +22,5 @@ def today(reply) -> str:
         return f"On this day in {year}: {text}"
 
     except Exception:
-        reply("There was an error getting today's historical facts.")
+        event.reply("There was an error getting today's historical facts.")
         raise

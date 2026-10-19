@@ -1,11 +1,15 @@
 """workflows.h4ks.com commands and channel announcements for submitted jobs."""
 
 import logging
-from typing import Any
+from typing import Annotated, Any, Literal
 
 import httpx
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import workflows
 from cloudbot.webhooks.handlers import register_webhook_handler
 
@@ -257,15 +261,24 @@ def _cmd_radio(
 
 
 @hook.command("wf", "workflows", autohelp=False)
-def wf_cmd(text, nick, chan, conn, bot, notice, event):
-    """<queue|status|me|link|cover|continue> [id|seconds] [idea] - follow workflows or cover the radio"""
+def wf_cmd(
+    nick: str,
+    chan: str,
+    conn: IrcClient,
+    bot: CloudBot,
+    event: CommandEvent,
+    sub: Annotated[
+        Literal["queue", "status", "me", "link", "cover", "continue"] | None,
+        Arg("What to do, see the list with no argument"),
+    ] = None,
+    rest: Annotated[str | None, Arg("Job id, or seconds and idea")] = None,
+):
+    """follow workflows or cover the radio"""
     client = _client(bot)
     if isinstance(client, str):
         return client
 
-    parts = text.strip().split(None, 1)
-    sub = parts[0].lower() if parts else "help"
-    rest = parts[1] if len(parts) > 1 else ""
+    rest = rest or ""
 
     match sub:
         case "status":
@@ -273,9 +286,9 @@ def wf_cmd(text, nick, chan, conn, bot, notice, event):
         case "queue":
             return _cmd_queue(client)
         case "link":
-            return _cmd_link(client, nick, conn, notice)
+            return _cmd_link(client, nick, conn, event.notice)
         case "me":
-            return _cmd_me(client, nick, conn, notice)
+            return _cmd_me(client, nick, conn, event.notice)
         case "cover" | "continue":
             return _cmd_radio(client, sub, rest, nick, chan, conn)
         case _:

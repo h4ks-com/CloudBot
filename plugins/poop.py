@@ -1,8 +1,10 @@
 # Funny prank
 
 from random import choice
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 
 SENTENCES = [
     "Leaves a dump on {}'s head",
@@ -15,8 +17,8 @@ SENTENCES = [
 
 
 @hook.command("poop", autohelp=False)
-def poop(text):
-    """<nick> - Makes the bot poop"""
-    if not text.strip():
+def poop(target: Annotated[str | None, Arg("Who to poop on")] = None):
+    """Makes the bot poop on [target]"""
+    if not target:
         return "💩"
-    return choice(SENTENCES).format(text.strip())
+    return choice(SENTENCES).format(target)

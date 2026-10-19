@@ -8,7 +8,13 @@ from typing import Any
 
 from irclib.parser import Message
 
+from cloudbot.util.command_args import (
+    DEFAULT_CHANTYPES,
+    ArgValue,
+    CommandArgError,
+)
 from cloudbot.util.database import Session
+from cloudbot.util.irc import chantypes
 from cloudbot.util.messages import ChatMessage, MessageLog
 
 logger = logging.getLogger("cloudbot")
@@ -461,10 +467,13 @@ class CommandEvent(Event):
         irc_command=None,
         irc_paramlist=None,
         stdin=None,
+        named_args: Mapping[str, object] | None = None,
     ):
         """
         :param text: The arguments for the command
         :param triggered_command: The command that was triggered
+        :param named_args: Arg values by name from a structured invocation,
+            parsed in place of text
         """
         super().__init__(
             bot=bot,
@@ -491,6 +500,35 @@ class CommandEvent(Event):
         self.doc = self.hook.doc
         self.triggered_command = triggered_command
         self.triggered_prefix = cmd_prefix
+        self.named_args = named_args
+        self.command_args: dict[str, ArgValue] = {}
+
+    def __getitem__(self, item: str) -> Any:
+        if item in self.command_args:
+            return self.command_args[item]
+        return super().__getitem__(item)
+
+    def parse_command_args(self) -> bool:
+        """Fill command_args from the hook's Arg parameters. On invalid input
+        we notice the usage line and return False, which skips the command.
+        """
+        spec = self.hook.spec
+        if not spec.args:
+            return True
+        try:
+            if self.named_args is None:
+                self.command_args = spec.parse_text(
+                    self.text,
+                    chantypes(self.conn)
+                    if spec.reads_chantypes and self.conn is not None
+                    else DEFAULT_CHANTYPES,
+                )
+            else:
+                self.command_args = spec.parse_named(self.named_args)
+        except CommandArgError:
+            self.notice_doc()
+            return False
+        return True
 
     def notice_doc(self, target=None):
         """sends a notice containing this command's docstring to

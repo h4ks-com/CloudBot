@@ -2,11 +2,13 @@ import io
 import socket
 from base64 import b64decode
 from collections.abc import Callable
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 try:
@@ -133,20 +135,21 @@ def torip():
 
 
 @hook.command("funtranslate", "tr", autohelp=False)
-def funtranslate(text, reply):
-    """<target> <text> - Translates <text> using funtranslations.com"""
-    if not text:
+def funtranslate(
+    target: Annotated[str | None, Arg("Language to translate into")] = None,
+    text: Annotated[str | None, Arg("Text to translate")] = None,
+):
+    """Translates <text> using funtranslations.com"""
+    if not target:
         return "No text to translate"
 
-    # Get language
-    lang = text.split()[0]
+    lang = target
     if lang not in LANGS:
         if lang == "list":
             return "Available languages: " + ", ".join(LANGS.keys())
         return "Invalid language, Type '.tr list' to see available ones"
 
-    # Get text
-    text = " ".join(text.split()[1:])
+    text = text or ""
 
     lang_target = LANGS[lang]
     if callable(lang_target):

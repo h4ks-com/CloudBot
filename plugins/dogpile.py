@@ -1,9 +1,11 @@
 import random
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
+from cloudbot.hook import Arg
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
 
@@ -44,9 +46,9 @@ def query(endpoint, text):
 
 
 @hook.command("dpis", "gis")
-def dogpileimage(text):
-    """<query> - Uses the dogpile search engine to search for images."""
-    soup = query("images", text)
+def dogpileimage(search: Annotated[str, Arg("What to search images for")]):
+    """Uses the dogpile search engine to search for images."""
+    soup = query("images", search)
     results_container = soup.find("div", {"class": "images-bing__list"})
     if not results_container:
         return "No results found."
@@ -60,9 +62,9 @@ def dogpileimage(text):
 
 
 @hook.command("dp", "dogpile")
-def dogpile(text):
-    """<query> - Uses the dogpile search engine to find shit on the web."""
-    soup = query("web", text)
+def dogpile(search: Annotated[str, Arg("What to search the web for")]):
+    """Uses the dogpile search engine to find shit on the web."""
+    soup = query("web", search)
     results = soup.find_all("div", {"class": "web-bing__result"})
     if not results:
         return "No results found."

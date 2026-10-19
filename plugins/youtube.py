@@ -2,6 +2,7 @@ import logging
 import re
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
+from typing import Annotated
 from urllib.parse import parse_qs, urlparse
 
 import isodate
@@ -15,6 +16,8 @@ from youtube_transcript_api import (
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, timeformat
 from cloudbot.util.formatting import pluralize_suffix, truncate
 from cloudbot.util.web import get_session
@@ -377,7 +380,7 @@ last_youtube_url: dict[tuple[str, str], str] = {}
 
 
 @hook.command("ytn")
-def youtube_next(text: str, nick: str, chan: str, reply) -> str:
+def youtube_next(text: str, nick: str, chan: str, event: CommandEvent) -> str:
     """- Show the next YouTube result"""
     client = get_client()
     url = user_results[nick].pop(0)
@@ -385,7 +388,7 @@ def youtube_next(text: str, nick: str, chan: str, reply) -> str:
     try:
         result = get_video_info(client, video_url=url)
     except APIError as e:
-        reply(e.message)
+        event.reply(e.message)
         raise
     time = timeformat.format_time(
         int(isodate.parse_duration(result["duration"]).total_seconds()),
@@ -398,27 +401,29 @@ def youtube_next(text: str, nick: str, chan: str, reply) -> str:
 
 
 @hook.command("youtube", "you", "yt", "y")
-def youtube(text: str, nick: str, chan: str, reply) -> str:
-    """<query> - Returns the first YouTube search result for <query>.
-
-    :param text: User input
-    """
+def youtube(
+    query: Annotated[str, Arg("Video to search for")],
+    nick: str,
+    chan: str,
+    event: CommandEvent,
+) -> str:
+    """Returns the first YouTube search result for <query>."""
     client = get_client()
     try:
-        results = search_youtube_videos(client, text)
+        results = search_youtube_videos(client, query)
     except APIError as e:
-        reply(e.message)
+        event.reply(e.message)
         raise
     user_results[nick] = results
-    return youtube_next(text, nick, chan, reply)
+    return youtube_next(query, nick, chan, event)
 
 
 @hook.command("youtime", "ytime")
-def youtime(text: str, reply) -> str:
-    """<url> - Gets the total run time of the first YouTube."""
+def youtime(url: Annotated[str, Arg("Video URL")], event: CommandEvent) -> str:
+    """Gets the total run time of the YouTube video at <url>."""
     parts = ["statistics", "contentDetails", "snippet"]
     try:
-        video_id = get_video_id(text)
+        video_id = get_video_id(url)
         if not video_id:
             return "Invalid YouTube URL"
         request = get_video(video_id, parts)
@@ -426,7 +431,7 @@ def youtime(text: str, reply) -> str:
     except NoResultsError as e:
         return e.message
     except APIError as e:
-        reply(e.message)
+        event.reply(e.message)
         raise
 
     json = request.json()

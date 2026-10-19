@@ -1,6 +1,7 @@
 import re
 import time
 from datetime import datetime
+from typing import Annotated
 from urllib.parse import urlparse
 
 import requests
@@ -15,10 +16,13 @@ from sqlalchemy import (
     desc,
     select,
 )
+from sqlalchemy.orm import Session
 from urllib3.exceptions import LocationParseError
 
 from cloudbot import hook
-from cloudbot.event import EventType
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent, EventType
+from cloudbot.hook import Arg
 from cloudbot.util import database, formatting, queue, timeformat
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
@@ -242,42 +246,53 @@ def chat_tracker(event, db, conn):
 
 
 @hook.command()
-def seen(text, nick, chan, db, event, is_nick_valid):
-    """<nick> <channel> - tells when a nickname was last in active in one of my channels
+def seen(
+    target: Annotated[str, Arg("Nick to look up", kind="user")],
+    nick: str,
+    chan: str,
+    db: Session,
+    event: CommandEvent,
+):
+    """tells when a nickname was last in active in one of my channels"""
 
-    :type db: sqlalchemy.orm.Session
-    :type event: cloudbot.event.Event
-    """
-
-    if event.conn.nick.lower() == text.lower():
+    if event.conn.nick.lower() == target.lower():
         return "You need to get your eyes checked."
 
-    if text.lower() == nick.lower():
+    if target.lower() == nick.lower():
         return "Have you looked in a mirror lately?"
 
-    if not is_nick_valid(text):
+    if not event.is_nick_valid(target):
         return "I can't look up that name, its impossible to use!"
 
     last_seen = db.execute(
         select(seen_table.c.name, seen_table.c.time, seen_table.c.quote)
-        .where(seen_table.c.name == text.lower())
+        .where(seen_table.c.name == target.lower())
         .where(seen_table.c.chan == chan)
     ).fetchone()
 
     if last_seen:
         reltime = timeformat.time_since(last_seen[1])
         if last_seen[2][0:1] == "\x01":
-            return f"{text} was last seen {reltime} ago: * {text} {last_seen[2][8:-1]}"
+            return f"{target} was last seen {reltime} ago: * {target} {last_seen[2][8:-1]}"
         else:
-            return f"{text} was last seen {reltime} ago saying: {last_seen[2]}"
+            return (
+                f"{target} was last seen {reltime} ago saying: {last_seen[2]}"
+            )
     else:
-        return f"I've never seen {text} talking in this channel."
+        return f"I've never seen {target} talking in this channel."
 
 
 @hook.command("lastlink", "ll", "lasturl", autohelp=False)
-def lastlink(text: str, chan: str, conn, db) -> str:
-    """[<nick>] - gets the last link posted by a user or in the channel if no argument is supplied"""
-    search_text = text.strip()
+def lastlink(
+    chan: str,
+    conn: IrcClient,
+    db: Session,
+    target: Annotated[
+        str | None, Arg("Whose link to show, anyone's by default", kind="user")
+    ] = None,
+) -> str:
+    """gets the last link posted by a user or in the channel if no argument is supplied"""
+    search_text = (target or "").strip()
     target_nick = search_text.lower() if search_text else None
 
     # Query database for most recent URL
@@ -329,9 +344,17 @@ def lastlink(text: str, chan: str, conn, db) -> str:
 
 
 @hook.command("userlinks", "urls", autohelp=False)
-def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
-    """[<nick>] - gets recent links posted by a user or in the channel if no argument is supplied"""
-    search_text = text.strip()
+def userlinks(
+    chan: str,
+    conn: IrcClient,
+    db: Session,
+    nick: str,
+    target: Annotated[
+        str | None, Arg("Whose links to show, anyone's by default", kind="user")
+    ] = None,
+) -> str:
+    """gets recent links posted by a user or in the channel if no argument is supplied"""
+    search_text = (target or "").strip()
     target_nick = search_text.lower() if search_text else nick.lower()
 
     # Query database for URLs
@@ -417,9 +440,16 @@ def userlinks(text: str, chan: str, conn, db, nick: str) -> str:
 
 
 @hook.command("urlsn", autohelp=False)
-def urls_next(text: str, chan: str, conn, nick: str) -> str:
-    """[<nick>] - gets next page of links for a user or channel"""
-    search_text = text.strip()
+def urls_next(
+    chan: str,
+    conn: IrcClient,
+    nick: str,
+    target: Annotated[
+        str | None, Arg("Whose links to page, anyone's by default", kind="user")
+    ] = None,
+) -> str:
+    """gets next page of links for a user or channel"""
+    search_text = (target or "").strip()
     queue_key = nick if not search_text else search_text
 
     try:
@@ -463,20 +493,21 @@ def urls_next(text: str, chan: str, conn, nick: str) -> str:
     return more_links_prefix + "\n" + "\n".join(output_lines)
 
 
-@hook.command("said", autohelp=False)
-def searchword(text, chan, conn):
-    """[<nick>] <text> - gets the last message sen't by the nick that contains the [text] string"""
+@hook.command("said")
+def searchword(
+    chan: str,
+    conn: IrcClient,
+    target: Annotated[str, Arg("Nick to search, * for anyone", kind="user")],
+    needle: Annotated[str, Arg("Text the message must contain")],
+):
+    """gets the last message sen't by the nick that contains the text string"""
     try:
         history = reversed(conn.history[chan])
     except KeyError:
         return "There is no history for this channel."
 
-    text = text.strip()
-    if not text or len(text.split()) < 2:
-        return "Please provide a nick and a search string."
-
-    search_nick = text.split()[0]
-    text = text[len(search_nick) :].strip()
+    search_nick = target
+    text = needle.strip()
 
     i = 0
     max_i = 50000
@@ -501,12 +532,12 @@ def searchword(text, chan, conn):
 
 
 @hook.command("now", autohelp=False)
-def now(text, chan, conn):
+def now(text: str, chan: str, conn: IrcClient):
     """- Show the time now in local time"""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 @hook.command("utc", autohelp=False)
-def utc(text, chan, conn):
+def utc(text: str, chan: str, conn: IrcClient):
     """- Show the time now in UTC"""
     return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")

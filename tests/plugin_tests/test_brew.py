@@ -10,10 +10,10 @@ from plugins import brew
 
 def test_no_key(mock_bot_factory, mock_requests, unset_bot, event_loop):
     bot.set(mock_bot_factory(loop=event_loop, config={"api_keys": {}}))
-    reply = MagicMock()
-    result = brew.brew("some text", reply)
+    event = MagicMock()
+    result = brew.brew("some text", event)
 
-    reply.assert_not_called()
+    event.reply.assert_not_called()
 
     assert result == "No brewerydb API key set."
 
@@ -41,10 +41,10 @@ def test_empty_body(mock_bot_factory, mock_requests, unset_bot, event_loop):
         ],
     )
 
-    reply = MagicMock()
-    result = brew.brew("some text", reply)
+    event = MagicMock()
+    result = brew.brew("some text", event)
 
-    reply.assert_not_called()
+    event.reply.assert_not_called()
 
     assert result == "No results found."
 
@@ -72,10 +72,10 @@ def test_no_results(mock_bot_factory, mock_requests, unset_bot, event_loop):
         json={"totalResults": 0},
     )
 
-    reply = MagicMock()
-    result = brew.brew("some text", reply)
+    event = MagicMock()
+    result = brew.brew("some text", event)
 
-    reply.assert_not_called()
+    event.reply.assert_not_called()
 
     assert result == "No results found."
 
@@ -160,9 +160,9 @@ def test_results(
         },
     )
 
-    reply = MagicMock()
-    result = brew.brew("some text", reply)
+    event = MagicMock()
+    result = brew.brew("some text", event)
 
-    reply.assert_not_called()
+    event.reply.assert_not_called()
 
     assert result == out

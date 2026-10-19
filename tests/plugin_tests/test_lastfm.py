@@ -9,8 +9,9 @@ from responses.matchers import query_param_matcher
 
 from cloudbot.bot import bot
 from cloudbot.event import CommandEvent
+from cloudbot.util.command_args import build_spec
 from plugins import lastfm
-from tests.util import wrap_hook_response
+from tests.util import command_hook, wrap_hook_response
 from tests.util.mock_db import MockDB
 
 
@@ -270,7 +271,7 @@ class TestTopArtists:
             },
         )
 
-        out = lastfm.topweek("", "foo")
+        out = lastfm.topweek("foo")
 
         assert out == "b\u200bar's favorite artists: foo [5] bar [2] "
 
@@ -308,29 +309,50 @@ class TestTopTrack:
             },
         )
 
-        out = lastfm.toptrack("", "foo")
+        out = lastfm.toptrack("foo")
 
         expected = "b\u200bar's favorite songs: some song by some artist listened to 10 times. "
 
         assert out == expected
 
 
+def test_lastfm_trailing_dontsave_flag():
+    spec = build_spec(lastfm.lastfm)
+    assert spec.usage(None) == "[user] [dontsave]"
+    assert spec.parse_text("some user DontSave") == {
+        "user": "some user",
+        "dontsave": "dontsave",
+    }
+    assert spec.parse_text("dontsave") == {"user": None, "dontsave": "dontsave"}
+    assert spec.parse_text("bob") == {"user": "bob", "dontsave": None}
+    assert spec.parse_text("") == {"user": None, "dontsave": None}
+
+
+@pytest.mark.parametrize(
+    "text,saved",
+    [("myaccount", [("foo", "myaccount")]), ("myaccount dontsave", [])],
+)
 def test_save_account(
-    mock_db: MockDB, mock_requests: RequestsMock, mock_bot_factory, freeze_time
+    mock_db: MockDB,
+    mock_requests: RequestsMock,
+    mock_bot_factory,
+    freeze_time,
+    text,
+    saved,
 ):
     lastfm.table.create(mock_db.engine)
     lastfm.load_cache(mock_db.session())
     mock_bot = mock_bot_factory(config={"api_keys": {"lastfm": "APIKEY"}})
-    hook = MagicMock()
     event = CommandEvent(
         bot=mock_bot,
-        hook=hook,
-        text="myaccount",
+        hook=command_hook(lastfm.lastfm),
+        text=text,
         triggered_command="np",
         cmd_prefix=".",
         nick="foo",
         conn=MagicMock(),
     )
+    assert event.parse_command_args()
 
     event.db = mock_db.session()
 
@@ -402,9 +424,7 @@ def test_save_account(
     )
 
     results = wrap_hook_response(lastfm.lastfm, event)
-    assert mock_db.get_data(lastfm.table) == [
-        ("foo", "myaccount"),
-    ]
+    assert mock_db.get_data(lastfm.table) == saved
     assert results == [
         (
             "return",
@@ -420,16 +440,16 @@ def test_update_account(
     mock_db.add_row(lastfm.table, nick="foo", acc="oldaccount")
     lastfm.load_cache(mock_db.session())
     mock_bot = mock_bot_factory(config={"api_keys": {"lastfm": "APIKEY"}})
-    hook = MagicMock()
     event = CommandEvent(
         bot=mock_bot,
-        hook=hook,
+        hook=command_hook(lastfm.lastfm),
         text="myaccount",
         triggered_command="np",
         cmd_prefix=".",
         nick="foo",
         conn=MagicMock(),
     )
+    assert event.parse_command_args()
 
     event.db = mock_db.session()
 

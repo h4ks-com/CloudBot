@@ -2,6 +2,7 @@ import random
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
 from cloudbot.util import colors
 
 responses: list[str] = []
@@ -18,9 +19,9 @@ def load_responses(bot: CloudBot) -> None:
 
 
 @hook.command("8ball", "8", "eightball")
-async def eightball(action):
+async def eightball(event: CommandEvent):
     """<question> - asks the all knowing magic electronic eight ball <question>"""
     magic = random.choice(responses)
     message = colors.parse(f"shakes the magic 8 ball... {magic}")
 
-    action(message)
+    event.action(message)

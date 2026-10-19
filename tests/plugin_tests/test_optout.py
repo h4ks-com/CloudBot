@@ -3,8 +3,9 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from cloudbot.event import CommandEvent
+from cloudbot.util.command_args import build_spec
 from plugins.core import optout
-from tests.util import wrap_hook_response_async
+from tests.util import command_hook, wrap_hook_response_async
 from tests.util.mock_db import MockDB
 
 
@@ -372,17 +373,20 @@ class TestSetOptOut:
             optout.load_cache(session)
             conn = MagicMock()
             conn.configure_mock(name="net")
+            hook = command_hook(optout.optout)
             event = CommandEvent(
                 nick="nick",
                 channel="#chan",
                 conn=conn,
                 bot=mock_bot,
-                hook=MagicMock(),
+                hook=hook,
                 text="foo.*",
                 triggered_command="optout",
                 cmd_prefix=".",
             )
             event.db = session
+            assert event.parse_command_args()
+            conn.reset_mock()
             has_perm = MagicMock()
             has_perm.return_value = True
             with patch.object(event, "has_permission", has_perm):
@@ -476,12 +480,14 @@ class TestDelOptOut:
                 channel="#chan",
                 conn=conn,
                 bot=mock_bot,
-                hook=MagicMock(),
+                hook=command_hook(optout.deloptout),
                 text="foo.*",
                 triggered_command="deloptout",
                 cmd_prefix=".",
             )
             event.db = session
+            assert event.parse_command_args()
+            conn.reset_mock()
             has_perm = MagicMock()
             has_perm.return_value = True
             with patch.object(event, "has_permission", has_perm):
@@ -570,12 +576,14 @@ class TestClearOptOut:
                 channel="#chan",
                 conn=conn,
                 bot=mock_bot,
-                hook=MagicMock(),
+                hook=command_hook(optout.clear),
                 text="",
                 triggered_command="clearoptout",
                 cmd_prefix=".",
             )
             event.db = session
+            assert event.parse_command_args()
+            conn.reset_mock()
             has_perm = MagicMock()
             has_perm.return_value = True
             with patch.object(event, "has_permission", has_perm):
@@ -666,3 +674,19 @@ class TestClearOptOut:
             assert optout.clear_optout(session, "net") == 3
 
             assert len(mock_db.get_data(optout.optout_table)) == 1
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("foo.*", {"channel": None, "pattern": "foo.*", "allow": None}),
+        ("foo.* yes", {"channel": None, "pattern": "foo.*", "allow": "yes"}),
+        ("#bar foo.*", {"channel": "#bar", "pattern": "foo.*", "allow": None}),
+        (
+            "#bar foo.* no",
+            {"channel": "#bar", "pattern": "foo.*", "allow": "no"},
+        ),
+    ],
+)
+def test_optout_args(text, expected):
+    assert build_spec(optout.optout).parse_text(text) == expected

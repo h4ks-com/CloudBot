@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import Column, String, Table, UniqueConstraint
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import OptionalChannel
 from cloudbot.util import database
 
 if TYPE_CHECKING:
@@ -106,8 +108,8 @@ def parse_args(text: str, chan: str) -> str:
     return channel
 
 
-def change_status(db, event, status):
-    channel = parse_args(event.text, event.chan)
+def change_status(db, event, status, channel_text):
+    channel = parse_args(channel_text, event.chan)
     action = "Enabling" if status else "Disabling"
     event.message(
         f"{action} regex matching (youtube, etc) (issued by {event.nick})",
@@ -147,27 +149,34 @@ def sieve_regex(
 
 
 @hook.command(autohelp=False, permissions=["botcontrol"])
-def enableregex(db, event):
-    """[chan] - Enable regex hooks in [chan] (default: current channel)"""
-    return change_status(db, event, True)
+def enableregex(db, event: CommandEvent, channel: OptionalChannel = None):
+    """Enable regex hooks in the channel (default: current channel)"""
+    return change_status(db, event, True, channel or "")
 
 
 @hook.command(autohelp=False, permissions=["botcontrol"])
-def disableregex(db, event):
-    """[chan] - Disable regex hooks in [chan] (default: current channel)"""
-    return change_status(db, event, False)
+def disableregex(db, event: CommandEvent, channel: OptionalChannel = None):
+    """Disable regex hooks in the channel (default: current channel)"""
+    return change_status(db, event, False, channel or "")
 
 
 @hook.command(autohelp=False, permissions=["botcontrol"])
-def resetregex(text, db, conn, chan, nick, message, notice):
-    """[chan] - Reset regex hook status in [chan] (default: current channel)"""
-    channel = parse_args(text, chan)
-    message(
+def resetregex(
+    db,
+    conn: "Client",
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    channel: OptionalChannel = None,
+):
+    """Reset regex hook status in the channel (default: current channel)"""
+    channel = parse_args(channel or "", chan)
+    event.message(
         f"Resetting regex matching setting (youtube, etc) (issued by {nick})",
         target=channel,
     )
 
-    notice(
+    event.notice(
         f"Resetting regex matching setting (youtube, etc) in channel {channel}"
     )
 
@@ -175,9 +184,11 @@ def resetregex(text, db, conn, chan, nick, message, notice):
 
 
 @hook.command(autohelp=False, permissions=["botcontrol"])
-def regexstatus(text: str, conn: "Client", chan: str) -> str:
-    """[chan] - Get status of regex hooks in [chan] (default: current channel)"""
-    channel = parse_args(text, chan)
+def regexstatus(
+    conn: "Client", chan: str, channel: OptionalChannel = None
+) -> str:
+    """Get status of regex hooks in the channel (default: current channel)"""
+    channel = parse_args(channel or "", chan)
     status = get_status(conn, channel)
     return f"Regex status for {channel}: {ENABLED if status else DISABLED}"
 

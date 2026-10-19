@@ -1,11 +1,14 @@
 import re
 from collections import defaultdict
 from re import Pattern
+from typing import Annotated
 
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table, select
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
 from cloudbot.event import EventType
+from cloudbot.hook import Arg
 from cloudbot.util import database
 
 table = Table(
@@ -29,7 +32,7 @@ matcher = BadwordMatcher()
 
 @hook.on_start()
 @hook.command("loadbad", permissions=["badwords"], autohelp=False)
-def load_bad(db):
+def load_bad(db: Session):
     """- Should run on start of bot to load the existing words into the regex"""
     words = []
     new_cache = defaultdict(list)
@@ -49,10 +52,15 @@ def load_bad(db):
 
 
 @hook.command("addbad", permissions=["badwords"])
-def add_bad(text, nick, db):
-    """<word> <channel> - adds a bad word to the auto kick list must specify a channel with each word"""
-    splt = text.lower().split(None, 1)
-    word, channel = splt
+def add_bad(
+    nick: str,
+    db: Session,
+    word: Annotated[str, Arg("Word to auto kick for")],
+    channel: Annotated[str, Arg("Channel the word applies to", kind="channel")],
+):
+    """adds a bad word to the auto kick list must specify a channel with each word"""
+    word = word.lower()
+    channel = channel.lower()
     if not channel.startswith("#"):
         return "Please specify a valid channel name after the bad word."
 
@@ -75,10 +83,14 @@ def add_bad(text, nick, db):
 
 
 @hook.command("rmbad", "delbad", permissions=["badwords"])
-def del_bad(text, db):
-    """<word> <channel> - removes the specified word from the specified channels bad word list"""
-    splt = text.lower().split(None, 1)
-    word, channel = splt
+def del_bad(
+    db: Session,
+    word: Annotated[str, Arg("Word to remove")],
+    channel: Annotated[str, Arg("Channel to remove it from", kind="channel")],
+):
+    """removes the specified word from the specified channels bad word list"""
+    word = word.lower()
+    channel = channel.lower()
     if not channel.startswith("#"):
         return "Please specify a valid channel name after the bad word."
 
@@ -94,13 +106,17 @@ def del_bad(text, db):
 
 
 @hook.command("listbad", permissions=["badwords"])
-def list_bad(text):
-    """<channel> - Returns a list of bad words specify a channel to see words for a particular channel"""
-    text = text.split(" ")[0].lower()
-    if not text.startswith("#"):
+def list_bad(
+    channel: Annotated[
+        str, Arg("Channel to list the words of", kind="channel")
+    ],
+):
+    """Returns a list of bad words specify a channel to see words for a particular channel"""
+    channel = channel.lower()
+    if not channel.startswith("#"):
         return "Please specify a valid channel name"
 
-    return "|".join(badcache[text])
+    return "|".join(badcache[channel])
 
 
 @hook.event([EventType.message, EventType.action], singlethread=True)

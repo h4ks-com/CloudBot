@@ -2,10 +2,14 @@ import datetime
 import random
 import re
 from collections import defaultdict
+from typing import Annotated
 
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database
 
 table = Table(
@@ -60,20 +64,26 @@ def load_cache(db):
 
 
 @hook.command()
-def herald(text, nick, chan, db, reply):
-    """{<message>|show|delete|remove} - adds a greeting for your nick that will be announced everytime you join the
+def herald(
+    nick: str,
+    chan: str,
+    db: Session,
+    event: CommandEvent,
+    greeting: Annotated[str, Arg("Your greeting, or show, delete, remove")],
+):
+    """adds a greeting for your nick that will be announced everytime you join the
     channel. Using .herald show will show your current herald and .herald delete will remove your greeting.
     """
-    if text.lower() == "show":
-        greeting = herald_cache[chan.casefold()].get(nick.casefold())
-        if greeting is None:
+    if greeting.lower() == "show":
+        current = herald_cache[chan.casefold()].get(nick.casefold())
+        if current is None:
             return "you don't have a herald set try .herald <message> to set your greeting."
 
-        return greeting
+        return current
 
-    if text.lower() in ["delete", "remove"]:
-        greeting = herald_cache[chan.casefold()].get(nick.casefold())
-        if greeting is None:
+    if greeting.lower() in ["delete", "remove"]:
+        current = herald_cache[chan.casefold()].get(nick.casefold())
+        if current is None:
             return "no herald set, unable to delete."
 
         query = (
@@ -84,7 +94,7 @@ def herald(text, nick, chan, db, reply):
         db.execute(query)
         db.commit()
 
-        reply(f"greeting '{greeting}' for {nick} has been removed")
+        event.reply(f"greeting '{current}' for {nick} has been removed")
 
         load_cache(db)
         return None
@@ -93,17 +103,17 @@ def herald(text, nick, chan, db, reply):
         table.update()
         .where(table.c.name == nick.lower())
         .where(table.c.chan == chan.lower())
-        .values(quote=text)
+        .values(quote=greeting)
     )
     if res.rowcount == 0:
         db.execute(
             table.insert().values(
-                name=nick.lower(), chan=chan.lower(), quote=text
+                name=nick.lower(), chan=chan.lower(), quote=greeting
             )
         )
 
     db.commit()
-    reply("greeting successfully added")
+    event.reply("greeting successfully added")
 
     load_cache(db)
 
@@ -113,10 +123,15 @@ def herald(text, nick, chan, db, reply):
 @hook.command(
     permissions=["botcontrol", "snoonetstaff", "deleteherald", "chanop"]
 )
-def deleteherald(text, chan, db, reply):
-    """<nickname> - Delete [nickname]'s herald."""
+def deleteherald(
+    nickname: Annotated[str, Arg("Nick whose herald to delete", kind="user")],
+    chan: str,
+    db: Session,
+    event: CommandEvent,
+):
+    """Delete [nickname]'s herald."""
 
-    nick = text.strip()
+    nick = nickname.strip()
 
     res = db.execute(
         table.delete()
@@ -127,9 +142,9 @@ def deleteherald(text, chan, db, reply):
     db.commit()
 
     if res.rowcount > 0:
-        reply(f"greeting for {text.lower()} has been removed")
+        event.reply(f"greeting for {nickname.lower()} has been removed")
     else:
-        reply(f"{text.lower()} does not have a herald")
+        event.reply(f"{nickname.lower()} does not have a herald")
 
     load_cache(db)
 
@@ -170,7 +185,7 @@ def welcome(nick, message, bot, chan, conn):
             text = random.choice(words)
 
         if grab is not None:
-            out = grab.code.grabrandom(text, chan, message)
+            out = grab.code.random_grab(chan, text)
         else:
             out = f"grab.py not loaded, original herald: {greet}"
 

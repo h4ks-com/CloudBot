@@ -15,8 +15,11 @@ import time
 from datetime import datetime, timedelta
 
 from sqlalchemy import Column, DateTime, PrimaryKeyConstraint, String, Table
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
 from cloudbot.util import colors, database
 from cloudbot.util.timeformat import format_time, time_since
 from cloudbot.util.timeparse import time_parse
@@ -146,7 +149,15 @@ async def check_reminders(bot, async_call, db):
 
 
 @hook.command("remind", "reminder", "in")
-async def remind(text, nick, chan, db, conn, event, async_call):
+async def remind(
+    text: str,
+    nick: str,
+    chan: str,
+    db: Session,
+    conn: IrcClient,
+    event: CommandEvent,
+    async_call,
+):
     """<1 minute, 30 seconds>: <do task> - reminds you to <do task> in <1 minute, 30 seconds>"""
 
     count = len(

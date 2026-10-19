@@ -20,7 +20,7 @@ def test_bible(mock_requests):
         ],
     )
     event = MagicMock()
-    res = bible.bible("foo", event.reply)
+    res = bible.bible("foo", event)
     assert res == "\x02foo 12:54\x02 things and stuff"
     assert event.mock_calls == []
 
@@ -33,7 +33,7 @@ def test_bible_404(mock_requests):
     )
     event = MagicMock()
     with pytest.raises(HTTPError):
-        bible.bible("foo", event.reply)
+        bible.bible("foo", event)
 
     assert event.mock_calls == [
         call.reply(

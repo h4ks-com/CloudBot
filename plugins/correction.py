@@ -3,6 +3,8 @@ from itertools import cycle
 from typing import TypedDict
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
 from cloudbot.util import formatting
 from plugins.mock import get_latest_line
 
@@ -185,7 +187,7 @@ def correction(match, conn, nick, chan, message):
 
 
 @hook.command("sed", autohelp=False)
-def sed(bot, reply, text: str) -> str:
+def sed(bot: CloudBot, event: CommandEvent, text: str) -> str:
     """<s/part1/part2/flags> - Perform regex substitution on the given text."""
     if not text:
         return "Usage: sed s/<part1>/<part2>/<flags> <args>"
@@ -194,7 +196,7 @@ def sed(bot, reply, text: str) -> str:
     if not match:
         return "Invalid format. Use: s/<part1>/<part2>/<flags> <args>"
 
-    find, replace, re_flags = paser_sed_exp(match.groups(), reply)
+    find, replace, re_flags = paser_sed_exp(match.groups(), event.reply)
     args = text[match.end() :].strip()
 
     if not args:

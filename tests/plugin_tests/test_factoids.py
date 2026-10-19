@@ -2,15 +2,18 @@ import itertools
 import string
 from unittest.mock import MagicMock, call
 
+import pytest
+
 from cloudbot.event import CommandEvent
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import factoids
-from tests.util import wrap_hook_response_async
+from tests.util import command_hook, wrap_hook_response_async
 
 
 async def test_add_fact(mock_db, mock_bot):
     factoids.table.create(mock_db.engine)
     factoids.load_cache(mock_db.session())
-    hook = MagicMock()
+    hook = command_hook(factoids.remember)
     conn = MagicMock()
     conn.configure_mock(name="net", config={})
     event = CommandEvent(
@@ -25,6 +28,7 @@ async def test_add_fact(mock_db, mock_bot):
     )
 
     event.db = mock_db.session()
+    assert event.parse_command_args()
     res = await wrap_hook_response_async(factoids.remember, event)
     assert res == [
         (
@@ -52,7 +56,7 @@ async def test_update_fact(mock_db, mock_bot):
         ],
     )
     factoids.load_cache(mock_db.session())
-    hook = MagicMock()
+    hook = command_hook(factoids.remember)
     conn = MagicMock()
     conn.configure_mock(name="net", config={})
     event = CommandEvent(
@@ -67,6 +71,7 @@ async def test_update_fact(mock_db, mock_bot):
     )
 
     event.db = mock_db.session()
+    assert event.parse_command_args()
     res = await wrap_hook_response_async(factoids.remember, event)
     assert res == [
         (
@@ -104,7 +109,7 @@ def test_forget(mock_db, patch_paste):
     ]
 
     event = MagicMock()
-    factoids.forget("foo bar", chan, mock_db.session(), event.notice)
+    factoids.forget(chan, mock_db.session(), event, "foo bar")
     assert event.mock_calls == [
         call.notice("Unknown factoids: 'bar'"),
         call.notice("Removed Data: PASTEURL"),
@@ -219,7 +224,7 @@ def test_list_facts(mock_db):
     )
 
     factoids.load_cache(mock_db.session())
-    factoids.listfactoids(event.notice, "#chan")
+    factoids.listfactoids(event, "#chan")
 
     assert event.mock_calls == [
         call.notice(
@@ -250,3 +255,8 @@ def test_list_facts(mock_db):
             "?yn, ?yo, ?yp, ?yq, ?yr, ?ys, ?yt, ?yu, ?yv, ?yw, ?yx, ?yy, ?yz, ?za, ?zb, ?zc, ?zd, ?ze, ?zf, ?zg, ?zh, ?zi, ?zj, ?zk, ?zl, ?zm, ?zn, ?zo, ?zp, ?zq, ?zr, ?zs, ?zt, ?zu, ?zv, ?zw, ?zx, ?zy, ?zz"
         ),
     ]
+
+
+def test_remember_needs_word_and_data():
+    with pytest.raises(CommandArgError):
+        build_spec(factoids.remember).parse_text("foo")

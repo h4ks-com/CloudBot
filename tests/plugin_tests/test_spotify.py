@@ -136,8 +136,8 @@ def test_search_no_results(mock_requests, setup_api):
 def test_format_search_track(data, output, mock_requests, setup_api):
     mock_requests.add("GET", "https://api.spotify.com/v1/search", json=data)
 
-    reply = MagicMock()
+    event = MagicMock()
 
-    assert spotify.spotify("foo", reply) == output
+    assert spotify.spotify("foo", event) == output
 
-    reply.assert_not_called()
+    event.reply.assert_not_called()

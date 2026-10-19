@@ -1,10 +1,14 @@
 import base64
 import time
 from collections import deque
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.ai_common import (
     APP_HTML_PROMPT_SUFFIX,
@@ -301,8 +305,14 @@ user_models: dict[tuple[str, str], str] = {}
 
 
 @hook.command("ai", "ollama")
-def ai_command(text: str, nick: str, chan: str, bot, notice) -> str | list[str]:
-    """<text> - Get a response from Ollama LLM."""
+def ai_command(
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    prompt: Annotated[str, Arg("What to ask")],
+) -> str | list[str]:
+    """Get a response from Ollama LLM."""
     model = user_models.get((chan, nick))
 
     try:
@@ -310,7 +320,7 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str | list[str]:
     except ValueError as e:
         return str(e)
     if not api_url:
-        notice(
+        event.notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
         return ""
@@ -320,11 +330,11 @@ def ai_command(text: str, nick: str, chan: str, bot, notice) -> str | list[str]:
     history = get_or_create_history(
         ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
     )
-    history.append(Message(role="user", content=text))
+    history.append(Message(role="user", content=prompt))
     messages = list(history)
     rag_cfg = _rag_personas(bot).get(model)
     if rag_cfg:
-        rag = _rag_system_message(api_url, api_key, rag_cfg, text)
+        rag = _rag_system_message(api_url, api_key, rag_cfg, prompt)
         if rag is not None:
             messages = [rag, *messages]
     try:
@@ -369,8 +379,14 @@ def create_web_app(
 
 
 @hook.command("aiapp", "aiweb")
-def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
-    """<text> - Create a single page html web app on the fly with Ollama"""
+def ai_app(
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    description: Annotated[str, Arg("The app to build")],
+) -> str:
+    """Create a single page html web app on the fly with Ollama"""
     model = user_models.get((chan, nick))
 
     try:
@@ -378,7 +394,7 @@ def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
     except ValueError as e:
         return str(e)
     if not api_url:
-        notice(
+        event.notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
         return ""
@@ -388,16 +404,21 @@ def ai_app(text: str, nick: str, chan: str, bot, notice) -> str:
     history = get_or_create_history(
         ollama_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
     )
-    return create_web_app(text, history, bot, api_url, api_key, model)
+    return create_web_app(description, history, bot, api_url, api_key, model)
 
 
 @hook.command("aih", "aihistory", "aipaste", autohelp=False)
-def ai_paste_command(nick: str, chan: str, text: str) -> str:
-    """[nick] - Pastes the Ollama conversation history with nick if specified."""
+def ai_paste_command(
+    nick: str,
+    chan: str,
+    user: Annotated[
+        str | None, Arg("Whose history to paste", kind="user")
+    ] = None,
+) -> str:
+    """Pastes the Ollama conversation history with nick if specified."""
 
-    text = text.strip()
-    if text:
-        nick = text
+    if user:
+        nick = user
 
     channick = (chan, nick)
     if channick in ollama_messages_cache:
@@ -410,15 +431,14 @@ def ai_paste_command(nick: str, chan: str, text: str) -> str:
 
 
 @hook.command("aicopy")
-def ai_copy_command(text: str, nick: str, chan: str) -> str:
-    """<user> - Copy another user's conversation history into yours, replacing your own."""
-
-    target = text.strip()
-    if not target:
-        return "Usage: .aicopy <user>"
-
+def ai_copy_command(
+    nick: str,
+    chan: str,
+    user: Annotated[str, Arg("Whose history to copy", kind="user")],
+) -> str:
+    """Copy another user's conversation history into yours, replacing your own."""
     return copy_history(
-        ollama_messages_cache, chan, nick, target, MAX_USER_HISTORY_LENGTH
+        ollama_messages_cache, chan, nick, user, MAX_USER_HISTORY_LENGTH
     )
 
 
@@ -429,11 +449,11 @@ def ai_clear_command(nick: str, chan: str) -> str:
 
 
 @hook.command("aimodels", autohelp=False)
-def ai_models_command(bot, notice) -> list[str] | str:
+def ai_models_command(bot: CloudBot, event: CommandEvent) -> list[str] | str:
     """- List the Ollama models."""
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
-        notice(
+        event.notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
         return None
@@ -461,10 +481,15 @@ def ai_models_command(bot, notice) -> list[str] | str:
 
 
 @hook.command("aisetmodel", "aimodel", "setaimodel", autohelp=False)
-def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
-    """<model> - Set the Ollama model to use for this user in this channel."""
+def ai_set_model_command(
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    model: Annotated[str | None, Arg("Model to use")] = None,
+) -> str:
+    """Set the Ollama model to use for this user in this channel."""
 
-    model = text.strip()
     if not model:
         current = user_models.get((chan, nick)) or "<server default>"
         return f"You are currently using model '{current}'. Specify a model with this command to change it. Use .aimodels to list allowed."
@@ -480,16 +505,22 @@ def ai_set_model_command(text: str, nick: str, chan: str, bot, notice) -> str:
 
 
 @hook.command("aimage")
-def ai_image_command(text: str, nick: str, chan: str, bot, notice) -> str:
-    """<[model] prompt> - Generate an image via LocalAI. '.aimage list' to list models."""
+def ai_image_command(
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    description: Annotated[
+        str, Arg("Optional model then the image prompt, or list")
+    ],
+) -> str:
+    """Generate an image via LocalAI. '.aimage list' to list models."""
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
-        notice(
+        event.notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
         return ""
-
-    text = text.strip()
 
     try:
         image_models = _fetch_image_models(api_url, api_key)
@@ -500,7 +531,7 @@ def ai_image_command(text: str, nick: str, chan: str, bot, notice) -> str:
     except requests.Timeout:
         return "Error: Request timed out"
 
-    if text.lower() == "list":
+    if description.lower() == "list":
         if not image_models:
             return (
                 "No image models detected. If you installed some, the server may be "
@@ -515,11 +546,11 @@ def ai_image_command(text: str, nick: str, chan: str, bot, notice) -> str:
             "they aren't listed, bot is probably rate-limited (use enterprise API key)."
         )
 
-    parts = text.split(None, 1)
+    parts = description.split(None, 1)
     if len(parts) == 2 and parts[0] in image_models:
         model, prompt = parts[0], parts[1]
     else:
-        model, prompt = image_models[0], text
+        model, prompt = image_models[0], description
 
     if not prompt:
         return "Usage: .aimage [model] <prompt>"
@@ -673,15 +704,23 @@ def transcribe_audio(bot, text: str) -> str:
 
 
 @hook.command("aiaudio", "tts")
-def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
-    """<[voice] text> - Generate speech via LocalAI TTS. '.aiaudio list' to list voices."""
+def ai_audio_command(
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    speech: Annotated[
+        str, Arg("Optional voice then the text to speak, or list")
+    ],
+) -> str:
+    """Generate speech via LocalAI TTS. '.aiaudio list' to list voices."""
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
-        notice(
+        event.notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
         return ""
-    if text.strip().lower() == "list":
+    if speech.lower() == "list":
         try:
             tts_models = _fetch_tts_models(api_url, api_key)
         except _RateLimited:
@@ -695,19 +734,25 @@ def ai_audio_command(text: str, nick: str, chan: str, bot, notice) -> str:
             if tts_models
             else "No TTS models detected."
         )
-    return synthesize_speech(bot, text)
+    return synthesize_speech(bot, speech)
 
 
 @hook.command("aistt", "stt")
-def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
-    """<audio_url> - Transcribe an audio URL via LocalAI Whisper. '.stt list' to list models."""
+def ai_stt_command(
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    audio_url: Annotated[str, Arg("Audio URL to transcribe, or list")],
+) -> str:
+    """Transcribe an audio URL via LocalAI Whisper. '.stt list' to list models."""
     api_url, api_key = get_ollama_config(bot)
     if not api_url:
-        notice(
+        event.notice(
             "Ollama plugin not configured. Please set 'plugins.ollama.api_url' in config."
         )
         return ""
-    if text.strip().lower() == "list":
+    if audio_url.lower() == "list":
         try:
             stt_models = _fetch_stt_models(api_url, api_key)
         except _RateLimited:
@@ -721,4 +766,4 @@ def ai_stt_command(text: str, nick: str, chan: str, bot, notice) -> str:
             if stt_models
             else "No STT models detected."
         )
-    return transcribe_audio(bot, text)
+    return transcribe_audio(bot, audio_url)

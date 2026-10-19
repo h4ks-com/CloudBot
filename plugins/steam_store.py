@@ -1,9 +1,12 @@
 import re
+from typing import Annotated
 
 import requests
 from bs4 import Tag
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, web
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
@@ -82,9 +85,12 @@ def format_game(app_id, show_url=True):
 
 
 @hook.command()
-def steam(text, reply):
-    """<query> - Search for specified game/trailer/DLC"""
-    params = {"term": text.strip().lower()}
+def steam(
+    event: CommandEvent,
+    query: Annotated[str, Arg("Game, trailer or DLC to find")],
+):
+    """Search for specified game/trailer/DLC"""
+    params = {"term": query.lower()}
 
     try:
         request = get_session().get(
@@ -92,7 +98,7 @@ def steam(text, reply):
         )
         request.raise_for_status()
     except requests.RequestException as e:
-        reply(f"Could not get game info: {e}")
+        event.reply(f"Could not get game info: {e}")
         raise
 
     soup = parse_soup(request.text, from_encoding="utf-8")

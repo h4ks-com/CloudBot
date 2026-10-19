@@ -1,4 +1,9 @@
+from typing import Annotated
+
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg, OptionalChannel
 
 # Messages
 NO_MODE = "Mode character {char!r} does not seem to exist on this network."
@@ -22,25 +27,14 @@ def check_for_chan_mode(char, mode_warn, event):
     return False
 
 
-def mode_cmd(mode, action, param, event, mode_warn=True):
-    """generic mode setting function"""
-    chan = event.chan
-    nick = event.nick
+def set_mode(mode, action, channel, target, event, mode_warn=True):
     if not check_for_chan_mode(mode[1], mode_warn, event):
         return False
-
-    split = param.split(" ")
-    if split[0].startswith("#"):
-        channel = split[0]
-        target = split[1]
-    else:
-        channel = chan
-        target = split[0]
 
     event.notice(f"Attempting to {action} {target} in {channel}...")
     event.admin_log(
         MODE_CMD_LOG.format(
-            nick=nick,
+            nick=event.nick,
             cmd=action,
             mode=mode,
             target=target,
@@ -77,131 +71,171 @@ def mode_cmd_no_target(mode, action, param, event, mode_warn=True):
     return True
 
 
-def do_extban(char, action, param, event, adding=True):
+def do_extban(char, action, channel, target, event, adding=True):
     serv_info = event.conn.memory["server_info"]
     if char not in serv_info.get("extbans", ""):
         return False
 
     extban_pfx = serv_info["extban_prefix"]
-
-    split = param.split(" ")
-    if split[0].startswith("#"):
-        channel = split[0]
-        target = split[1]
-        param = f"{channel} {extban_pfx}{char}:{target}"
-    else:
-        target = split[0]
-        param = f"{extban_pfx}{char}:{target}"
-
-    mode_cmd("+b" if adding else "-b", action, param, event)
+    set_mode(
+        "+b" if adding else "-b",
+        action,
+        channel,
+        f"{extban_pfx}{char}:{target}",
+        event,
+    )
     return True
 
 
 @hook.command(permissions=["op_ban", "op", "chanop"])
-def ban(text, event):
-    """[channel] <user> - bans <user> in [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd("+b", "ban", text, event)
+def ban(
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to ban", kind="user")],
+):
+    """bans <user> in [channel], or in the caller's channel if no channel is specified"""
+    set_mode("+b", "ban", channel or event.chan, user, event)
 
 
 @hook.command(permissions=["op_ban", "op", "chanop"])
-def unban(text, event):
-    """[channel] <user> - unbans <user> in [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd("-b", "unban", text, event)
+def unban(
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to unban", kind="user")],
+):
+    """unbans <user> in [channel], or in the caller's channel if no channel is specified"""
+    set_mode("-b", "unban", channel or event.chan, user, event)
 
 
 @hook.command(permissions=["op_quiet", "op", "chanop"])
-def quiet(text, event):
-    """[channel] <user> - quiets <user> in [channel], or in the caller's channel if no channel is specified"""
-    if mode_cmd("+q", "quiet", text, event, False):
+def quiet(
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to quiet", kind="user")],
+):
+    """quiets <user> in [channel], or in the caller's channel if no channel is specified"""
+    channel = channel or event.chan
+    if set_mode("+q", "quiet", channel, user, event, False):
         return
 
-    if not do_extban("m", "quiet", text, event, True):
+    if not do_extban("m", "quiet", channel, user, event, True):
         event.notice("Unable to set +q or a mute extban on this network.")
 
 
 @hook.command(permissions=["op_quiet", "op", "chanop"])
-def unquiet(text, event):
-    """[channel] <user> - unquiets <user> in [channel], or in the caller's channel if no channel is specified"""
-    if mode_cmd("-q", "unquiet", text, event, False):
+def unquiet(
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to unquiet", kind="user")],
+):
+    """unquiets <user> in [channel], or in the caller's channel if no channel is specified"""
+    channel = channel or event.chan
+    if set_mode("-q", "unquiet", channel, user, event, False):
         return
 
-    if not do_extban("m", "unquiet", text, event, False):
+    if not do_extban("m", "unquiet", channel, user, event, False):
         event.notice("Unable to unset +q or a mute extban on this network.")
 
 
 @hook.command(permissions=["op_voice", "op", "chanop"])
-def voice(text, event):
-    """[channel] <user> - voices <user> in [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd("+v", "voice", text, event)
+def voice(
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to voice", kind="user")],
+):
+    """voices <user> in [channel], or in the caller's channel if no channel is specified"""
+    set_mode("+v", "voice", channel or event.chan, user, event)
 
 
 @hook.command(permissions=["op_voice", "op", "chanop"])
-def devoice(text, event):
-    """[channel] <user> - devoices <user> in [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd("-v", "devoice", text, event)
+def devoice(
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to devoice", kind="user")],
+):
+    """devoices <user> in [channel], or in the caller's channel if no channel is specified"""
+    set_mode("-v", "devoice", channel or event.chan, user, event)
 
 
 @hook.command(permissions=["op_op", "op", "chanop"])
-def op(text, event):
-    """[channel] <user> - ops <user> in [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd("+o", "op", text, event)
+def op(
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to op", kind="user")],
+):
+    """ops <user> in [channel], or in the caller's channel if no channel is specified"""
+    set_mode("+o", "op", channel or event.chan, user, event)
 
 
 @hook.command(permissions=["op_op", "op", "chanop"])
-def deop(text, event):
-    """[channel] <user> - deops <user> in [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd("-o", "deop", text, event)
+def deop(
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to deop", kind="user")],
+):
+    """deops <user> in [channel], or in the caller's channel if no channel is specified"""
+    set_mode("-o", "deop", channel or event.chan, user, event)
 
 
 @hook.command(permissions=["op_topic", "op", "chanop"])
-def topic(text, conn, chan, nick, event):
-    """[channel] <topic> - changes the topic to <topic> in [channel], or in the caller's channel
+def topic(
+    conn: IrcClient,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    topic: Annotated[str, Arg("New topic")],
+):
+    """changes the topic to <topic> in [channel], or in the caller's channel
     if no channel is specified"""
-    split = text.split(" ")
-    if split[0].startswith("#"):
-        msg = " ".join(split[1:])
-        chan = split[0]
-    else:
-        msg = " ".join(split)
-
-    event.admin_log(TOPIC_CHANGE.format(nick=nick, channel=chan, text=msg))
-    conn.send(f"TOPIC {chan} :{msg}")
+    channel = channel or chan
+    event.admin_log(TOPIC_CHANGE.format(nick=nick, channel=channel, text=topic))
+    conn.send(f"TOPIC {channel} :{topic}")
 
 
 @hook.command(permissions=["op_kick", "op", "chanop"])
-def kick(text, chan, conn, nick, event):
-    """[channel] <user> - kicks <user> from [channel], or from the caller's channel if no channel is specified"""
-    split = text.split(" ")
+def kick(
+    chan: str,
+    conn: IrcClient,
+    nick: str,
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    user: Annotated[str, Arg("Nick to kick", kind="user")],
+    reason: Annotated[str | None, Arg("Why they are kicked")] = None,
+):
+    """kicks <user> from [channel], or from the caller's channel if no channel is specified"""
+    channel = channel or chan
+    out = f"KICK {channel} {user}"
+    if reason:
+        out += f" :{reason}"
 
-    if split[0].startswith("#"):
-        channel = split[0]
-        target = split[1]
-        if len(split) > 2:
-            reason = " ".join(split[2:])
-            out = f"KICK {channel} {target} :{reason}"
-        else:
-            out = f"KICK {channel} {target}"
-    else:
-        channel = chan
-        target = split[0]
-        if len(split) > 1:
-            reason = " ".join(split[1:])
-            out = f"KICK {channel} {target} :{reason}"
-        else:
-            out = f"KICK {channel} {target}"
-
-    event.notice(f"Attempting to kick {target} from {channel}...")
-    event.admin_log(KICK_LOG.format(nick=nick, target=target, channel=channel))
+    event.notice(f"Attempting to kick {user} from {channel}...")
+    event.admin_log(KICK_LOG.format(nick=nick, target=user, channel=channel))
     conn.send(out)
 
 
 @hook.command(permissions=["op_rem", "op", "chanop"])
-def remove(text, chan, conn, nick, event):
-    """<user> - force removes <user> from the caller's channel."""
-    split = text.split(" ")
-    user = split[0]
-    if len(split) > 1:
-        reason = " ".join(split[1:]) + f" requested by {nick}"
+def remove(
+    chan: str,
+    conn: IrcClient,
+    nick: str,
+    event: CommandEvent,
+    user: Annotated[str, Arg("Nick to remove", kind="user")],
+    reason: Annotated[str | None, Arg("Why they are removed")] = None,
+):
+    """force removes the user from the caller's channel."""
+    if reason:
+        reason = f"{reason} requested by {nick}"
     else:
         reason = f"requested by {nick}."
     out = f"REMOVE {user} {chan} :{reason}"
@@ -212,24 +246,36 @@ def remove(text, chan, conn, nick, event):
 
 
 @hook.command(permissions=["op_mute", "op", "chanop"], autohelp=False)
-def mute(text, event):
-    """[channel] - mutes [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd_no_target("+m", "mute", text, event)
+def mute(
+    event: CommandEvent,
+    channel: OptionalChannel = None,
+):
+    """mutes the channel, or in the caller's channel if no channel is specified"""
+    mode_cmd_no_target("+m", "mute", channel or "", event)
 
 
 @hook.command(permissions=["op_mute", "op", "chanop"], autohelp=False)
-def unmute(text, event):
-    """[channel] - unmutes [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd_no_target("-m", "unmute", text, event)
+def unmute(
+    event: CommandEvent,
+    channel: OptionalChannel = None,
+):
+    """unmutes the channel, or in the caller's channel if no channel is specified"""
+    mode_cmd_no_target("-m", "unmute", channel or "", event)
 
 
 @hook.command(permissions=["op_lock", "op", "chanop"], autohelp=False)
-def lock(text, event):
-    """[channel] - locks [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd_no_target("+i", "lock", text, event)
+def lock(
+    event: CommandEvent,
+    channel: OptionalChannel = None,
+):
+    """locks the channel, or in the caller's channel if no channel is specified"""
+    mode_cmd_no_target("+i", "lock", channel or "", event)
 
 
 @hook.command(permissions=["op_lock", "op", "chanop"], autohelp=False)
-def unlock(text, event):
-    """[channel] - unlocks [channel], or in the caller's channel if no channel is specified"""
-    mode_cmd_no_target("-i", "unlock", text, event)
+def unlock(
+    event: CommandEvent,
+    channel: OptionalChannel = None,
+):
+    """unlocks the channel, or in the caller's channel if no channel is specified"""
+    mode_cmd_no_target("-i", "unlock", channel or "", event)

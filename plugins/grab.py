@@ -2,11 +2,16 @@ import logging
 import random
 from collections import defaultdict
 from threading import RLock
+from typing import Annotated
 
 from sqlalchemy import Column, String, Table
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database
 from cloudbot.util.pager import CommandPager, paginated_list
 
@@ -45,15 +50,19 @@ def load_cache(db):
 
 
 @hook.command("moregrab", autohelp=False)
-def moregrab(text, chan, conn):
-    """[page] - if a grab search has lots of results the results are pagintated. If the most recent search is paginated
+def moregrab(
+    chan: str,
+    conn: IrcClient,
+    page: Annotated[str | None, Arg("Page number")] = None,
+):
+    """if a grab search has lots of results the results are pagintated. If the most recent search is paginated
     the pages are stored for retreival. If no argument is given the next page will be returned else a page number can
     be specified."""
     pages = search_pages[conn.name].get(chan)
     if not pages:
         return "There are no grabsearch pages to show."
 
-    return pages.handle_lookup(text)
+    return pages.handle_lookup(page)
 
 
 def check_grabs(name, quote, chan):
@@ -85,9 +94,15 @@ def get_latest_line(conn, chan, nick):
 
 
 @hook.command()
-def grab(text, nick, chan, db, conn):
-    """<nick> - grabs the last message from the specified nick and adds it to the quote database"""
-    if text.lower() == nick.lower():
+def grab(
+    target: Annotated[str, Arg("Nick to grab", kind="user")],
+    nick: str,
+    chan: str,
+    db: Session,
+    conn: IrcClient,
+):
+    """grabs the last message from the specified nick and adds it to the quote database"""
+    if target.lower() == nick.lower():
         return "Didn't your mother teach you not to grab yourself?"
 
     with grab_locks_lock:
@@ -96,12 +111,12 @@ def grab(text, nick, chan, db, conn):
         )
 
     with grab_lock:
-        name, timestamp, msg = get_latest_line(conn, chan, text)
+        name, timestamp, msg = get_latest_line(conn, chan, target)
         if not msg:
-            return f"I couldn't find anything from {text} in recent history."
+            return f"I couldn't find anything from {target} in recent history."
 
-        if check_grabs(text.casefold(), msg, chan):
-            return f"I already have that quote from {text} in the database"
+        if check_grabs(target.casefold(), msg, chan):
+            return f"I already have that quote from {target} in the database"
 
         try:
             grab_add(name.casefold(), timestamp, msg, chan, db)
@@ -130,58 +145,77 @@ def format_grab(name, quote):
 
 
 @hook.command("lastgrab", "lgrab")
-def lastgrab(text, chan, message):
-    """<nick> - prints the last grabbed quote from <nick>."""
+def lastgrab(
+    target: Annotated[str, Arg("Nick to show", kind="user")],
+    chan: str,
+    event: CommandEvent,
+):
+    """prints the last grabbed quote from <target>."""
     try:
         with cache_lock:
-            lgrab = grab_cache[chan][text.lower()][-1]
+            lgrab = grab_cache[chan][target.lower()][-1]
     except (KeyError, IndexError):
-        return f"{text} has never been grabbed."
+        return f"{target} has never been grabbed."
 
     if lgrab:
-        message(format_grab(text, lgrab), chan)
+        event.message(format_grab(target, lgrab), chan)
 
     return None
 
 
-@hook.command("grabrandom", "grabr", autohelp=False)
-def grabrandom(text, chan, message):
-    """[nick] - grabs a random quote from the grab database"""
+def random_grab(chan: str, nicks: str | None = None) -> str | None:
+    """Pick a random grab in the channel, from the given nicks when there are any."""
     with cache_lock:
-        try:
-            chan_grabs = grab_cache[chan]
-        except KeyError:
-            return f"I couldn't find any grabs in {chan}."
+        chan_grabs = grab_cache.get(chan)
+        if not chan_grabs:
+            return None
 
-        matching_quotes: list[tuple[str, str]] = []
-
-        if text:
-            for nick in text.split():
-                try:
-                    quotes = chan_grabs[nick.lower()]
-                except LookupError:
-                    pass
-                else:
-                    matching_quotes.extend((nick, quote) for quote in quotes)
+        if nicks:
+            matching_quotes = [
+                (nick, quote)
+                for nick in nicks.split()
+                for quote in chan_grabs.get(nick.lower(), [])
+            ]
         else:
-            matching_quotes.extend(
+            matching_quotes = [
                 (name, quote)
                 for name, quotes in chan_grabs.items()
                 for quote in quotes
-            )
+            ]
 
     if not matching_quotes:
-        return f"I couldn't find any grabs in {chan}."
+        return None
 
     name, quote_text = random.choice(matching_quotes)
+    return format_grab(name, quote_text)
 
-    message(format_grab(name, quote_text))
+
+@hook.command("grabrandom", "grabr", autohelp=False)
+def grabrandom(
+    chan: str,
+    event: CommandEvent,
+    nicks: Annotated[
+        str | None,
+        Arg("Nicks to pick a quote from", kind="user", rest=True),
+    ] = None,
+):
+    """grabs a random quote from the grab database"""
+    quote = random_grab(chan, nicks)
+    if quote is None:
+        return f"I couldn't find any grabs in {chan}."
+
+    event.message(quote)
     return None
 
 
 @hook.command("grabsearch", "grabs", autohelp=False)
-def grabsearch(text, chan, conn):
-    """[text] - matches "text" against nicks or grab strings in the database"""
+def grabsearch(
+    chan: str,
+    conn: IrcClient,
+    query: Annotated[str | None, Arg("Nick or text to match")] = None,
+):
+    """matches "text" against nicks or grab strings in the database"""
+    text = query or ""
     result: list[tuple[str, str]] = []
     lower_text = text.lower()
     with cache_lock:

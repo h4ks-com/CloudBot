@@ -2,6 +2,7 @@ import json
 import random
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 
 lenny_data: dict[str, list[str]] = {}
 
@@ -15,12 +16,12 @@ def load_faces(bot):
 
 
 @hook.command(autohelp=False)
-def lenny(message):
+def lenny(event: CommandEvent):
     """- why the shit not lennyface"""
-    message(random.choice(lenny_data["lenny"]))
+    event.message(random.choice(lenny_data["lenny"]))
 
 
 @hook.command(autohelp=False)
-def flenny(message):
+def flenny(event: CommandEvent):
     """- flenny is watching."""
-    message(random.choice(lenny_data["flenny"]))
+    event.message(random.choice(lenny_data["flenny"]))

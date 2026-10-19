@@ -6,10 +6,14 @@ misreads mixed title+artist input, so Deezer does the parsing and Last.fm only
 does what it is good at.
 """
 
+from typing import Annotated
+
 from pydantic import BaseModel, Field, ValidationError
 from requests import RequestException
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 _DEEZER_SEARCH = "https://api.deezer.com/search"
@@ -83,11 +87,10 @@ def _format_track(index: int, track: _SimilarTrack) -> str:
 
 
 @hook.command("songrec")
-def songrec(text, bot):
-    """<song> - songs similar to <song> from Last.fm, by name or "title artist"."""
-    query = text.strip()
-    if not query:
-        return "Usage: .songrec <song name>"
+def songrec(
+    bot: CloudBot, query: Annotated[str, Arg("Song name or title and artist")]
+):
+    """songs similar to <song> from Last.fm, by name or "title artist"."""
     api_key = bot.config.get_api_key("lastfm")
     if not api_key:
         return "Last.fm is not configured."

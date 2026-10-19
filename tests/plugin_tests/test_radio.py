@@ -5,6 +5,7 @@ import pytest
 import requests
 from responses import matchers
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import radio
 from tests.util.mock_conn import MockConn, account_conn
 
@@ -1068,17 +1069,27 @@ def test_add_url_to_queue_request_exception(mock_requests):
     assert "Failed to add to user queue" in result
 
 
-def test_queue_add_empty_text():
-    result = radio.queue_add(
-        "", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
-    )
-    assert "Usage" in result
+@pytest.mark.parametrize(
+    "command",
+    [radio.queue_add, radio.admin_queue_add],
+)
+def test_queue_commands_require_url(command):
+    spec = build_spec(command)
+    assert spec.parse_text("http://x") == {"url": "http://x"}
+    with pytest.raises(CommandArgError):
+        spec.parse_text("")
+
+
+def test_reqyt_user_is_optional():
+    spec = build_spec(radio.queue_add_youtube)
+    assert spec.parse_text("") == {"user": None}
+    assert spec.parse_text("alice") == {"user": "alice"}
 
 
 def test_queue_add_delegates():
     with patch("plugins.radio.add_url_to_queue", return_value="ok") as add_mock:
         result = radio.queue_add(
-            " http://x ",
+            "http://x",
             MagicMock(),
             make_bot(RADIO_CFG),
             MockConn(),
@@ -1088,13 +1099,6 @@ def test_queue_add_delegates():
     assert result == "ok"
     assert add_mock.call_args.args[0] == "http://x"
     assert add_mock.call_args.args[1] == "user"
-
-
-def test_admin_queue_add_empty_text():
-    result = radio.admin_queue_add(
-        "", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
-    )
-    assert "Usage" in result
 
 
 def test_admin_queue_add_requires_auth():
@@ -1116,7 +1120,7 @@ def test_admin_queue_add_delegates():
 
 def test_queue_add_youtube_no_recent():
     result = radio.queue_add_youtube(
-        "", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
+        MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
     )
     assert result == (
         "❌ No recent YouTube search found. Use .yt <query> first to search for a video."
@@ -1125,7 +1129,12 @@ def test_queue_add_youtube_no_recent():
 
 def test_queue_add_youtube_no_recent_other_nick():
     result = radio.queue_add_youtube(
-        "alice", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
+        MagicMock(),
+        make_bot(RADIO_CFG),
+        MockConn(),
+        "bob",
+        "#chan",
+        user="alice",
     )
     assert "found for alice" in result
 
@@ -1137,7 +1146,7 @@ def test_queue_add_youtube_delegates():
             "plugins.radio.add_url_to_queue", return_value="ok"
         ) as add_mock:
             result = radio.queue_add_youtube(
-                "", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
+                MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
             )
         assert result == "ok"
         assert add_mock.call_args.args[0] == "http://yt"
@@ -1148,7 +1157,7 @@ def test_queue_add_youtube_delegates():
 
 def test_queue_add_gse_no_recent():
     result = radio.queue_add_gse(
-        "", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
+        MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
     )
     assert "No recent Google search" in result
 
@@ -1160,7 +1169,7 @@ def test_queue_add_gse_delegates():
             "plugins.radio.add_url_to_queue", return_value="ok"
         ) as add_mock:
             result = radio.queue_add_gse(
-                "", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
+                MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
             )
         assert result == "ok"
         assert add_mock.call_args.args[0] == "http://gse"
@@ -1170,7 +1179,7 @@ def test_queue_add_gse_delegates():
 
 def test_admin_queue_add_youtube_requires_auth():
     result = radio.admin_queue_add_youtube(
-        "", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
+        MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
     )
     assert "authenticated" in result
 
@@ -1178,7 +1187,7 @@ def test_admin_queue_add_youtube_requires_auth():
 def test_admin_queue_add_youtube_no_recent():
     conn = account_conn("bob", "bob_account")
     result = radio.admin_queue_add_youtube(
-        "", MagicMock(), make_bot(RADIO_CFG), conn, "bob", "#chan"
+        MagicMock(), make_bot(RADIO_CFG), conn, "bob", "#chan"
     )
     assert "No recent YouTube search" in result
 
@@ -1191,7 +1200,7 @@ def test_admin_queue_add_youtube_delegates():
             "plugins.radio.add_url_to_queue", return_value="ok"
         ) as add_mock:
             result = radio.admin_queue_add_youtube(
-                "", MagicMock(), make_bot(RADIO_CFG), conn, "bob", "#chan"
+                MagicMock(), make_bot(RADIO_CFG), conn, "bob", "#chan"
             )
         assert result == "ok"
         assert add_mock.call_args.args[1] == "fallback"
@@ -1201,7 +1210,7 @@ def test_admin_queue_add_youtube_delegates():
 
 def test_admin_queue_add_gse_requires_auth():
     result = radio.admin_queue_add_gse(
-        "", MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
+        MagicMock(), make_bot(RADIO_CFG), MockConn(), "bob", "#chan"
     )
     assert "authenticated" in result
 
@@ -1209,7 +1218,7 @@ def test_admin_queue_add_gse_requires_auth():
 def test_admin_queue_add_gse_no_recent_other_nick():
     conn = account_conn("bob", "bob_account")
     result = radio.admin_queue_add_gse(
-        "alice", MagicMock(), make_bot(RADIO_CFG), conn, "bob", "#chan"
+        MagicMock(), make_bot(RADIO_CFG), conn, "bob", "#chan", user="alice"
     )
     assert "found for alice" in result
 
@@ -1222,7 +1231,7 @@ def test_admin_queue_add_gse_delegates():
             "plugins.radio.add_url_to_queue", return_value="ok"
         ) as add_mock:
             result = radio.admin_queue_add_gse(
-                "", MagicMock(), make_bot(RADIO_CFG), conn, "bob", "#chan"
+                MagicMock(), make_bot(RADIO_CFG), conn, "bob", "#chan"
             )
         assert result == "ok"
         assert add_mock.call_args.args[1] == "fallback"

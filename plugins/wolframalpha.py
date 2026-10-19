@@ -1,10 +1,14 @@
 import re
 import urllib.parse
+from typing import Annotated
 
 import requests
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, web
 from cloudbot.util.http import parse_xml
 from cloudbot.util.web import get_session
@@ -14,19 +18,23 @@ query_url = "http://www.wolframalpha.com/input/?i={}"
 
 
 @hook.command("wolframalpha", "wa", "calc", "ca", "math", "convert")
-def wolframalpha(text, bot, reply):
-    """<query> - Computes <query> using Wolfram Alpha."""
+def wolframalpha(
+    bot: CloudBot,
+    event: CommandEvent,
+    query: Annotated[str, Arg("What to compute")],
+):
+    """Computes <query> using Wolfram Alpha."""
     api_key = bot.config.get_api_key("wolframalpha")
     if not api_key:
         return "error: missing api key"
 
-    params = {"input": text, "appid": api_key}
+    params = {"input": query, "appid": api_key}
     request = get_session().get(api_url, params=params)
 
     try:
         request.raise_for_status()
     except HTTPError as e:
-        reply(f"Error getting query: {e.response.status_code}")
+        event.reply(f"Error getting query: {e.response.status_code}")
         raise
 
     if request.status_code != requests.codes.ok:
@@ -35,7 +43,9 @@ def wolframalpha(text, bot, reply):
     result = parse_xml(request.content)
 
     # get the URL for a user to view this query in a browser
-    short_url = web.try_shorten(query_url.format(urllib.parse.quote_plus(text)))
+    short_url = web.try_shorten(
+        query_url.format(urllib.parse.quote_plus(query))
+    )
 
     pod_texts = []
     for pod in result.xpath("//pod[@primary='true']"):

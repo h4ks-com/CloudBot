@@ -1,9 +1,12 @@
+from typing import Annotated
 from urllib.parse import quote_plus
 
 import requests
 import requests.exceptions
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.web import get_session
 
@@ -11,9 +14,8 @@ api_url = "http://api.fishbans.com/stats/{}/"
 
 
 @hook.command("bans", "fishbans")
-def fishbans(text, bot):
-    """<user> - gets information on <user>'s minecraft bans from fishbans"""
-    user = text.strip()
+def fishbans(user: Annotated[str, Arg("Minecraft username")], bot: CloudBot):
+    """gets information on <user>'s minecraft bans from fishbans"""
     headers = {"User-Agent": bot.user_agent}
 
     try:
@@ -51,9 +53,8 @@ def fishbans(text, bot):
 
 
 @hook.command()
-def bancount(text, bot):
-    """<user> - gets a count of <user>'s minecraft bans from fishbans"""
-    user = text.strip()
+def bancount(user: Annotated[str, Arg("Minecraft username")], bot: CloudBot):
+    """gets a count of <user>'s minecraft bans from fishbans"""
     headers = {"User-Agent": bot.user_agent}
 
     try:

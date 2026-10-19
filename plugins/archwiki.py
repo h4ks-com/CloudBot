@@ -1,10 +1,12 @@
 import logging
 import urllib.parse
-from typing import TypeAlias, cast
+from typing import Annotated, TypeAlias, cast
 
 from gazpacho import Soup, get
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.hook import Arg
 
 Page: TypeAlias = Soup
 
@@ -55,17 +57,17 @@ def next(api):
 
 
 @hook.command()
-def awn(text):
+def awn(text: str):
     """- Show the next archwiki result"""
     return next(API_ARCH)
 
 
 @hook.command()
-def aw(text, bot, nick):
-    """<query> - Find archwiki pages about."""
+def aw(query: Annotated[str, Arg("Search query")], bot: CloudBot, nick: str):
+    """Find archwiki pages about."""
 
     try:
-        page = get(API_ARCH + urllib.parse.quote(text))
+        page = get(API_ARCH + urllib.parse.quote(query))
     except Exception as e:
         logger.error(e)
         return "Could not get data from archwiki."
@@ -79,17 +81,17 @@ def aw(text, bot, nick):
 
 
 @hook.command()
-def gwn(text):
+def gwn(text: str):
     """- Show the next gentoo wiki result"""
     return next(API_GENTOO)
 
 
 @hook.command()
-def gw(text, bot, nick):
-    """<query> - Find gentoo pages about."""
+def gw(query: Annotated[str, Arg("Search query")], bot: CloudBot, nick: str):
+    """Find gentoo pages about."""
 
     try:
-        page = get(API_GENTOO + urllib.parse.quote(text))
+        page = get(API_GENTOO + urllib.parse.quote(query))
     except Exception as e:
         logger.error(e)
         return "Could not get data from gentoowiki"

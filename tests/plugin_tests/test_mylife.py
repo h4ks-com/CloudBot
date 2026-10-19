@@ -82,7 +82,7 @@ some news
 </body>
 </html>""",
     )
-    reply = MagicMock()
-    res = await mylife.fml(reply, event_loop)
+    event = MagicMock()
+    res = await mylife.fml(event, event_loop)
     assert res is None
-    reply.assert_called_with("(#132473) Today, bar fml")
+    event.reply.assert_called_with("(#132473) Today, bar fml")

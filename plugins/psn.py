@@ -3,11 +3,14 @@
 # Date: 24/09/2022
 
 from dataclasses import dataclass
+from typing import Annotated
 from urllib.parse import quote
 
 from bs4 import BeautifulSoup, Tag
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import queue
 from cloudbot.util.web import get_session
 
@@ -103,7 +106,7 @@ def search_game(query: str, lang: str) -> list[Game]:
 
 
 @hook.command("psnn", autohelp=False)
-def psnn(text: str, message: str, chan, nick):
+def psnn(text: str, event: CommandEvent, chan: str, nick: str):
     """- Show the next playstation game result"""
     results = results_queue[chan][nick]
     if len(results) == 0:
@@ -113,23 +116,22 @@ def psnn(text: str, message: str, chan, nick):
 
 
 @hook.command("psn", "playstation", autohelp=False)
-def psn(text, message, chan, nick, reply):
-    """[lang] <game> - Search for a game on psn"""
-    if not text:
-        return "Please provide a game to search for."
-
-    lang = LANG
-    query = text
-    if text.split()[0] in LANGS:
-        lang = text.split()[0]
-        query = " ".join(text.split()[1:])
-
-    if not query:
-        return "Please provide a game to search for."
+def psn(
+    event: CommandEvent,
+    chan: str,
+    nick: str,
+    *,
+    lang: Annotated[
+        str | None, Arg("Store language", choices=tuple(sorted(LANGS)))
+    ] = None,
+    query: Annotated[str, Arg("Game to search for")],
+):
+    """Search for a game on psn"""
+    lang = lang or LANG
 
     games = search_game(query, lang)
     if not games:
         return "No results found."
 
     results_queue[chan][nick] = games
-    return psnn(text, message, chan, nick)
+    return psnn("", event, chan, nick)

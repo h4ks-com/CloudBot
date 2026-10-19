@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 
 from cloudbot.hook import Action, Priority
+from cloudbot.util.command_args import ArgSpec, CommandSpec
 
 logger = logging.getLogger("cloudbot")
 
@@ -89,6 +90,8 @@ class CommandInfo:
     description: str
     aliases: list[str]
     permissions: list[str]
+    args: tuple[ArgSpec, ...] = ()
+    takes_text: bool = True
 
 
 class CommandHook(Hook):
@@ -109,6 +112,11 @@ class CommandHook(Hook):
         # make sure the name, or 'main alias' is in position 0
         self.aliases.insert(0, self.name)
         self.doc = cmd_hook.doc
+        self.spec: CommandSpec = cmd_hook.spec
+        self.required_args = [
+            arg for arg in self.required_args if arg not in self.spec.names
+        ]
+        self.takes_text = "text" in self.required_args
 
     def __repr__(self):
         return f"Command[name: {self.name}, aliases: {self.aliases[1:]}, {Hook.__repr__(self)}]"
@@ -124,6 +132,8 @@ class CommandHook(Hook):
             description=(self.doc or "").strip(),
             aliases=self.aliases[1:],
             permissions=list(self.permissions),
+            args=self.spec.args,
+            takes_text=self.takes_text,
         )
 
 

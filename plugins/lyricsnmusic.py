@@ -16,11 +16,13 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Annotated
 from urllib.parse import quote
 
 import requests
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.http import parse_soup
 from cloudbot.util.queue import Queue, UserQueue
@@ -282,16 +284,19 @@ def show_page(
 
 @hook.command("lyrics", "ly", "lysearch", "lys")
 def lyrics(
-    text: str, chan: str, nick: str, reply: Callable[..., None]
+    query: Annotated[str, Arg("Artist and song, or a line of the lyrics")],
+    chan: str,
+    nick: str,
+    reply: Callable[..., None],
 ) -> str | None:
-    """<artist song|lyric> - finds a song by name or by a line of its lyrics. Use .getlyrics <n> for the words, .lyricsn to page."""
+    """finds a song by name or by a line of its lyrics. Use .getlyrics <n> for the words, .lyricsn to page."""
     try:
-        results = search(text)
+        results = search(query)
     except LyricsError as e:
         return f"Lyrics service error: {e}"
 
     if not results:
-        return f"Nothing found for '{text}'."
+        return f"Nothing found for '{query}'."
 
     pending[chan][nick] = results
     return show_page(chan, nick, nick, reply)
@@ -299,10 +304,15 @@ def lyrics(
 
 @hook.command("lyricsn", "lyn", autohelp=False)
 def lyricsn(
-    text: str, chan: str, nick: str, reply: Callable[..., None]
+    chan: str,
+    nick: str,
+    reply: Callable[..., None],
+    target: Annotated[
+        str | None, Arg("Whose results to page, yours by default", kind="user")
+    ] = None,
 ) -> str | None:
-    """[nick] - shows the next page of results for nick, or for you by default."""
-    owner = text.strip().split()[0] if text.strip() else nick
+    """shows the next page of results for nick, or for you by default."""
+    owner = target or nick
     if owner != nick and owner not in pending[chan]:
         return f"Nick '{owner}' has no queue."
 
@@ -310,17 +320,20 @@ def lyricsn(
 
 
 @hook.command("getlyrics", "gly")
-def getlyrics(text: str, chan: str, nick: str) -> str:
-    """<n> - fetches the full lyrics of the nth song on the last list."""
+def getlyrics(
+    chan: str,
+    nick: str,
+    n: Annotated[str, Arg("Number of the song on the list")],
+) -> str:
+    """fetches the full lyrics of the nth song on the last list."""
     page = listed[chan][nick]
     if not page:
         return "Nothing listed yet. Run .lyrics first."
 
-    choice = text.strip()
-    if not choice.isdecimal() or not 1 <= int(choice) <= len(page):
+    if not n.isdecimal() or not 1 <= int(n) <= len(page):
         return f"Pick a number between 1 and {len(page)}."
 
-    song = page[int(choice) - 1]
+    song = page[int(n) - 1]
     try:
         words = fetch_lyrics(song)
     except LyricsError as e:

@@ -1,11 +1,13 @@
 import datetime
 import re
 from dataclasses import dataclass
+from typing import Annotated
 from urllib.parse import quote
 
 import requests
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import colors
 from cloudbot.util.formatting import truncate
 from cloudbot.util.web import get_session
@@ -154,15 +156,8 @@ def _find_recent(today: datetime.date, limit: int) -> list[Death]:
     return []
 
 
-def _parse_count(text: str) -> int | str:
-    stripped = text.strip()
-    if not stripped:
-        return DEFAULT_LIMIT
-    try:
-        value = int(stripped)
-    except ValueError:
-        return f"Invalid count '{stripped}'. Please provide a number."
-    return max(1, min(value, MAX_LIMIT))
+def _clamp_count(count: int) -> int:
+    return max(1, min(count, MAX_LIMIT))
 
 
 def format_deaths(deaths: list[Death]) -> list[str]:
@@ -181,14 +176,14 @@ def format_deaths(deaths: list[Death]) -> list[str]:
 
 
 @hook.command("obituary", "obituaries", autohelp=False)
-def deaths(text: str) -> str | list[str]:
-    """[count] - Show up to <count> (default 5, max 10) most recent notable deaths."""
-    count = _parse_count(text)
-    if isinstance(count, str):
-        return count
-
+def deaths(
+    count: Annotated[
+        int, Arg("How many deaths to show, at most 10")
+    ] = DEFAULT_LIMIT,
+) -> str | list[str]:
+    """Show up to <count> (default 5, max 10) most recent notable deaths."""
     try:
-        results = _find_recent(datetime.date.today(), count)
+        results = _find_recent(datetime.date.today(), _clamp_count(count))
     except requests.exceptions.RequestException as err:
         return f"Failed to fetch deaths: {err}"
 

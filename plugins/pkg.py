@@ -7,6 +7,7 @@ import re
 from collections.abc import Callable, Generator
 from dataclasses import InitVar, dataclass, field
 from datetime import datetime
+from typing import Annotated
 from urllib.parse import quote
 
 from bs4 import BeautifulSoup
@@ -15,6 +16,9 @@ from curl_cffi import requests
 from thefuzz import fuzz
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 
@@ -425,37 +429,42 @@ def pop3(results, reply):
 
 
 @hook.command("pkgn", autohelp=False)
-def pkgn(text, bot, chan, nick, reply):
-    """<nick> - Returns next search result for pkg command for nick or yours by default"""
+def pkgn(
+    bot: CloudBot,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    target: Annotated[
+        str | None, Arg("Whose results to page, yours by default", kind="user")
+    ] = None,
+):
+    """Returns next search result for pkg command for nick or yours by default"""
     if (chan, nick) not in results_queue:
         return f"Nick '{nick}' has no queue."
     results = results_queue[(chan, nick)]
-    user = text.strip().split()[0] if text.strip() else ""
-    if user:
-        if (chan, user) in results_queue:
-            results = results_queue[(chan, user)]
+    if target:
+        if (chan, target) in results_queue:
+            results = results_queue[(chan, target)]
         else:
-            return f"Nick '{user}' has no queue."
-    return pop3(results, reply)
+            return f"Nick '{target}' has no queue."
+    return pop3(results, event.reply)
 
 
-@hook.command("pkg", autohelp=False)
-def pkg(text, bot, chan, nick, reply):
-    """<query> - Returns first search result for pkg command"""
-    if not text:
-        return "Please specify a repo and query."
-
-    repo = text.strip().split()[0]
-    if repo not in REPOS:
-        return (
-            f"Repo '{repo}' not found. Use .'pkglist' to see available repos."
-        )
-
-    results_queue[(chan, nick)] = REPOS[repo](
-        " ".join(text.strip().split()[1:])
-    )
+@hook.command("pkg")
+def pkg(
+    bot: CloudBot,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    repo: Annotated[
+        str, Arg("Repo to search, see pkglist", choices=tuple(REPOS))
+    ],
+    query: Annotated[str | None, Arg("Package to search for")] = None,
+):
+    """Returns first search result for pkg command"""
+    results_queue[(chan, nick)] = REPOS[repo](query or "")
     results = results_queue[(chan, nick)]
     if results is None or not results:
         return "No [more] results found."
 
-    return pop3(results, reply)
+    return pop3(results, event.reply)

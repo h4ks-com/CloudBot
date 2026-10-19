@@ -1,6 +1,9 @@
 import random
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 balls = ["(_)_)", "8", "B", "(___)__)", "(_)(_)", "(@)@)", "3"]
 shaft = [
@@ -30,14 +33,19 @@ bodypart = [
 
 
 @hook.command("penis", "bepis", autohelp=False)
-def penis(text, message):
-    """[nick] - much dongs, very ween, add a user nick as an arguement for slightly different 'output'"""
-    if not text:
-        message(
+def penis(
+    event: CommandEvent,
+    nick: Annotated[
+        str | None, Arg("Who to target", kind="user", rest=True)
+    ] = None,
+):
+    """much dongs, very ween, add a user nick as an arguement for slightly different 'output'"""
+    if not nick:
+        event.message(
             f"{random.choice(balls)}{random.choice(shaft)}{random.choice(head)}"
         )
     else:
-        person = text.split(" ")[0]
-        message(
+        person = nick.split(" ")[0]
+        event.message(
             f"{random.choice(balls)}{random.choice(shaft)}{random.choice(head)}{random.choice(emission)} all over {person}'s {random.choice(bodypart)}"
         )

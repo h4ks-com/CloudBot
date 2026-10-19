@@ -3,6 +3,7 @@
 # Date: 12/08/2022
 
 from dataclasses import dataclass
+from typing import Annotated
 from uuid import uuid1
 
 from bs4 import BeautifulSoup
@@ -10,6 +11,8 @@ from fuzzywuzzy import process
 from natsort import natsorted
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.formatting import truncate_str
 from cloudbot.util.web import get_session
 
@@ -113,21 +116,22 @@ def search(slug, query) -> Doc:
     return Doc(path, slug)
 
 
-@hook.command("devdocs", "docs", "documentation", "doc", "api", autohelp=False)
-def devdocs(text, chan, nick, reply, notice):
-    """<slug> [query] - Searches for documentation on devdocs.io"""
-    if not text:
-        return "Please provide a slug and query."
-
-    slug = text.lower().split(" ")[0]
+@hook.command("devdocs", "docs", "documentation", "doc", "api")
+def devdocs(
+    event: CommandEvent,
+    slug: Annotated[str, Arg("Documentation slug, or list to see them all")],
+    query: Annotated[str | None, Arg("What to look up")] = None,
+):
+    """Searches for documentation on devdocs.io"""
+    slug = slug.lower()
     if slug == "list":
         chunks = ""
         # Limit to 500 characters
-        notice("Available slugs:")
+        event.notice("Available slugs:")
         for slug in SLUGS:
             chunks += slug + ", "
             if len(chunks) > 400:
-                notice(chunks)
+                event.notice(chunks)
                 chunks = ""
         return None
 
@@ -143,11 +147,11 @@ def devdocs(text, chan, nick, reply, notice):
         else:
             return f"Slug not found: {slug}. Use '.devdocs list' to see available slugs."
 
-    query = " ".join(text.split()[1:])
+    query = " ".join((query or "").split())
     if not query:
         p = SLUGS[slug]
         return f"{p['name']} - {p.get('version', '')}: {', '.join(f'{k}: {v}' for k, v in p.get('links', {}).items())}"
 
     doc = search(slug, query)
-    reply(doc.url, truncate_str(doc.summary(), 400))
+    event.reply(doc.url, truncate_str(doc.summary(), 400))
     return None

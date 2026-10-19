@@ -1,10 +1,13 @@
 import re
+from typing import Annotated
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent, RegexEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, formatting, web
 from cloudbot.util.web import get_session
 
@@ -30,21 +33,25 @@ RATING_RE = re.compile(r"([0-9]+(?:[.,][0-9])?) out of")
 
 
 @hook.regex(AMAZON_RE)
-def amazon_url(match, reply):
+def amazon_url(match, event: RegexEvent):
     cc = match.group(1)
     asin = match.group(2)
-    return amazon(asin, reply, _parsed=cc)
+    return amazon(asin, event, _parsed=cc)
 
 
 @hook.command("amazon", "az")
-def amazon(text, reply, _parsed: bool | str = False):
-    """<query> - Searches Amazon for query"""
+def amazon(
+    query: Annotated[str, Arg("What to search for")],
+    event: CommandEvent | RegexEvent,
+    _parsed: bool | str = False,
+):
+    """Searches Amazon for query"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, "
         "like Gecko) Chrome/41.0.2228.0 Safari/537.36",
         "Referer": "http://www.amazon.com/",
     }
-    params = {"url": "search-alias", "field-keywords": text.strip()}
+    params = {"url": "search-alias", "field-keywords": query.strip()}
     if _parsed:
         request = get_session().get(
             SEARCH_URL.format(_parsed), params=params, headers=headers
@@ -57,7 +64,7 @@ def amazon(text, reply, _parsed: bool | str = False):
     try:
         request.raise_for_status()
     except HTTPError:
-        reply("Amazon API error occurred.")
+        event.reply("Amazon API error occurred.")
         raise
 
     soup = BeautifulSoup(request.text, "lxml")

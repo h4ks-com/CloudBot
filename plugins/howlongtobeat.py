@@ -6,11 +6,13 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from typing import Annotated
 from urllib.parse import quote
 
 import requests
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.queue import Queue
 from cloudbot.util.web import get_session
 
@@ -219,10 +221,16 @@ def scrape_hltb_search(game_name: str) -> list[Game] | None:
 
 
 @hook.command("hltbn", "hltb_next", autohelp=False)
-def hltbn(text, nick, chan):
-    """- Show the next game in your results."""
-    if text:
-        nick = text.strip().split()[0]
+def hltbn(
+    nick: str,
+    chan: str,
+    user: Annotated[
+        str | None, Arg("Nick whose results to show", kind="user")
+    ] = None,
+):
+    """Show the next game in your results, or in the results of [user]."""
+    if user:
+        nick = user
         if nick not in results_queue[chan]:
             return f"{nick} has no hltb game in queue."
 
@@ -233,18 +241,17 @@ def hltbn(text, nick, chan):
     return str(game)
 
 
-@hook.command("howlongtobeat", "hltb", autohelp=False)
-def howlongtobeat(text, nick, chan):
-    """<game> - Search for a game on How Long To Beat"""
-    if not text:
-        return "Please provide a game name to search for"
-
-    games = try_api_search(text)
+@hook.command("howlongtobeat", "hltb")
+def howlongtobeat(
+    nick: str, chan: str, game: Annotated[str, Arg("Game to search for")]
+):
+    """Search for a game on How Long To Beat"""
+    games = try_api_search(game)
     if not games:
-        games = scrape_hltb_search(text)
+        games = scrape_hltb_search(game)
     if games:
         results_queue[chan][nick] = games[1:]
         return str(games[0])
 
-    encoded = quote(text)
-    return f"No results found for '{text}'. Search directly: {BASE_URL}/?q={encoded}"
+    encoded = quote(game)
+    return f"No results found for '{game}'. Search directly: {BASE_URL}/?q={encoded}"

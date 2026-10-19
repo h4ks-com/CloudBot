@@ -7,6 +7,7 @@ License:
     GNU General Public License (Version 3)
 """
 
+from typing import Annotated
 from urllib.parse import urlparse
 
 from requests import HTTPError, RequestException
@@ -14,6 +15,7 @@ from requests import HTTPError, RequestException
 import cloudbot
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 API_URL = "https://safebrowsing.googleapis.com/v4/threatMatches:find"
@@ -26,9 +28,9 @@ THREAT_TYPES = [
 
 
 @hook.command()
-def issafe(text):
-    """<website> - Checks the website against Google's Safe Browsing list."""
-    if urlparse(text).scheme not in ("https", "http"):
+def issafe(website: Annotated[str, Arg("Complete URL to check")]):
+    """Checks the website against Google's Safe Browsing list."""
+    if urlparse(website).scheme not in ("https", "http"):
         return "Check your URL (it should be a complete URI)."
 
     api_key = bot.config.get_api_key("google")
@@ -44,7 +46,7 @@ def issafe(text):
             "threatTypes": THREAT_TYPES,
             "platformTypes": ["ANY_PLATFORM"],
             "threatEntryTypes": ["URL"],
-            "threatEntries": [{"url": text}],
+            "threatEntries": [{"url": website}],
         },
     }
 
@@ -60,9 +62,9 @@ def issafe(text):
 
     matches = response.json().get("matches") or []
     if not matches:
-        return f"\x02{text}\x02 is safe."
+        return f"\x02{website}\x02 is safe."
 
     threats = ", ".join(
         sorted({m.get("threatType", "UNKNOWN") for m in matches})
     )
-    return f"\x02{text}\x02 is flagged: {threats}"
+    return f"\x02{website}\x02 is flagged: {threats}"

@@ -88,8 +88,8 @@ def test_reddit_no_posts(mock_requests):
         json={"data": {"children": []}},
     )
 
-    reply_mock = MagicMock()
+    event = MagicMock()
 
-    response = reddit_info.reddit("/r/FooBar", reply_mock)
+    response = reddit_info.reddit(event, "/r/FooBar")
 
     assert response == "There do not appear to be any posts to show."

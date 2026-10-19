@@ -7,13 +7,16 @@ import string
 from dataclasses import dataclass, field
 from random import choice
 from time import time
+from typing import Annotated
 
 from bs4 import BeautifulSoup, Tag
 
+from cloudbot.event import CommandEvent
 from cloudbot.util.web import get_session
 
 if __name__ != "__main__":
     from cloudbot import hook
+    from cloudbot.hook import Arg
 
 URL = "https://www.asciiart.eu"
 FILE = "plugins/asciiart.json"
@@ -142,8 +145,12 @@ if __name__ != "__main__":
     uses: dict[str, list[float]] = {}
 
     @hook.command("asciiart", "aa", autohelp=False)
-    def asciiart(text, reply, chan):
-        """<search> - Search for ascii art."""
+    def asciiart(
+        event: CommandEvent,
+        chan: str,
+        search: Annotated[str, Arg("What to look for")],
+    ):
+        """Search for ascii art."""
         if chan not in uses:
             uses[chan] = []
 
@@ -157,10 +164,7 @@ if __name__ != "__main__":
 
         uses[chan].append(time())
 
-        if not text:
-            return "Usage: .asciiart <search>"
-
-        query = text.lower()
+        query = search.lower()
 
         def sublists(d: dict):
             """All lists inside a dict merged."""
@@ -197,7 +201,7 @@ if __name__ != "__main__":
 
         matches = find_query(query, asciimap)
         value = max(matches, key=lambda x: list(x.keys())[0])
-        reply(*choice(sublists(value)).split("\n"))
+        event.reply(*choice(sublists(value)).split("\n"))
 
 
 if __name__ == "__main__":

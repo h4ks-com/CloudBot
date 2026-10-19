@@ -668,20 +668,20 @@ class TestFriendsKillers:
         conn = MockConn(name="net")
         db = mock_db.session()
         monsterhunt.table.create(mock_db.engine)
-        assert monsterhunt.friends("", "#chan", conn, db) is None
+        assert monsterhunt.friends("#chan", conn, db) is None
 
     def test_killers_opted_out(self, mock_db):
         monsterhunt.opt_out.append("#chan")
         conn = MockConn(name="net")
         db = mock_db.session()
         monsterhunt.table.create(mock_db.engine)
-        assert monsterhunt.killers("", "#chan", conn, db) is None
+        assert monsterhunt.killers("#chan", conn, db) is None
 
     def test_friends_empty(self, mock_db, patch_paste):
         conn = MockConn(name="net")
         db = mock_db.session()
         monsterhunt.table.create(mock_db.engine)
-        result = monsterhunt.friends("", "#chan", conn, db)
+        result = monsterhunt.friends("#chan", conn, db)
         assert result == "it appears no one has friended any monsters yet."
         patch_paste.assert_not_called()
 
@@ -689,7 +689,7 @@ class TestFriendsKillers:
         conn = MockConn(name="net")
         db = mock_db.session()
         monsterhunt.table.create(mock_db.engine)
-        result = monsterhunt.friends("global", "#chan", conn, db)
+        result = monsterhunt.friends("#chan", conn, db, "global")
         assert result == "it appears no one has friended any monsters yet."
         patch_paste.assert_not_called()
 
@@ -698,7 +698,7 @@ class TestFriendsKillers:
         db = self._seed(mock_db, conn)
         monsterhunt.dbadd_entry("dave", "#chan", db, conn, 0, 0)
         patch_paste.return_value = "http://paste.example/z"
-        result = monsterhunt.friends("average", "#chan", conn, db)
+        result = monsterhunt.friends("#chan", conn, db, "average")
         assert result == (
             "Monster friend scores across the network: "
             "\x02b\u200bob\x02: 7 • \x02a\u200blice\x02: 4 • "
@@ -710,7 +710,7 @@ class TestFriendsKillers:
         conn = MockConn(name="net")
         db = self._seed(mock_db, conn)
         patch_paste.return_value = "http://paste.example/x"
-        result = monsterhunt.friends("", "#chan", conn, db)
+        result = monsterhunt.friends("#chan", conn, db)
         assert result == (
             "Monster friend scores in #chan: "
             "\x02b\u200bob\x02: 7 • \x02a\u200blice\x02: 4 "
@@ -722,7 +722,7 @@ class TestFriendsKillers:
         db = self._seed(mock_db, conn)
         monsterhunt.dbadd_entry("dave", "#chan", db, conn, 0, 0)
         patch_paste.return_value = "http://paste.example/v"
-        result = monsterhunt.friends("", "#chan", conn, db)
+        result = monsterhunt.friends("#chan", conn, db)
         assert result == (
             "Monster friend scores in #chan: "
             "\x02b\u200bob\x02: 7 • \x02a\u200blice\x02: 4 "
@@ -733,7 +733,7 @@ class TestFriendsKillers:
         conn = MockConn(name="net")
         db = self._seed(mock_db, conn)
         patch_paste.return_value = "http://paste.example/x"
-        result = monsterhunt.friends("global", "#chan", conn, db)
+        result = monsterhunt.friends("#chan", conn, db, "global")
         assert result == (
             "Monster friend scores across the network: "
             "\x02b\u200bob\x02: 7 • \x02a\u200blice\x02: 4 • "
@@ -744,14 +744,14 @@ class TestFriendsKillers:
         conn = MockConn(name="net")
         db = mock_db.session()
         monsterhunt.table.create(mock_db.engine)
-        result = monsterhunt.killers("", "#chan", conn, db)
+        result = monsterhunt.killers("#chan", conn, db)
         assert result == "it appears no on has killed any monsters yet."
 
     def test_killers_empty_global(self, mock_db, patch_paste):
         conn = MockConn(name="net")
         db = mock_db.session()
         monsterhunt.table.create(mock_db.engine)
-        result = monsterhunt.killers("global", "#chan", conn, db)
+        result = monsterhunt.killers("#chan", conn, db, "global")
         assert result == "it appears no one has killed any monsters yet."
 
     def test_killers_average(self, mock_db, patch_paste):
@@ -759,7 +759,7 @@ class TestFriendsKillers:
         db = self._seed(mock_db, conn)
         monsterhunt.dbadd_entry("dave", "#chan", db, conn, 0, 0)
         patch_paste.return_value = "http://paste.example/y"
-        result = monsterhunt.killers("average", "#chan", conn, db)
+        result = monsterhunt.killers("#chan", conn, db, "average")
         assert result == (
             "Monster killer scores across the network: "
             "\x02c\u200barol\x02: 9 • \x02a\u200blice\x02: 5 • "
@@ -772,7 +772,7 @@ class TestFriendsKillers:
         db = self._seed(mock_db, conn)
         monsterhunt.dbadd_entry("dave", "#chan", db, conn, 0, 0)
         patch_paste.return_value = "http://paste.example/w"
-        result = monsterhunt.killers("", "#chan", conn, db)
+        result = monsterhunt.killers("#chan", conn, db)
         assert result == (
             "Monster killer scores in #chan: "
             "\x02a\u200blice\x02: 5 • \x02b\u200bob\x02: 1 "
@@ -955,8 +955,8 @@ class TestDucksUser:
         monsterhunt.table.create(mock_db.engine)
         conn = MockConn(name="net")
         db = mock_db.session()
-        message = MagicMock()
-        result = monsterhunt.ducks_user("", "alice", "#chan", conn, db, message)
+        event = MagicMock()
+        result = monsterhunt.ducks_user("alice", "#chan", conn, db, event)
         assert result == (
             "It appears alice has not participated in the monster hunt."
         )
@@ -966,10 +966,10 @@ class TestDucksUser:
         conn = MockConn(name="net")
         db = mock_db.session()
         monsterhunt.dbadd_entry("alice", "#chan", db, conn, 4, 2)
-        message = MagicMock()
-        result = monsterhunt.ducks_user("", "alice", "#chan", conn, db, message)
+        event = MagicMock()
+        result = monsterhunt.ducks_user("alice", "#chan", conn, db, event)
         assert result is None
-        message.assert_called_once_with(
+        event.message.assert_called_once_with(
             "alice has killed 4 and befriended 2 monsters in #chan."
         )
 
@@ -979,12 +979,12 @@ class TestDucksUser:
         db = mock_db.session()
         monsterhunt.dbadd_entry("alice", "#chan", db, conn, 4, 2)
         monsterhunt.dbadd_entry("alice", "#other", db, conn, 6, 0)
-        message = MagicMock()
+        event = MagicMock()
         result = monsterhunt.ducks_user(
-            "alice extra", "bob", "#chan", conn, db, message
+            "bob", "#chan", conn, db, event, "alice"
         )
         assert result is None
-        message.assert_called_once_with(
+        event.message.assert_called_once_with(
             "\x02alice's\x02 duck stats: \x024\x02 killed and \x022\x02 "
             "befriended in #chan. Across 2 channels: \x0210\x02 killed "
             "and \x022\x02 befriended. Averaging \x025\x02 kills and "
@@ -997,8 +997,8 @@ class TestDuckStats:
         monsterhunt.table.create(mock_db.engine)
         conn = MockConn(name="net")
         db = mock_db.session()
-        message = MagicMock()
-        result = monsterhunt.duck_stats("#chan", conn, db, message)
+        event = MagicMock()
+        result = monsterhunt.duck_stats("#chan", conn, db, event)
         assert result == (
             "It looks like there has been no monster activity on this "
             "channel or network."
@@ -1010,10 +1010,10 @@ class TestDuckStats:
         db = mock_db.session()
         monsterhunt.dbadd_entry("alice", "#chan", db, conn, 4, 2)
         monsterhunt.dbadd_entry("bob", "#other", db, conn, 9, 5)
-        message = MagicMock()
-        result = monsterhunt.duck_stats("#chan", conn, db, message)
+        event = MagicMock()
+        result = monsterhunt.duck_stats("#chan", conn, db, event)
         assert result is None
-        message.assert_called_once_with(
+        event.message.assert_called_once_with(
             "\x02Monster Stats:\x02 4 killed and 2 befriended in "
             "\x02#chan\x02. Across 2 channels \x0213\x02 monsters have "
             "been killed and \x027\x02 befriended. \x02Top Channels:\x02 "

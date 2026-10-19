@@ -5,9 +5,11 @@ Based on algorithms from NASA GISS Mars24 tool.
 """
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 # Mars mission locations (longitude, latitude, mission start date, name)
 MARS_LOCATIONS: dict[str, dict[str, Any]] = {
@@ -173,14 +175,16 @@ def get_season_name(ls: float) -> str:
 
 
 @hook.command("marstime", "mars", autohelp=False)
-def marstime(text: str) -> str:
+def marstime(
+    location: Annotated[str | None, Arg("Mission location")] = None,
+) -> str:
     """
-    <location> - Get Mars time. Use without args for MTC, or specify: zhurong, ingenuity,
+    Get Mars time. Use without args for MTC, or specify: zhurong, ingenuity,
     perseverance, insight, curiosity for mission-specific local times.
     """
     mars_calc = MarsTime()
 
-    if not text.strip():
+    if not location:
         # Return Mars Coordinated Time (MTC)
         hour, minute, second = mars_calc.coordinated_mars_time()
         my = mars_calc.mars_year()
@@ -191,14 +195,16 @@ def marstime(text: str) -> str:
         return f"\x02Mars Coordinated Time (MTC):\x02 {time_str} | \x02MY:\x02 {my} | \x02Ls:\x02 {ls:.1f}° ({season})"
 
     # Look for specific location
-    location_key = text.strip().lower()
+    location_key = location.lower()
     if location_key not in MARS_LOCATIONS:
         # Show available locations
         locations = ", ".join(MARS_LOCATIONS.keys())
-        return f"Unknown location '{text}'. Available locations: {locations}"
+        return (
+            f"Unknown location '{location}'. Available locations: {locations}"
+        )
 
-    location = MARS_LOCATIONS[location_key]
-    hour, minute, second = mars_calc.local_mars_time(location["lon"])
+    mission = MARS_LOCATIONS[location_key]
+    hour, minute, second = mars_calc.local_mars_time(mission["lon"])
     my = mars_calc.mars_year()
     ls = mars_calc.solar_longitude()
     season = get_season_name(ls)
@@ -206,16 +212,16 @@ def marstime(text: str) -> str:
     time_str = mars_calc.format_time(hour, minute, second)
 
     return (
-        f"\x02{location['name']} Local Solar Time:\x02 {time_str} | "
-        f"\x02Coordinates:\x02 {abs(location['lat']):.1f}°{'N' if location['lat'] >= 0 else 'S'}, "
-        f"{location['lon']:.1f}°W | \x02MY:\x02 {my} | \x02Ls:\x02 {ls:.1f}° ({season})"
+        f"\x02{mission['name']} Local Solar Time:\x02 {time_str} | "
+        f"\x02Coordinates:\x02 {abs(mission['lat']):.1f}°{'N' if mission['lat'] >= 0 else 'S'}, "
+        f"{mission['lon']:.1f}°W | \x02MY:\x02 {my} | \x02Ls:\x02 {ls:.1f}° ({season})"
     )
 
 
 @hook.command("marslocations", "marslocs", autohelp=False)
-def mars_locations(reply) -> None:
+def mars_locations(event: CommandEvent) -> None:
     """- List the Mars mission locations for the marstime command."""
-    reply(
+    event.reply(
         "Available Mars locations:",
         *[
             f"\x02{key}\x02: {data['name']} - {data['description']}"

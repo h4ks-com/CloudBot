@@ -2,6 +2,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
 from fnmatch import fnmatch
+from typing import Annotated
 
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -16,11 +17,13 @@ from sqlalchemy import (
     not_,
     update,
 )
+from sqlalchemy.orm import Session
 from sqlalchemy.sql import select
 
 from cloudbot import hook
-from cloudbot.event import EventType
-from cloudbot.hook import Priority
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent, EventType
+from cloudbot.hook import Arg, Priority
 from cloudbot.util import database, timeformat, web
 from cloudbot.util.formatting import gen_markdown_table
 
@@ -316,32 +319,32 @@ def tellinput(conn, db, nick, notice, content):
 
 
 @hook.command(autohelp=False)
-def showtells(nick, notice, db, conn):
+def showtells(nick: str, event: CommandEvent, db: Session, conn: IrcClient):
     """- View all pending tell messages (sent in a notice)."""
 
     tells = get_unread(db, conn.name, nick)
 
     if not tells:
-        notice("You have no pending messages.")
+        event.notice("You have no pending messages.")
         return
 
     for tell in tells:
-        notice(tell.format_for_message())
+        event.notice(tell.format_for_message())
 
     read_all_tells(db, conn.name, nick)
 
 
 @hook.command("tell")
-def tell_cmd(text, nick, db, conn, mask, event):
-    """<nick> <message> - Relay <message> to <nick> when <nick> is around."""
-    query = text.split(" ", 1)
-
-    if len(query) != 2:
-        event.notice_doc()
-        return
-
-    target = query[0]
-    message = query[1].strip()
+def tell_cmd(
+    nick: str,
+    db: Session,
+    conn: IrcClient,
+    mask: str,
+    event: CommandEvent,
+    target: Annotated[str, Arg("Nick to tell", kind="user")],
+    message: Annotated[str, Arg("Message to relay")],
+):
+    """Relay <message> to <target> when <target> is around."""
     sender = nick
 
     if not can_send_to_user(conn, mask, target):
@@ -374,17 +377,24 @@ def check_permissions(event, *perms):
 
 
 @hook.command("telldisable", autohelp=False)
-def tell_disable(conn, db, text, nick, event):
-    """[nick] - Disable the sending of tells to [nick]"""
+def tell_disable(
+    conn: IrcClient,
+    db: Session,
+    nick: str,
+    event: CommandEvent,
+    target: Annotated[
+        str | None, Arg("Nick to disable tells for", kind="user")
+    ] = None,
+):
+    """Disable the sending of tells to [target]"""
     is_self = False
-    if not text or text.casefold() == nick.casefold():
-        text = nick
+    if not target or target.casefold() == nick.casefold():
+        target = nick
         is_self = True
     elif not check_permissions(event, "botcontrol", "ignore"):
         event.notice("Sorry, you are not allowed to use this command.")
         return None
 
-    target = text.split()[0]
     if is_disable(conn, target):
         return "Tells are already disabled for {}.".format(
             "you" if is_self else f"{target!r}"
@@ -397,17 +407,24 @@ def tell_disable(conn, db, text, nick, event):
 
 
 @hook.command("tellenable", autohelp=False)
-def tell_enable(conn, db, text, event, nick):
-    """[nick] - Enable the sending of tells to [nick]"""
+def tell_enable(
+    conn: IrcClient,
+    db: Session,
+    event: CommandEvent,
+    nick: str,
+    target: Annotated[
+        str | None, Arg("Nick to enable tells for", kind="user")
+    ] = None,
+):
+    """Enable the sending of tells to [target]"""
     is_self = False
-    if not text or text.casefold() == nick.casefold():
-        text = nick
+    if not target or target.casefold() == nick.casefold():
+        target = nick
         is_self = True
     elif not check_permissions(event, "botcontrol", "ignore"):
         event.notice("Sorry, you are not allowed to use this command.")
         return None
 
-    target = text.split()[0]
     if not is_disable(conn, target):
         return "Tells are already enabled for {}.".format(
             "you" if is_self else f"{target!r}"
@@ -422,7 +439,7 @@ def tell_enable(conn, db, text, event, nick):
 @hook.command(
     "listtelldisabled", permissions=["botcontrol", "ignore"], autohelp=False
 )
-def list_tell_disabled(conn, db):
+def list_tell_disabled(conn: IrcClient, db: Session):
     """- Returns the current list of people who are not able to recieve tells"""
     ignores = list(list_disabled(db, conn))
     md = gen_markdown_table(
@@ -432,33 +449,45 @@ def list_tell_disabled(conn, db):
 
 
 @hook.command("tellignore")
-def tell_ignore(db, conn, nick, text, notice):
-    """<mask> - Disallow users matching <mask> from sending you tells"""
-    mask = text.split()[0].lower()
+def tell_ignore(
+    db: Session,
+    conn: IrcClient,
+    nick: str,
+    mask: Annotated[str, Arg("Mask to ignore", rest=False)],
+    event: CommandEvent,
+):
+    """Disallow users matching <mask> from sending you tells"""
+    mask = mask.lower()
     if ignore_exists(conn, nick, mask):
-        notice(f"You are already ignoring tells from {mask!r}")
+        event.notice(f"You are already ignoring tells from {mask!r}")
         return
 
     add_ignore(db, conn, nick, mask)
-    notice(f"You are now ignoring tells from {mask!r}")
+    event.notice(f"You are now ignoring tells from {mask!r}")
 
 
 @hook.command("tellunignore")
-def tell_unignore(db, conn, nick, text, notice):
-    """<mask> - Remove a tell ignore"""
-    mask = text.split()[0].lower()
+def tell_unignore(
+    db: Session,
+    conn: IrcClient,
+    nick: str,
+    mask: Annotated[str, Arg("Mask to stop ignoring", rest=False)],
+    event: CommandEvent,
+):
+    """Remove a tell ignore for <mask>"""
+    mask = mask.lower()
     if not ignore_exists(conn, nick, mask):
-        notice(f"No ignore matching {mask!r} exists.")
+        event.notice(f"No ignore matching {mask!r} exists.")
         return
 
     del_ignore(db, conn, nick, mask)
-    notice(f"{mask!r} has been unignored")
+    event.notice(f"{mask!r} has been unignored")
 
 
 @hook.command(
     "listtellignores", permissions=["botcontrol", "ignore"], autohelp=False
 )
-def list_tell_ignores(conn, nick):
+def list_tell_ignores(conn: IrcClient, nick: str):
     """- Returns the current list of masks who may not send you tells"""
     ignores = list(list_ignores(conn, nick))
     if not ignores:

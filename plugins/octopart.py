@@ -13,23 +13,29 @@ License:
     GPL v3
 """
 
+from typing import Annotated
+
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 API_URL = "http://octopart.com/api/v3/parts/search"
 
 
 @hook.command("octopart", "octo")
-def octopart(text, reply):
-    """<keyword> - Search for any part on the Octopart database."""
+def octopart(
+    event: CommandEvent, keyword: Annotated[str, Arg("Part to search for")]
+):
+    """Search for any part on the Octopart database."""
     api_key = bot.config.get_api_key("octopart")
     if not api_key:
         return "Octopart API key required."
 
-    params = {"apikey": api_key, "q": text, "start": 0, "limit": 1}
+    params = {"apikey": api_key, "q": keyword, "start": 0, "limit": 1}
 
     try:
         request = get_session().get(API_URL, params=params)
@@ -38,7 +44,7 @@ def octopart(text, reply):
         requests.exceptions.HTTPError,
         requests.exceptions.ConnectionError,
     ) as e:
-        reply(f"Could not fetch part data: {e}")
+        event.reply(f"Could not fetch part data: {e}")
         raise
 
     response = request.json()
@@ -53,8 +59,8 @@ def octopart(text, reply):
         part = result["item"]
 
         # print matched part
-        reply(
-            "{} - {} - {}".format(
+        event.reply(
+            "{} -{} - {}".format(
                 part["brand"]["name"], part["mpn"], part["octopart_url"]
             )
         )

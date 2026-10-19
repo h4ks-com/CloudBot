@@ -2,12 +2,15 @@ import base64
 import re
 import tempfile
 from collections import deque
+from typing import Annotated
 
 import magic
 from requests import HTTPError, RequestException
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.hook import Arg
 from cloudbot.util import aimedia
 from cloudbot.util.ai_common import (
     Message,
@@ -167,7 +170,7 @@ def _call_gemini_text(api_key, history):
 
 
 @hook.command("gemi", "gemimg", allow_private=False)
-def gemi_command(text, chan, nick, db):
+def gemi_command(text: str, chan: str, nick: str, db):
     """<prompt>  OR  <image_url(s)> <prompt> - Generate an image, or edit the linked image(s), with Gemini."""
     try:
         api_url, key = aimedia.config_from_bot(bot)
@@ -196,7 +199,7 @@ def gemi_command(text, chan, nick, db):
 
 
 @hook.command("gemv", "gemini_video", allow_private=False)
-def gemv_command(text, chan, nick, conn, db):
+def gemv_command(text: str, chan: str, nick: str, conn: IrcClient, db):
     """<prompt>  OR  <image_url(s)> <prompt> - Generate a video with Gemini (Veo); with image(s), animate them.
 
     Renders async; the link posts here when ready.
@@ -239,15 +242,18 @@ def gemv_watch_tick(bot):
 
 
 @hook.command("gemt", "gai", "gae", allow_private=False)
-def gemt_command(text, nick, chan, db):
-    """<text> - Chat with Google Gemini's free Flash text model."""
+def gemt_command(
+    prompt: Annotated[str, Arg("Message for Gemini")],
+    nick: str,
+    chan: str,
+    db,
+):
+    """Chat with Google Gemini's free Flash text model."""
     api_key, err = _get_api_key()
     if err:
         return err
 
-    prompt = text.strip()
-    if not prompt:
-        return "Usage: .gemt <text>"
+    prompt = prompt.strip()
 
     limit_msg = check(db, TEXT_BUCKET, TEXT_LIMITS)
     if limit_msg:
@@ -281,15 +287,22 @@ def gemt_command(text, nick, chan, db):
 
 
 @hook.command("gemtclear", autohelp=False)
-def gemtclear_command(nick, chan):
+def gemtclear_command(nick: str, chan: str):
     """- - Clear your Gemini text conversation."""
     return clear_history(gemt_messages_cache, chan, nick)
 
 
 @hook.command("gemtpaste", "gemth", autohelp=False)
-def gemtpaste_command(text, nick, chan):
-    """[nick] - Paste your (or another nick's) Gemini text conversation."""
-    target = text.strip() or nick
+def gemtpaste_command(
+    nick: str,
+    chan: str,
+    target: Annotated[
+        str | None,
+        Arg("Whose conversation to paste, yours by default", kind="user"),
+    ] = None,
+):
+    """Paste your (or another nick's) Gemini text conversation."""
+    target = target or nick
     channick = (chan, target)
     if channick not in gemt_messages_cache:
         return f"No Gemini conversation history for {target}."

@@ -1,9 +1,11 @@
 import re
+from typing import Annotated
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
 from cloudbot.clients.irc import IrcClient
 from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg, OptionalChannel
 from cloudbot.util import formatting
 
 
@@ -14,18 +16,21 @@ from cloudbot.util import formatting
     permissions=["permissions_users"],
     autohelp=False,
 )
-async def get_permission_groups(conn):
+async def get_permission_groups(conn: IrcClient) -> str:
     """- lists all valid groups"""
     return f"Valid groups: {conn.permissions.get_groups()}"
 
 
 @hook.command("gperms", permissions=["permissions_users"])
-async def get_group_permissions(text, conn, notice):
-    """<group> - lists permissions given to <group>"""
-    group = text.strip()
+async def get_group_permissions(
+    conn: IrcClient,
+    event: CommandEvent,
+    group: Annotated[str, Arg("Group to list", rest=False)],
+) -> str | None:
+    """lists permissions given to <group>"""
     permission_manager = conn.permissions
     if not permission_manager.group_exists(group):
-        notice(f"Unknown group '{group}'")
+        event.notice(f"Unknown group '{group}'")
         return None
 
     group_permissions = permission_manager.get_group_permissions(group.lower())
@@ -36,12 +41,15 @@ async def get_group_permissions(text, conn, notice):
 
 
 @hook.command("gusers", permissions=["permissions_users"])
-async def get_group_users(text, conn, notice):
-    """<group> - lists users in <group>"""
-    group = text.strip()
+async def get_group_users(
+    conn: IrcClient,
+    event: CommandEvent,
+    group: Annotated[str, Arg("Group to list", rest=False)],
+) -> str | None:
+    """lists users in <group>"""
     permission_manager = conn.permissions
     if not permission_manager.group_exists(group):
-        notice(f"Unknown group '{group}'")
+        event.notice(f"Unknown group '{group}'")
         return None
 
     group_users = permission_manager.get_group_users(group.lower())
@@ -51,23 +59,28 @@ async def get_group_users(text, conn, notice):
     return f"Group {group} exists, but has no members"
 
 
-def parse_self(event):
-    if event.text:
+def parse_self(event: CommandEvent, user: str | None) -> str | None:
+    if user:
         if not event.has_permission("permissions_users"):
             event.notice(
                 "Sorry, you are not allowed to use this command on another user"
             )
             return None
 
-        return event.text.strip()
+        return user
 
     return event.mask
 
 
 @hook.command("uperms", autohelp=False)
-async def get_user_permissions(event):
-    """[user] - lists all permissions given to [user], or the caller if no user is specified"""
-    user = parse_self(event)
+async def get_user_permissions(
+    event: CommandEvent,
+    user: Annotated[
+        str | None, Arg("User to look up, yourself by default", rest=False)
+    ] = None,
+) -> str | None:
+    """lists all permissions given to a user, yourself by default"""
+    user = parse_self(event, user)
     if not user:
         return None
 
@@ -81,9 +94,14 @@ async def get_user_permissions(event):
 
 
 @hook.command("ugroups", autohelp=False)
-async def get_user_groups(event):
-    """[user] - lists all permissions given to [user], or the caller if no user is specified"""
-    user = parse_self(event)
+async def get_user_groups(
+    event: CommandEvent,
+    user: Annotated[
+        str | None, Arg("User to look up, yourself by default", rest=False)
+    ] = None,
+) -> str | None:
+    """lists the permission groups of a user, yourself by default"""
+    user = parse_self(event, user)
     if not user:
         return None
 
@@ -96,7 +114,7 @@ async def get_user_groups(event):
     return f"User {user} is in no permission groups"
 
 
-def remove_user_from_group(user, group, event):
+def remove_user_from_group(user: str, group: str, event: CommandEvent) -> bool:
     permission_manager = event.conn.permissions
     changed_masks = permission_manager.remove_group_user(
         group.lower(), user.lower()
@@ -112,38 +130,33 @@ def remove_user_from_group(user, group, event):
 
 
 @hook.command("deluser", permissions=["permissions_users"])
-async def remove_permission_user(text, event, bot, conn, notice, reply):
-    """<user> [group] - removes <user> from [group], or from all groups if no group is specified"""
-    split = text.split()
-    if len(split) > 2:
-        notice("Too many arguments")
-        return
-
-    if not split:
-        notice("Not enough arguments")
-        return
-
+async def remove_permission_user(
+    event: CommandEvent,
+    bot: CloudBot,
+    conn: IrcClient,
+    user: Annotated[str, Arg("User to remove")],
+    group: Annotated[
+        str | None, Arg("Group to remove the user from", rest=False)
+    ] = None,
+):
+    """removes <user> from [group], or from all groups if no group is specified"""
     perm_manager = conn.permissions
-    user = split[0]
-    if len(split) > 1:
-        group = split[1]
-
-        if group and not perm_manager.group_exists(group.lower()):
-            notice(f"Unknown group '{group}'")
+    if group:
+        if not perm_manager.group_exists(group.lower()):
+            event.notice(f"Unknown group '{group}'")
             return
 
         groups = [group] if perm_manager.user_in_group(user, group) else []
     else:
-        group = None
         groups = perm_manager.get_user_groups(user.lower())
 
     if not groups:
-        reply(f"No masks with elevated permissions matched {user}")
+        event.reply(f"No masks with elevated permissions matched {user}")
         return
 
     changed = False
-    for group in groups:
-        if remove_user_from_group(user, group, event):
+    for user_group in groups:
+        if remove_user_from_group(user, user_group, event):
             changed = True
 
     if changed:
@@ -152,23 +165,18 @@ async def remove_permission_user(text, event, bot, conn, notice, reply):
 
 
 @hook.command("adduser", permissions=["permissions_users"])
-async def add_permissions_user(text, nick, conn, bot, notice, reply, admin_log):
-    """<user> <group> - adds <user> to <group>"""
-    split = text.split()
-    if len(split) > 2:
-        notice("Too many arguments")
-        return
-
-    if len(split) < 2:
-        notice("Not enough arguments")
-        return
-
-    user = split[0]
-    group = split[1]
-
+async def add_permissions_user(
+    nick: str,
+    conn: IrcClient,
+    bot: CloudBot,
+    event: CommandEvent,
+    user: Annotated[str, Arg("User mask in the format nick!user@host")],
+    group: Annotated[str, Arg("Group to add the user to", rest=False)],
+):
+    """adds <user> to <group>"""
     if not re.search(".+!.+@.+", user):
         # TODO: When we have presence tracking, check if there are any users in the channel with the nick given
-        notice("The user must be in the format 'nick!user@host'")
+        event.notice("The user must be in the format 'nick!user@host'")
         return
 
     permission_manager = conn.permissions
@@ -176,15 +184,15 @@ async def add_permissions_user(text, nick, conn, bot, notice, reply, admin_log):
     group_exists = permission_manager.group_exists(group)
 
     if not permission_manager.add_user_to_group(user.lower(), group.lower()):
-        reply(f"User {user} is already matched in group {group}")
+        event.reply(f"User {user} is already matched in group {group}")
         return None
 
     if group_exists:
-        reply(f"User {user} added to group {group}")
-        admin_log(f"{nick} used adduser to add {user} to {group}.")
+        event.reply(f"User {user} added to group {group}")
+        event.admin_log(f"{nick} used adduser to add {user} to {group}.")
     else:
-        reply(f"Group {group} created with user {user}")
-        admin_log(
+        event.reply(f"Group {group} created with user {user}")
+        event.admin_log(
             f"{nick} used adduser to create group {group} and add {user} to it."
         )
 
@@ -193,19 +201,23 @@ async def add_permissions_user(text, nick, conn, bot, notice, reply, admin_log):
 
 
 @hook.command("stopthebot", permissions=["botcontrol"])
-async def stop(text, bot):
-    """[reason] - stops me with [reason] as its quit message."""
-    if text:
-        await bot.stop(reason=text)
+async def stop(
+    bot: CloudBot, reason: Annotated[str | None, Arg("Quit message")] = None
+):
+    """stops me with [reason] as its quit message."""
+    if reason:
+        await bot.stop(reason=reason)
     else:
         await bot.stop()
 
 
 @hook.command(permissions=["botcontrol"])
-async def restart(text, bot):
-    """[reason] - restarts me with [reason] as its quit message."""
-    if text:
-        await bot.restart(reason=text)
+async def restart(
+    bot: CloudBot, reason: Annotated[str | None, Arg("Quit message")] = None
+):
+    """restarts me with [reason] as its quit message."""
+    if reason:
+        await bot.restart(reason=reason)
     else:
         await bot.restart()
 
@@ -218,25 +230,23 @@ async def rehash_config(bot: CloudBot) -> str:
 
 
 @hook.command(permissions=["botcontrol", "snoonetstaff"])
-async def join(text, conn, nick, notice, admin_log):
-    """<channel> [key] - joins <channel> with the optional [key]"""
-    parts = text.split(None, 1)
-    target = parts.pop(0)
+async def join(
+    conn: IrcClient,
+    nick: str,
+    event: CommandEvent,
+    channel: Annotated[str, Arg("Channel to join", kind="channel")],
+    key: Annotated[str | None, Arg("Channel key", rest=False)] = None,
+):
+    """joins <channel> with the optional [key]"""
+    if not channel.startswith("#"):
+        channel = f"#{channel}"
 
-    if parts:
-        key = parts.pop(0)
-    else:
-        key = None
-
-    if not target.startswith("#"):
-        target = f"#{target}"
-
-    admin_log(f"{nick} used JOIN to make me join {target}.")
-    notice(f"Attempting to join {target}...")
-    conn.join(target, key)
+    event.admin_log(f"{nick} used JOIN to make me join {channel}.")
+    event.notice(f"Attempting to join {channel}...")
+    conn.join(channel, key)
 
 
-def parse_targets(text, chan):
+def parse_targets(text: str | None, chan: str) -> list[str]:
     if text:
         targets = text
     else:
@@ -246,85 +256,127 @@ def parse_targets(text, chan):
 
 
 @hook.command(permissions=["botcontrol", "snoonetstaff"], autohelp=False)
-async def part(text, conn, nick, chan, notice, admin_log):
-    """[#channel] - parts [#channel], or the caller's channel if no channel is specified"""
-    for target in parse_targets(text, chan):
-        admin_log(f"{nick} used PART to make me leave {target}.")
-        notice(f"Attempting to leave {target}...")
+async def part(
+    conn: IrcClient,
+    nick: str,
+    chan: str,
+    event: CommandEvent,
+    channel: Annotated[
+        str | None,
+        Arg(
+            "Channels to leave, the current one by default",
+            kind="channel",
+            rest=True,
+        ),
+    ] = None,
+):
+    """parts [channel], or the caller's channel if no channel is specified"""
+    for target in parse_targets(channel, chan):
+        event.admin_log(f"{nick} used PART to make me leave {target}.")
+        event.notice(f"Attempting to leave {target}...")
         conn.part(target)
 
 
 @hook.command(autohelp=False, permissions=["botcontrol"])
-async def cycle(text, conn, chan, notice):
-    """[#channel] - cycles [#channel], or the caller's channel if no channel is specified"""
-    for target in parse_targets(text, chan):
-        notice(f"Attempting to cycle {target}...")
+async def cycle(
+    conn: IrcClient,
+    chan: str,
+    event: CommandEvent,
+    channel: Annotated[
+        str | None,
+        Arg(
+            "Channels to cycle, the current one by default",
+            kind="channel",
+            rest=True,
+        ),
+    ] = None,
+):
+    """cycles [channel], or the caller's channel if no channel is specified"""
+    for target in parse_targets(channel, chan):
+        event.notice(f"Attempting to cycle {target}...")
         conn.part(target)
         conn.join(target)
 
 
 @hook.command("nick", permissions=["botcontrol"])
-async def change_nick(text, conn, notice, is_nick_valid):
-    """<nick> - changes my nickname to <nick>"""
-    if not is_nick_valid(text):
-        notice(f"Invalid username '{text}'")
+async def change_nick(
+    conn: IrcClient,
+    event: CommandEvent,
+    new_nick: Annotated[str, Arg("New nickname", rest=False)],
+) -> None:
+    """changes my nickname to <nick>"""
+    if not event.is_nick_valid(new_nick):
+        event.notice(f"Invalid username '{new_nick}'")
         return
 
-    notice(f"Attempting to change nick to '{text}'...")
-    conn.target_nick = text
-    conn.set_nick(text)
+    event.notice(f"Attempting to change nick to '{new_nick}'...")
+    conn.target_nick = new_nick
+    conn.set_nick(new_nick)
 
 
 @hook.command(permissions=["botcontrol"])
-async def raw(text, conn, notice):
-    """<command> - sends <command> as a raw IRC command"""
-    notice("Raw command sent.")
-    conn.send(text)
-
-
-def get_chan(chan, text):
-    stripped_text = text.strip()
-    if stripped_text.startswith("#") and " " in stripped_text:
-        return tuple(stripped_text.split(None, 1))
-
-    return chan, stripped_text
+async def raw(
+    conn: IrcClient,
+    event: CommandEvent,
+    command: Annotated[str, Arg("Raw IRC line to send")],
+) -> None:
+    """sends <command> as a raw IRC command"""
+    event.notice("Raw command sent.")
+    conn.send(command)
 
 
 @hook.command(permissions=["botcontrol", "snoonetstaff"])
-async def say(text, conn, chan, nick, admin_log):
-    """[#channel] <message> - says <message> to [#channel], or to the caller's channel if no channel is specified"""
-    channel, text = get_chan(chan, text)
-    admin_log(f'{nick} used SAY to make me SAY "{text}" in {channel}.')
-    conn.message(channel, text)
+async def say(
+    conn: IrcClient,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    message: Annotated[str, Arg("Text to say")],
+):
+    """says <message> to [channel], or to the caller's channel if no channel is specified"""
+    channel = channel or chan
+    event.admin_log(f'{nick} used SAY to make me SAY "{message}" in {channel}.')
+    conn.message(channel, message)
 
 
 @hook.command("message", "sayto", permissions=["botcontrol", "snoonetstaff"])
-async def send_message(text, conn, nick, admin_log):
-    """<name> <message> - says <message> to <name>"""
-    split = text.split(None, 1)
-    channel = split[0]
-    text = split[1]
-    admin_log(f'{nick} used MESSAGE to make me SAY "{text}" in {channel}.')
-    conn.message(channel, text)
+async def send_message(
+    conn: IrcClient,
+    nick: str,
+    event: CommandEvent,
+    name: Annotated[str, Arg("Nick or channel to message")],
+    message: Annotated[str, Arg("Text to say")],
+):
+    """says <message> to <name>"""
+    event.admin_log(
+        f'{nick} used MESSAGE to make me SAY "{message}" in {name}.'
+    )
+    conn.message(name, message)
 
 
 @hook.command("me", "act", permissions=["botcontrol", "snoonetstaff"])
 async def me(
-    text: str, conn: IrcClient, chan: str, nick: str, event: CommandEvent
+    conn: IrcClient,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    *,
+    channel: OptionalChannel = None,
+    action: Annotated[str, Arg("Action to act out")],
 ) -> None:
-    """
-    [#channel] <action> - acts out <action> in a [#channel], or in the current channel of none is specified
-    """
-    channel, text = get_chan(chan, text)
-    event.admin_log(f'{nick} used ME to make me ACT "{text}" in {channel}.')
-    conn.ctcp(channel, "ACTION", text)
+    """acts out <action> in a [channel], or in the current channel if none is specified"""
+    channel = channel or chan
+    event.admin_log(f'{nick} used ME to make me ACT "{action}" in {channel}.')
+    conn.ctcp(channel, "ACTION", action)
 
 
 @hook.command(autohelp=False, permissions=["botcontrol"])
-async def listchans(conn, chan, message, notice):
+async def listchans(conn: IrcClient, chan: str, event: CommandEvent) -> None:
     """- Lists the current channels the bot is in"""
     chans = ", ".join(sorted(conn.channels, key=lambda x: x.strip("#").lower()))
     lines = formatting.chunk_str(f"I am currently in: {chans}")
-    func = notice if chan[:1] == "#" else message
+    func = event.notice if chan[:1] == "#" else event.message
     for line in lines:
         func(line)

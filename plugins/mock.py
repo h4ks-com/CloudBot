@@ -1,4 +1,9 @@
+from typing import Annotated
+
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 
 def get_latest_line(text, conn, chan, nick):
@@ -16,12 +21,17 @@ def get_latest_line(text, conn, chan, nick):
 
 
 @hook.command()
-def mock(text, chan, conn, message):
-    """<nick> - turn <user>'s last message in to aLtErNaTiNg cApS"""
-    nick, text, *_ = text.strip().split(None, 1) + ["", ""]
-    line = get_latest_line(text, conn, chan, nick)
+def mock(
+    chan: str,
+    conn: IrcClient,
+    event: CommandEvent,
+    target: Annotated[str, Arg("Whose last message to mock", kind="user")],
+    needle: Annotated[str | None, Arg("Text the message must contain")] = None,
+):
+    """turn the user's last message in to aLtErNaTiNg cApS"""
+    line = get_latest_line(needle or "", conn, chan, target)
     if line is None:
-        return f"Nothing found in recent history for {nick}"
+        return f"Nothing found in recent history for {target}"
 
     if line.startswith("\x01ACTION"):
         fmt = "* {nick} {msg}"
@@ -33,5 +43,5 @@ def mock(text, chan, conn, message):
     line = "".join(
         c.upper() if i & 1 else c.lower() for i, c in enumerate(line)
     )
-    message(fmt.format(nick=nick, msg=line))
+    event.message(fmt.format(nick=target, msg=line))
     return None

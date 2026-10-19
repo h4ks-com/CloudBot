@@ -1,6 +1,8 @@
+from typing import Annotated
 from urllib.error import HTTPError, URLError
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import http
 
 formats = {
@@ -19,10 +21,10 @@ def format_domain(domain):
 
 
 @hook.command("domain", "domainr")
-def domainr(text):
-    """<domain> - uses domain.nr's API to search for a domain, and similar domains"""
+def domainr(domain: Annotated[str, Arg("Domain to look up")]):
+    """uses domain.nr's API to search for a domain, and similar domains"""
     try:
-        data = http.get_json("http://domai.nr/api/json/search?q=" + text)
+        data = http.get_json("http://domai.nr/api/json/search?q=" + domain)
     except (URLError, HTTPError):
         return "Unable to get data for some reason. Try again later."
     if data["query"] == "":

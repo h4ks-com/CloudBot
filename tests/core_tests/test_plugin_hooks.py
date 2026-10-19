@@ -47,7 +47,7 @@ from cloudbot.plugin import Plugin
 from cloudbot.plugin_hooks import Hook, hook_name_to_plugin
 from tests.util.mock_bot import MockBot
 
-DOC_RE = re.compile(r"^(?:[<{\[][^-]+?[>}\]][^-]+?)*?-\s.+$")
+DOC_RE = re.compile(r"^(?:[<{\[][^>}\]]+?[>}\]][^-]+?)*?-\s.+$")
 PLUGINS: list[Plugin] = []
 
 

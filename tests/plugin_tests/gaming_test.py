@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import gaming
 
 
@@ -40,7 +41,7 @@ from plugins import gaming
 def test_dice(text, out):
     random.seed(1)
     event = MagicMock()
-    res = gaming.dice(text, event)
+    res = gaming.dice(event, text)
     assert res == out
     assert event.mock_calls == []
 
@@ -49,7 +50,7 @@ def test_dice_overflow():
     random.seed(1)
     event = MagicMock()
     with pytest.raises(OverflowError):
-        gaming.dice((str(10**308)) + "d9", event)
+        gaming.dice(event, (str(10**308)) + "d9")
 
     assert event.mock_calls == [
         call.reply("Thanks for overflowing a float, jerk >:[")
@@ -58,14 +59,14 @@ def test_dice_overflow():
 
 def test_dice_bad_input():
     event = MagicMock()
-    res = gaming.dice("something", event)
+    res = gaming.dice(event, "something")
     assert res is None
     assert event.mock_calls == [call.notice("Invalid dice roll 'something'")]
 
 
 def test_dice_num_only():
     event = MagicMock()
-    res = gaming.dice("6", event)
+    res = gaming.dice(event, "6")
     assert res is None
     assert event.mock_calls == []
 
@@ -81,15 +82,25 @@ def test_dice_num_only():
 def test_choose(text, out):
     random.seed(1)
     event = MagicMock()
-    assert gaming.choose(text, event) == out
+    assert gaming.choose(event, text) == out
     assert event.mock_calls == []
+
+
+def test_choose_single_choice_notices_usage():
+    event = MagicMock()
+    assert gaming.choose(event, "a") is None
+    event.notice_doc.assert_called_once_with()
+
+
+def test_choose_requires_choices():
+    with pytest.raises(CommandArgError):
+        build_spec(gaming.choose).parse_text("")
 
 
 @pytest.mark.parametrize(
     "text,out,seed",
     [
         ("", [call.action("flips a coin and gets heads.")], 4),
-        ("a", [call.notice("Invalid input 'a': not a number")], 4),
         (
             "12",
             [call.action("flips 12 coins and gets 4 heads and 8 tails.")],
@@ -110,6 +121,17 @@ def test_choose(text, out):
 def test_coin(text, out, seed):
     random.seed(seed)
     event = MagicMock()
-    res = gaming.coin(text, event.notice, event.action)
+    kwargs = build_spec(gaming.coin).parse_text(text)
+    res = gaming.coin(event, **kwargs)
     assert res is None
     assert event.mock_calls == out
+
+
+def test_coin_rejects_non_number():
+    with pytest.raises(CommandArgError):
+        build_spec(gaming.coin).parse_text("a")
+
+
+def test_dice_takes_whole_line():
+    spec = build_spec(gaming.dice)
+    assert spec.parse_text("2d5 some text") == {"dice_roll": "2d5 some text"}

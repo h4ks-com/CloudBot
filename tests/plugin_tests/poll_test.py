@@ -1,5 +1,8 @@
 from unittest.mock import MagicMock, call
 
+import pytest
+
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import poll
 from tests.util.mock_conn import MockConn
 
@@ -11,11 +14,9 @@ def test_poll_close():
     nick = "foo"
     chan = "#bar"
     event = MagicMock()
-    message = event.message
-    reply = event.reply
     uid = ":".join([conn.name, chan, nick]).lower()
     poll.polls[uid] = poll.Poll("thing?", nick)
-    res = poll.poll(text, conn, nick, chan, message, reply)
+    res = poll.poll(conn, nick, chan, event, text)
     assert res is None
     assert event.mock_calls == [
         call.reply(
@@ -33,10 +34,8 @@ def test_poll_create():
     nick = "foo"
     chan = "#bar"
     event = MagicMock()
-    message = event.message
-    reply = event.reply
     uid = ":".join([conn.name, chan, nick]).lower()
-    res = poll.poll(text, conn, nick, chan, message, reply)
+    res = poll.poll(conn, nick, chan, event, text)
     assert res is None
     assert event.mock_calls == [
         call.message(
@@ -54,10 +53,8 @@ def test_poll_create_default():
     nick = "foo"
     chan = "#bar"
     event = MagicMock()
-    message = event.message
-    reply = event.reply
     uid = ":".join([conn.name, chan, nick]).lower()
-    res = poll.poll(text, conn, nick, chan, message, reply)
+    res = poll.poll(conn, nick, chan, event, text)
     assert res is None
     assert event.mock_calls == [
         call.message(
@@ -69,19 +66,8 @@ def test_poll_create_default():
 
 
 def test_vote_invalid_input():
-    poll.polls.clear()
-    text = "foo"
-    conn = MockConn()
-    nick = "foo"
-    chan = "#bar"
-    event = MagicMock()
-    notice = event.notice
-    res = poll.vote(text, nick, conn, chan, notice)
-    expected = (
-        "Invalid input, please use .vote <user> <option> to vote on a poll."
-    )
-    assert res == expected
-    assert event.mock_calls == []
+    with pytest.raises(CommandArgError):
+        build_spec(poll.vote).parse_text("foo")
 
 
 def test_vote():
@@ -93,8 +79,7 @@ def test_vote():
     uid = ":".join([conn.name, chan, nick]).lower()
     poll.polls[uid] = p = poll.Poll("foo?", "foo")
     event = MagicMock()
-    notice = event.notice
-    res = poll.vote(text, nick, conn, chan, notice)
+    res = poll.vote(nick, conn, chan, event, *text.split())
     assert res is None
     assert event.mock_calls == [
         call.notice('Voted \x02"Yes"\x02 on foo\'s poll!')
@@ -111,8 +96,7 @@ def test_vote_unknown_opttion():
     uid = ":".join([conn.name, chan, nick]).lower()
     poll.polls[uid] = p = poll.Poll("foo?", "foo")
     event = MagicMock()
-    notice = event.notice
-    res = poll.vote(text, nick, conn, chan, notice)
+    res = poll.vote(nick, conn, chan, event, *text.split())
     assert res == "Sorry, that's not a valid option for this poll."
     assert event.mock_calls == []
     assert p.format_results() == "Yes: 0, No: 0"
@@ -125,8 +109,7 @@ def test_vote_no_poll():
     nick = "foo"
     chan = "#bar"
     event = MagicMock()
-    notice = event.notice
-    res = poll.vote(text, nick, conn, chan, notice)
+    res = poll.vote(nick, conn, chan, event, *text.split())
     assert res == "Sorry, there is no active poll from that user."
     assert event.mock_calls == []
 
@@ -140,9 +123,7 @@ def test_results():
     uid = ":".join([conn.name, chan, nick]).lower()
     poll.polls[uid] = p = poll.Poll("foo?", nick)
     event = MagicMock()
-    message = event.message
-    reply = event.reply
-    res = poll.results(text, conn, chan, nick, message, reply)
+    res = poll.results(conn, chan, nick, event, text or None)
     assert res is None
     assert event.mock_calls == [
         call.reply('Results for \x02"foo?"\x02 by \x02foo\x02:'),

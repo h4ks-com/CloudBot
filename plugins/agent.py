@@ -9,13 +9,13 @@ manager doesn't try to load them as plugins.
 """
 
 import asyncio
-import json
 import logging
 import re
 import time
 import uuid
 from collections import deque
 from datetime import datetime
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from agents import (
@@ -54,6 +54,7 @@ from cloudbot.agent.common import (
     channel_lines,
     chat_line,
     memory_read_namespaces,
+    parse_args,
     record_bot_output,
     run_in_executor,
 )
@@ -71,10 +72,13 @@ from cloudbot.agent.tools.mcp_servers import (
     reload_servers,
 )
 from cloudbot.agent.tools.memory import ensure_fts, recall_memories
+from cloudbot.bot import CloudBot
 from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.ai_common import wrap_reply_lines
 from cloudbot.util.formatting import truncate
+from cloudbot.util.messages import ChatMessage
 from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
@@ -891,20 +895,19 @@ class CaptureEvent(CommandEvent):
 
 
 def _build_tool(cmd_name: str, cmd_hook) -> FunctionTool:
+    spec = cmd_hook.spec
+
     async def on_invoke(ctx: RunContextWrapper, args_json: str) -> str:
-        try:
-            data = json.loads(args_json) if args_json else {}
-        except json.JSONDecodeError:
-            data = {}
-        text = str(data.get("text") or "").strip()
+        data = parse_args(args_json)
         irc_event = ctx.context
 
         capture = CaptureEvent(
             hook=cmd_hook,
-            text=text,
+            text="" if spec.args else str(data.get("text") or "").strip(),
             triggered_command=cmd_name,
             base_event=irc_event,
             cmd_prefix=".",
+            named_args=data if spec.args else None,
         )
         # launch() runs the rate_limit/check_disabled/check_acls sieves;
         # internal_launch() would skip them — we want them enforced per call.
@@ -918,6 +921,14 @@ def _build_tool(cmd_name: str, cmd_hook) -> FunctionTool:
         return out[:4000]
 
     description = (cmd_hook.doc or f"Run the .{cmd_name} IRC command.")[:300]
+    if spec.args:
+        return FunctionTool(
+            name=cmd_name,
+            description=description,
+            params_json_schema=spec.json_schema,
+            on_invoke_tool=on_invoke,
+            strict_json_schema=False,
+        )
     return FunctionTool(
         name=cmd_name,
         description=description,
@@ -928,7 +939,9 @@ def _build_tool(cmd_name: str, cmd_hook) -> FunctionTool:
                     "type": "string",
                     "description": "Arguments / input text for the command.",
                 },
-            },
+            }
+            if cmd_hook.takes_text
+            else {},
         },
         on_invoke_tool=on_invoke,
     )
@@ -1588,32 +1601,37 @@ def _describe_backend(bot, name: str) -> str:
 
 
 @hook.command("agimodel", autohelp=False, permissions=["botcontrol"])
-def agimodel_command(text, bot):
-    """[set <name>] - show which backend .agi runs on, or point it at another."""
+def agimodel_command(
+    bot: CloudBot,
+    action: Annotated[
+        Literal["list", "set"] | None, Arg("List the backends or set one")
+    ] = None,
+    name: Annotated[str | None, Arg("Backend to run .agi on")] = None,
+):
+    """show which backend .agi runs on, or point it at another."""
     available = backends.names(bot)
     if not available:
         return "no agent backends configured"
 
-    parts = text.split()
-    if not parts or parts[0] == "list":
+    if action is None or action == "list":
         listed = " | ".join(_describe_backend(bot, n) for n in available)
         return f"backends (* = the one .agi runs on): {listed}"
 
-    if parts[0] != "set" or len(parts) < 2:
+    if name is None:
         return "usage: .agimodel [list] | .agimodel set <name>"
 
-    name = parts[1]
     if not backends.set_active(bot, name):
         return f"no such backend '{name}'. have: {', '.join(available)}"
     return f"agi now runs on {_describe_backend(bot, name).lstrip('*')}"
 
 
 @hook.command("agi", "agent", "ask", autohelp=False, allow_private=False)
-async def agent_command(text, event, reply_to):
-    """<prompt> - ask the bot in natural language; uses any available tool."""
-    if not text:
-        event.reply("usage: .agi <natural language prompt>")
-        return
+async def agent_command(
+    event: CommandEvent,
+    reply_to: ChatMessage | None,
+    prompt: Annotated[str, Arg("What to ask, in plain words")],
+):
+    """ask the bot in natural language; uses any available tool."""
     event.agent_request_time = time.time()
     running = _RUNNING.setdefault(
         (event.conn.name, event.chan or event.nick), set()
@@ -1626,7 +1644,7 @@ async def agent_command(text, event, reply_to):
         return
     running.add(asker)
     try:
-        await _run_agent(event, _with_reply(text, reply_to))
+        await _run_agent(event, _with_reply(prompt, reply_to))
     finally:
         running.discard(asker)
 
@@ -1634,7 +1652,7 @@ async def agent_command(text, event, reply_to):
 @hook.command(
     "agibalance", "agilimit", "agilimits", autohelp=False, allow_private=False
 )
-async def agilimit_command(bot) -> list[str] | str:
+async def agilimit_command(bot: CloudBot) -> list[str] | str:
     """- GLM Coding Plan usage: 5h window, weekly, and web-search meters."""
     agent_cfg = (bot.config.get("plugins") or {}).get("agent") or {}
     backend = agent_cfg.get("backend", "z_ai")
@@ -1652,7 +1670,7 @@ async def agilimit_command(bot) -> list[str] | str:
 
 
 @hook.command("skills", "skilllist", autohelp=False, allow_private=False)
-def skills_command(bot) -> list[str]:
+def skills_command(bot: CloudBot) -> list[str]:
     """- list loaded skills: packaged playbooks plus runtime-installed ones."""
     return skills_status(bot)
 
@@ -1660,7 +1678,7 @@ def skills_command(bot) -> list[str]:
 @hook.command(
     "reloadskills", "skillreload", permissions=["botcontrol"], autohelp=False
 )
-def reload_skills(bot) -> list[str]:
+def reload_skills(bot: CloudBot) -> list[str]:
     """- rescans the skill catalogue: packaged skills plus the runtime skills dir. Owner only."""
     # kaggle_agent pulls this module in through subagent, so importing it at
     # module scope would be circular.
@@ -1671,27 +1689,25 @@ def reload_skills(bot) -> list[str]:
 
 
 @hook.command("addskill", permissions=["botcontrol"], allow_private=False)
-async def add_skill(bot, text) -> str:
-    """<git url> [ref] - install a skill repository into the runtime skills dir, pinned to ref (tag/branch) when given. Owner only."""
-    parts = text.split()
-    if not parts:
-        return "usage: .addskill <git-url> [tag-or-branch]"
-    url = parts[0]
-    ref = parts[1] if len(parts) > 1 else ""
-    return await run_in_executor(install_from_git, url, ref, bot)
+async def add_skill(
+    bot: CloudBot,
+    url: Annotated[str, Arg("Git URL of the skill repository")],
+    ref: Annotated[str | None, Arg("Tag or branch to pin")] = None,
+) -> str:
+    """install a skill repository into the runtime skills dir, pinned to ref (tag/branch) when given. Owner only."""
+    return await run_in_executor(install_from_git, url, ref or "", bot)
 
 
 @hook.command("delskill", permissions=["botcontrol"], allow_private=False)
-async def del_skill(bot, text) -> str:
-    """<name> - remove an installed skill from the runtime skills dir. Owner only."""
-    name = text.strip()
-    if not name:
-        return "usage: .delskill <name>"
+async def del_skill(
+    bot: CloudBot, name: Annotated[str, Arg("Installed skill to remove")]
+) -> str:
+    """remove an installed skill from the runtime skills dir. Owner only."""
     return await run_in_executor(remove_skill, name, bot)
 
 
 @hook.command("reloadmcp", permissions=["botcontrol"], autohelp=False)
-async def reload_mcp(bot) -> str:
+async def reload_mcp(bot: CloudBot) -> str:
     """- Reload config and re-poll the agent's MCP servers. Owner only."""
     bot.config.load_config()
     _drop_caches(bot)

@@ -1,9 +1,11 @@
 import re
+from typing import Annotated
 
 import requests
 from lxml import html
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, web
 from cloudbot.util.web import get_session
 
@@ -11,11 +13,11 @@ search_url = "http://search.atomz.com/search/?sp_a=00062d45-sp00000000"
 
 
 @hook.command()
-def snopes(text):
-    """<topic> - Searches snopes for an urban legend about <topic>."""
+def snopes(topic: Annotated[str, Arg("Urban legend to look up")]):
+    """Searches snopes for an urban legend about the topic."""
 
     try:
-        params = {"sp_q": text, "sp_c": "1"}
+        params = {"sp_q": topic, "sp_c": "1"}
         request = get_session().get(search_url, params=params)
         request.raise_for_status()
     except (

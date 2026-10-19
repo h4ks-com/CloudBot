@@ -11,14 +11,19 @@ License:
     GNU General Public License (Version 3)
 """
 
+import asyncio
 import functools
 import random
 import re
+from typing import Annotated
 
 import isodate
 import requests
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, timeformat
 from cloudbot.util.web import get_session
 
@@ -79,24 +84,21 @@ def voat_url(match, bot):
 
 
 @hook.command(autohelp=False)
-async def voat(text, bot, loop, reply):
-    """<subverse> [n] - gets a random post from <subverse>, or gets the [n]th post in the subverse"""
+async def voat(
+    bot: CloudBot,
+    loop: asyncio.AbstractEventLoop,
+    event: CommandEvent,
+    subverse: Annotated[str | None, Arg("Subverse to read")] = None,
+    n: Annotated[int | None, Arg("Post number")] = None,
+):
+    """gets a random post from <subverse>, or gets the [n]th post in the subverse"""
     id_num = None
     headers = {"User-Agent": bot.user_agent, "content-type": "text/json"}
 
-    if text:
-        # clean and split the input
-        parts = text.lower().strip().split()
-
-        # find the requested post number (if any)
-        if len(parts) > 1:
-            url = base_url.format(parts[0].strip())
-            try:
-                id_num = int(parts[1]) - 1
-            except ValueError:
-                return "Invalid post number."
-        else:
-            url = base_url.format(parts[0].strip())
+    if subverse:
+        url = base_url.format(subverse.lower())
+        if n is not None:
+            id_num = n - 1
     else:
         url = "https://voat.co/api/frontpage"
 
@@ -108,7 +110,7 @@ async def voat(text, bot, loop, reply):
         inquiry.raise_for_status()
         data = inquiry.json()
     except Exception as e:
-        reply("Error: " + str(e))
+        event.reply("Error: " + str(e))
         raise
 
     # get the requested/random post

@@ -1,13 +1,17 @@
 from operator import itemgetter
 from pathlib import Path
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.formatting import gen_markdown_table
 
 
 @hook.command(permissions=["botcontrol"], autohelp=False)
-def pluginlist(bot):
+def pluginlist(bot: CloudBot):
     """- List all currently loaded plugins"""
     manager = bot.plugin_manager
     plugins = [
@@ -23,17 +27,21 @@ def pluginlist(bot):
 
 
 @hook.command(permissions=["botcontrol"])
-async def pluginload(bot, text, reply):
-    """<plugin path> - (Re)load <plugin> manually"""
+async def pluginload(
+    bot: CloudBot,
+    event: CommandEvent,
+    path: Annotated[str, Arg("Path of the plugin file")],
+):
+    """(Re)load <path> manually"""
     manager = bot.plugin_manager
-    path = str(Path(text.strip()).resolve())
+    path = str(Path(path.strip()).resolve())
     was_loaded = path in manager.plugins
     coro = bot.plugin_manager.load_plugin(path)
 
     try:
         await coro
     except Exception:
-        reply("Plugin failed to load.")
+        event.reply("Plugin failed to load.")
         raise
     else:
         return "Plugin {}loaded successfully.".format(
@@ -42,10 +50,12 @@ async def pluginload(bot, text, reply):
 
 
 @hook.command(permissions=["botcontrol"])
-async def pluginunload(bot, text):
-    """<plugin path> - Unload <plugin> manually"""
+async def pluginunload(
+    bot: CloudBot, path: Annotated[str, Arg("Path of the plugin file")]
+):
+    """Unload <path> manually"""
     manager = bot.plugin_manager
-    path = str(Path(text.strip()).resolve())
+    path = str(Path(path.strip()).resolve())
     is_loaded = path in manager.plugins
 
     if not is_loaded:

@@ -11,6 +11,7 @@ from mediawiki import MediaWiki, exceptions
 from requests import Session
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
 from cloudbot.util import formatting
 from cloudbot.util.queue import Queue
 from cloudbot.util.web import TimeoutSession
@@ -190,7 +191,7 @@ def make_next_hook(commands):
 
 
 @hook.command("wikilist", autohelp=False)
-def wikilist(text, bot, chan, nick):
+def wikilist(text: str, bot: CloudBot, chan: str, nick: str):
     """- List all wikis and their commands"""
     return "Available wikis: " + " - ".join(
         [": ".join(w) for w in WIKI_APIS.keys()]

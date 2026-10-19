@@ -3,8 +3,10 @@ http://brainfuck.sourceforge.net/brain.py"""
 
 import random
 import re
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 
 BUFFER_SIZE = 5000
 MAX_STEPS = 1000000
@@ -105,10 +107,10 @@ class BrainfuckProgram:
 
 
 @hook.command("brainfuck", "bf")
-def bf(text):
-    """<prog> - executes <prog> as Brainfuck code"""
+def bf(prog: Annotated[str, Arg("Brainfuck code to run")]):
+    """executes <prog> as Brainfuck code"""
 
-    program_text = re.sub(r"[^][<>+\-.,]", "", text)
+    program_text = re.sub(r"[^][<>+\-.,]", "", prog)
 
     try:
         program = BrainfuckProgram(program_text)

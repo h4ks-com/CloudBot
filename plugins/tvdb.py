@@ -3,13 +3,14 @@ import logging
 from collections.abc import Container, Iterable, Iterator, Sized
 from enum import Enum
 from functools import wraps
-from typing import Any, Generic, TypeVar, cast, overload
+from typing import Annotated, Any, Generic, TypeVar, cast, overload
 
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
 from cloudbot.event import Event
+from cloudbot.hook import Arg
 from cloudbot.util import func_utils
 from cloudbot.util.http import GetParams
 from cloudbot.util.web import get_session
@@ -466,9 +467,9 @@ def refresh(bot: CloudBot) -> None:
 
 @hook.command("tv_next", "tv")
 @_error_handler(requests.HTTPError, handle_error)
-def tv_next(text: str) -> str:
-    """<series> - Get the next episode of <series>."""
-    series, err = check_and_get_series(text)
+def tv_next(series_name: Annotated[str, Arg("Series name")]) -> str:
+    """Get the next episode of <series>."""
+    series, err = check_and_get_series(series_name)
     if err is not None:
         return err
 
@@ -504,9 +505,9 @@ def tv_next(text: str) -> str:
 
 @hook.command("tv_last", "tv_prev")
 @_error_handler(requests.HTTPError, handle_error)
-def tv_last(text: str) -> str:
-    """<series> - Gets the most recently aired episode of <series>."""
-    series, err = check_and_get_series(text)
+def tv_last(series_name: Annotated[str, Arg("Series name")]) -> str:
+    """Gets the most recently aired episode of <series>."""
+    series, err = check_and_get_series(series_name)
     if err is not None:
         return err
 

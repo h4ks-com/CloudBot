@@ -7,7 +7,9 @@ import pytest
 
 from cloudbot.util import workflows
 from cloudbot.util.colors import strip_irc
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import workflows as wf_plugin
+from tests.util import call_command
 from tests.util.mock_conn import account_conn
 
 
@@ -19,6 +21,10 @@ def _mock_client(handler) -> workflows.WorkflowsClient:
     )
 
 
+def _run(text, **kwargs):
+    return call_command(wf_plugin.wf_cmd, text, **kwargs)
+
+
 def _wf(monkeypatch, client, **overrides):
     monkeypatch.setattr(wf_plugin, "_client", lambda bot: client)
     kwargs = {
@@ -26,19 +32,20 @@ def _wf(monkeypatch, client, **overrides):
         "chan": "#chan",
         "conn": account_conn("matt", "matt"),
         "bot": MagicMock(),
-        "notice": lambda *a, **kw: None,
-        "event": SimpleNamespace(is_private=False),
+        "event": SimpleNamespace(
+            is_private=False, notice=lambda *a, **kw: None
+        ),
     }
+    notice = overrides.pop("notice", None)
+    if notice:
+        kwargs["event"].notice = notice
     kwargs.update(overrides)
     return kwargs
 
 
 def test_wf_help_lists_commands_only(monkeypatch):
     client = _mock_client(lambda request: httpx.Response(500))
-    result = [
-        strip_irc(line)
-        for line in wf_plugin.wf_cmd("", **_wf(monkeypatch, client))
-    ]
+    result = [strip_irc(line) for line in _run("", **_wf(monkeypatch, client))]
     assert any(line.startswith(".agi <what you want>") for line in result)
     assert not any("song" in line for line in result)
 
@@ -71,7 +78,7 @@ def test_wf_cover_submits_the_frozen_radio_clip(monkeypatch):
         lambda seconds: f"https://files.example/{seconds}.mp3",
     )
     client = _mock_client(handler)
-    result = wf_plugin.wf_cmd("cover 20 metal", **_wf(monkeypatch, client))
+    result = _run("cover 20 metal", **_wf(monkeypatch, client))
 
     assert sent == {
         "identity": "irc:matt",
@@ -86,9 +93,7 @@ def test_wf_cover_submits_the_frozen_radio_clip(monkeypatch):
     assert strip_irc(result) == (
         "follow your cover of the last 20s of radio · 105 credits · https://workflows.example/jobs/90"
     )
-    assert strip_irc(
-        wf_plugin.wf_cmd("continue", **_wf(monkeypatch, client))
-    ) == (
+    assert strip_irc(_run("continue", **_wf(monkeypatch, client))) == (
         "follow the song that continues the last 30s of radio · 105 credits · https://workflows.example/jobs/90"
     )
     assert workflows.origin_of(90, "succeeded") == ("testconn", "#chan")
@@ -99,7 +104,7 @@ def test_wf_status_not_found(monkeypatch):
         return httpx.Response(404, json={"detail": "not found"})
 
     client = _mock_client(handler)
-    result = wf_plugin.wf_cmd("status 7", **_wf(monkeypatch, client))
+    result = _run("status 7", **_wf(monkeypatch, client))
     assert "job 7 not found" in result
 
 
@@ -117,7 +122,7 @@ def test_wf_status_formats_job(monkeypatch):
         )
 
     client = _mock_client(handler)
-    result = wf_plugin.wf_cmd("status 7", **_wf(monkeypatch, client))
+    result = _run("status 7", **_wf(monkeypatch, client))
     assert "song #7 · running · 111 credits" in strip_irc(result)
     assert f"{client.base_url}/jobs/7" in result
 
@@ -125,13 +130,13 @@ def test_wf_status_formats_job(monkeypatch):
 @pytest.mark.parametrize("job_id", ["../clients/identities/irc:bob", "²"])
 def test_wf_status_rejects_non_numeric_ids(monkeypatch, job_id):
     client = _mock_client(lambda request: httpx.Response(500))
-    result = wf_plugin.wf_cmd(f"status {job_id}", **_wf(monkeypatch, client))
+    result = _run(f"status {job_id}", **_wf(monkeypatch, client))
     assert result == "usage: .wf status [id]"
 
 
 def test_wf_link_requires_services_account(monkeypatch):
     client = _mock_client(lambda request: httpx.Response(200, json=[]))
-    result = wf_plugin.wf_cmd(
+    result = _run(
         "link", **_wf(monkeypatch, client, conn=account_conn("matt", None))
     )
     assert "identify with NickServ" in result
@@ -145,9 +150,7 @@ def test_wf_link_dms_link_url(monkeypatch):
 
     client = _mock_client(handler)
     notices: list[str] = []
-    result = wf_plugin.wf_cmd(
-        "link", **_wf(monkeypatch, client, notice=notices.append)
-    )
+    result = _run("link", **_wf(monkeypatch, client, notice=notices.append))
     assert notices == [
         "link your workflows account: https://workflows.example/link/abc"
     ]
@@ -163,9 +166,7 @@ def test_wf_me_dms_balance(monkeypatch):
 
     client = _mock_client(handler)
     notices: list[str] = []
-    result = wf_plugin.wf_cmd(
-        "me", **_wf(monkeypatch, client, notice=notices.append)
-    )
+    result = _run("me", **_wf(monkeypatch, client, notice=notices.append))
     assert [strip_irc(n) for n in notices] == [
         "250 credits (200 free today, 50 paid)"
     ]
@@ -180,13 +181,12 @@ def test_wf_not_configured(monkeypatch):
             side_effect=wf_plugin.workflows.WorkflowsNotConfigured("nope")
         ),
     )
-    result = wf_plugin.wf_cmd(
+    result = _run(
         "",
         nick="matt",
         chan="#chan",
         conn=account_conn("matt", "matt"),
         bot=MagicMock(),
-        notice=lambda *a, **kw: None,
         event=SimpleNamespace(is_private=False),
     )
     assert result == "nope"
@@ -325,8 +325,13 @@ def test_wf_status_shows_result_files_and_defaults_to_latest(monkeypatch):
         raise AssertionError(request.url)
 
     client = _mock_client(handler)
-    result = strip_irc(wf_plugin.wf_cmd("status", **_wf(monkeypatch, client)))
+    result = strip_irc(_run("status", **_wf(monkeypatch, client)))
     assert (
         result
         == "image #7 · done · 40 credits · https://s3/workflows/image/x.png"
     )
+
+
+def test_wf_rejects_unknown_subcommand():
+    with pytest.raises(CommandArgError):
+        build_spec(wf_plugin.wf_cmd).parse_text("bogus")

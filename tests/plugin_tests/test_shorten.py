@@ -8,11 +8,11 @@ from plugins import shorten
 
 
 def test_shorten(mock_requests):
-    reply = MagicMock()
+    event = MagicMock()
     with pytest.raises(web.ServiceError):
-        shorten.shorten("https://example.com", reply)
+        shorten.shorten("https://example.com", event)
 
-    assert reply.called
+    assert event.reply.called
 
     mock_requests.add(
         "GET",
@@ -20,15 +20,15 @@ def test_shorten(mock_requests):
         json={"shorturl": "https://is.gd/foobar"},
     )
     assert (
-        shorten.shorten("https://example.com", reply) == "https://is.gd/foobar"
+        shorten.shorten("https://example.com", event) == "https://is.gd/foobar"
     )
 
 
 def test_expand(mock_requests):
-    reply = MagicMock()
+    event = MagicMock()
 
     with pytest.raises(web.ServiceError):
-        shorten.expand("https://is.gd/foobar", reply)
+        shorten.expand("https://is.gd/foobar", event)
 
     mock_requests.add(
         "GET",
@@ -36,42 +36,42 @@ def test_expand(mock_requests):
         json={"url": "https://example.com"},
     )
     assert (
-        shorten.expand("https://is.gd/foobar", reply) == "https://example.com"
+        shorten.expand("https://is.gd/foobar", event) == "https://example.com"
     )
 
 
 def test_isgd(mock_requests):
-    reply = MagicMock()
+    event = MagicMock()
 
     with pytest.raises(web.ServiceError):
-        shorten.isgd("https://is.gd/foobar", reply)
+        shorten.isgd("https://is.gd/foobar", event)
 
     with pytest.raises(web.ServiceError):
-        shorten.isgd("https://example.com/page", reply)
+        shorten.isgd("https://example.com/page", event)
 
     mock_requests.add(
         "GET",
         "https://is.gd/forward.php?shorturl=https%3A%2F%2Fis.gd%2Ffoobar&format=json",
         json={"url": "https://example.com"},
     )
-    assert shorten.isgd("https://is.gd/foobar", reply) == "https://example.com"
+    assert shorten.isgd("https://is.gd/foobar", event) == "https://example.com"
 
     mock_requests.add(
         "GET",
         "https://is.gd/create.php?url=https%3A%2F%2Fexample.com&format=json",
         json={"shorturl": "https://is.gd/foobar"},
     )
-    assert shorten.isgd("https://example.com", reply) == "https://is.gd/foobar"
+    assert shorten.isgd("https://example.com", event) == "https://is.gd/foobar"
 
 
 def test_googl(mock_requests):
-    reply = MagicMock()
+    event = MagicMock()
 
     with pytest.raises(web.ServiceError):
-        shorten.googl("https://goo.gl/foobar", reply)
+        shorten.googl("https://goo.gl/foobar", event)
 
     with pytest.raises(web.ServiceError):
-        shorten.googl("https://example.com/page", reply)
+        shorten.googl("https://example.com/page", event)
 
     mock_requests.add(
         "GET",
@@ -79,7 +79,7 @@ def test_googl(mock_requests):
         json={"longUrl": "https://example.com"},
     )
     assert (
-        shorten.googl("https://goo.gl/foobar", reply) == "https://example.com"
+        shorten.googl("https://goo.gl/foobar", event) == "https://example.com"
     )
 
     mock_requests.add(
@@ -88,18 +88,18 @@ def test_googl(mock_requests):
         json={"id": "https://goo.gl/foobar"},
     )
     assert (
-        shorten.googl("https://example.com", reply) == "https://goo.gl/foobar"
+        shorten.googl("https://example.com", event) == "https://goo.gl/foobar"
     )
 
 
 def test_gitio(mock_requests):
-    reply = MagicMock()
+    event = MagicMock()
 
     with pytest.raises(web.ServiceError):
-        shorten.gitio("https://git.io/foobar", reply)
+        shorten.gitio("https://git.io/foobar", event)
 
     with pytest.raises(web.ServiceError):
-        shorten.gitio("https://example.com/page", reply)
+        shorten.gitio("https://example.com/page", event)
 
     mock_requests.add(
         "GET",
@@ -108,7 +108,7 @@ def test_gitio(mock_requests):
         headers={"Location": "https://example.com"},
     )
     assert (
-        shorten.gitio("https://git.io/foobar", reply) == "https://example.com"
+        shorten.gitio("https://git.io/foobar", event) == "https://example.com"
     )
 
     mock_requests.add(
@@ -118,5 +118,5 @@ def test_gitio(mock_requests):
         status=requests.codes.created,
     )
     assert (
-        shorten.gitio("https://example.com", reply) == "https://git.io/foobar"
+        shorten.gitio("https://example.com", event) == "https://git.io/foobar"
     )

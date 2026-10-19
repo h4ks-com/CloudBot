@@ -1,9 +1,13 @@
 import random
 from dataclasses import dataclass
+from typing import Annotated, Literal, get_args
 
 import httpx
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.hook import Arg
 from plugins.core.webhook_tokens import (
     delete_webhook_token,
     generate_webhook_token,
@@ -13,7 +17,8 @@ from plugins.core.webhook_tokens import (
 active_challenges: dict[str, str] = {}
 active_tokens: dict[str, str] = {}
 
-CATEGORIES = ["regional", "country", "continental"]
+Category = Literal["regional", "country", "continental"]
+CATEGORIES = list(get_args(Category))
 
 
 @dataclass
@@ -121,18 +126,19 @@ def get_webhook_url(bot) -> str:
 
 
 @hook.command("worldguess", "population", "wg", autohelp=False)
-def worldguess_cmd(text: str, bot) -> str:
-    """[category|list] - Play WorldGuess! Guess population in a circle. Categories: regional, country, continental"""
+def worldguess_cmd(
+    bot: CloudBot,
+    category: Annotated[
+        Literal[Category, "list"] | None,
+        Arg("Category to play, or list to see them"),
+    ] = None,
+) -> str:
+    """Play WorldGuess! Guess population in a circle. Categories: regional, country, continental"""
     client = get_client(bot)
 
-    if not text or text.strip() == "":
-        category = random.choice(CATEGORIES)
-    elif text.strip().lower() == "list":
+    if category == "list":
         return f"🌍 WorldGuess Categories: {', '.join(CATEGORIES)}"
-    else:
-        category = text.strip().lower()
-        if category not in CATEGORIES:
-            return f"❌ Invalid category. Available: {', '.join(CATEGORIES)}"
+    category = category or random.choice(CATEGORIES)
 
     try:
         game = client.create_random_game(category)
@@ -144,22 +150,25 @@ def worldguess_cmd(text: str, bot) -> str:
 @hook.command(
     "wgc", "worldguesschallenge", "populationchallenge", autohelp=False
 )
-def worldguess_challenge_cmd(text: str, bot, chan, conn, notice, db) -> str:
-    """[category|list] - Create a WorldGuess challenge for the channel. One challenge per channel at a time."""
-    if text and text.strip().lower() == "list":
+def worldguess_challenge_cmd(
+    bot: CloudBot,
+    chan: str,
+    conn: IrcClient,
+    db,
+    category: Annotated[
+        Literal[Category, "list"] | None,
+        Arg("Category to play, or list to see them"),
+    ] = None,
+) -> str:
+    """Create a WorldGuess challenge for the channel. One challenge per channel at a time."""
+    if category == "list":
         return f"🌍 Challenge Categories: {', '.join(CATEGORIES)}"
 
     if chan in active_challenges:
         challenge_id = active_challenges[chan]
         return f"⚠️ Challenge {challenge_id} is already active in this channel. End it first with .wgend"
 
-    category = (
-        text.strip().lower()
-        if text and text.strip()
-        else random.choice(CATEGORIES)
-    )
-    if category not in CATEGORIES:
-        return f"❌ Invalid category. Available: {', '.join(CATEGORIES)}"
+    category = category or random.choice(CATEGORIES)
 
     client = get_client(bot)
     webhook_url = get_webhook_url(bot)
@@ -189,7 +198,9 @@ def worldguess_challenge_cmd(text: str, bot, chan, conn, notice, db) -> str:
 
 
 @hook.command("wgend", "endworldguess", autohelp=False)
-def end_worldguess_challenge_cmd(bot, chan, notice, db) -> str | list[str]:
+def end_worldguess_challenge_cmd(
+    bot: CloudBot, chan: str, db
+) -> str | list[str]:
     """- End the active WorldGuess challenge in this channel"""
     if chan not in active_challenges:
         return "❌ No active challenge in this channel"
@@ -230,7 +241,7 @@ def end_worldguess_challenge_cmd(bot, chan, notice, db) -> str | list[str]:
 
 
 @hook.command("wgstatus", autohelp=False)
-def worldguess_status_cmd(chan) -> str:
+def worldguess_status_cmd(chan: str) -> str:
     """- Check if there's an active WorldGuess challenge in this channel"""
     if chan in active_challenges:
         challenge_id = active_challenges[chan]

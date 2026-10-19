@@ -7,7 +7,7 @@ def test_giphy(mock_requests, mock_bot):
         "http://api.giphy.com/v1/gifs/search?q=foo&limit=10&fmt=json",
         json={"data": [{"rating": None, "embed_url": "foo.bar"}]},
     )
-    res = giphy.giphy("foo", mock_bot)
+    res = giphy.giphy(mock_bot, "foo")
     assert res == "foo.bar - (Powered by GIPHY)"
 
 
@@ -17,7 +17,7 @@ def test_giphy_rating(mock_requests, mock_bot):
         "http://api.giphy.com/v1/gifs/search?q=foo&limit=10&fmt=json",
         json={"data": [{"rating": "PG", "embed_url": "foo.bar"}]},
     )
-    res = giphy.giphy("foo", mock_bot)
+    res = giphy.giphy(mock_bot, "foo")
     assert res == "foo.bar content rating: \x02PG\x02. (Powered by GIPHY)"
 
 
@@ -27,5 +27,5 @@ def test_giphy_no_results(mock_requests, mock_bot):
         "http://api.giphy.com/v1/gifs/search?q=foo&limit=10&fmt=json",
         json={"data": []},
     )
-    res = giphy.giphy("foo", mock_bot)
+    res = giphy.giphy(mock_bot, "foo")
     assert res == "no results found."

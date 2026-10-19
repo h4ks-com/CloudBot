@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from threading import Lock
 from time import sleep, time
-from typing import NamedTuple, TypeVar
+from typing import Annotated, Literal, NamedTuple, TypeVar
 
 from humanfriendly import format_timespan
 from sqlalchemy import (
@@ -20,7 +20,9 @@ from sqlalchemy import (
 from sqlalchemy.sql import select
 
 from cloudbot import hook
-from cloudbot.event import EventType
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent, EventType
+from cloudbot.hook import Arg
 from cloudbot.util import database
 from cloudbot.util.formatting import pluralize_auto, truncate
 from cloudbot.util.func_utils import call_with_args
@@ -241,7 +243,7 @@ def increment_msg_counter(event, conn):
 @hook.command(
     "starthunt", autohelp=False, permissions=["chanop", "op", "botcontrol"]
 )
-def start_hunt(db, chan, message, conn):
+def start_hunt(db, chan: str, event: CommandEvent, conn: IrcClient):
     """- This command starts a duckhunt in your channel, to stop the hunt use .stophunt"""
     if is_opt_out(conn.name, chan):
         return None
@@ -255,7 +257,7 @@ def start_hunt(db, chan, message, conn):
 
     set_game_state(db, conn, chan, active=True)
     set_ducktime(chan, conn.name)
-    message(
+    event.message(
         "Ducks have been spotted nearby. "
         "See how many you can shoot or save. "
         "use .bang to shoot or .befriend to save them. "
@@ -279,7 +281,7 @@ def set_ducktime(chan, conn):
 @hook.command(
     "stophunt", autohelp=False, permissions=["chanop", "op", "botcontrol"]
 )
-def stop_hunt(db, chan, conn):
+def stop_hunt(db, chan: str, conn: IrcClient):
     """- This command stops the duck hunt in your channel. Scores will be preserved"""
     if is_opt_out(conn.name, chan):
         return None
@@ -292,26 +294,29 @@ def stop_hunt(db, chan, conn):
 
 
 @hook.command("duckkick", permissions=["chanop", "op", "botcontrol"])
-def no_duck_kick(db, text, chan, conn, notice_doc):
-    """<enable|disable> - If the bot has OP or half-op in the channel you can specify .duckkick enable|disable so that
+def no_duck_kick(
+    db,
+    chan: str,
+    conn: IrcClient,
+    mode: Annotated[
+        Literal["enable", "disable"], Arg("Kick for missed shots or not")
+    ],
+):
+    """If the bot has OP or half-op in the channel you can specify .duckkick enable|disable so that
     people are kicked for shooting or befriending a non-existent goose. Default is off.
     """
     if is_opt_out(conn.name, chan):
         return None
 
-    if text.lower() == "enable":
+    if mode == "enable":
         set_game_state(db, conn, chan, duck_kick=True)
         return (
             "users will now be kicked for shooting or befriending non-existent ducks. The bot needs to have "
             "appropriate flags to be able to kick users for this to work."
         )
 
-    if text.lower() == "disable":
-        set_game_state(db, conn, chan, duck_kick=False)
-        return "kicking for non-existent ducks has been disabled."
-
-    notice_doc()
-    return None
+    set_game_state(db, conn, chan, duck_kick=False)
+    return "kicking for non-existent ducks has been disabled."
 
 
 def generate_duck():
@@ -523,7 +528,7 @@ def bang(match, nick, chan, db, conn, event):
 
 
 @hook.command("befriend", autohelp=False)
-def befriend(nick, chan, db, conn, event):
+def befriend(nick: str, chan: str, db, conn: IrcClient, event: CommandEvent):
     """- when there is a duck on the loose use this command to befriend it before someone else shoots it."""
     with chan_locks[conn.name][chan.casefold()]:
         return attack(event, nick, chan, db, conn, "befriend")
@@ -629,7 +634,13 @@ DISPLAY_FUNCS = {
 }
 
 
-def display_scores(score_type: ScoreType, event, text, chan, conn, db):
+def display_scores(
+    score_type: ScoreType,
+    scope: Literal["global", "average"] | None,
+    chan,
+    conn,
+    db,
+):
     if is_opt_out(conn.name, chan):
         return None
 
@@ -637,13 +648,9 @@ def display_scores(score_type: ScoreType, event, text, chan, conn, db):
     chan_pfx = f"Duck {score_type.noun} scores in {chan}: "
     no_ducks = "It appears no one has {verb} any ducks yet."
 
-    out = global_pfx if text else chan_pfx
+    out = global_pfx if scope else chan_pfx
 
-    try:
-        func = DISPLAY_FUNCS[text.lower() or None]
-    except KeyError:
-        event.notice_doc()
-        return None
+    func = DISPLAY_FUNCS[scope]
 
     scores_dict = call_with_args(
         func,
@@ -662,57 +669,77 @@ def display_scores(score_type: ScoreType, event, text, chan, conn, db):
 
 
 @hook.command("friends", autohelp=False)
-def friends(text, event, chan, conn, db):
-    """[{global|average}] - Prints a list of the top duck friends in the
-    channel, if 'global' is specified all channels in the database are
-    included.
+def friends(
+    chan: str,
+    conn: IrcClient,
+    db,
+    scope: Annotated[
+        Literal["global", "average"] | None,
+        Arg("Use all channels in the database, or their average"),
+    ] = None,
+):
+    """Prints a list of the top duck friends in the channel, if 'global' is
+    specified all channels in the database are included.
     """
-    return display_scores(SCORE_TYPES["friend"], event, text, chan, conn, db)
+    return display_scores(SCORE_TYPES["friend"], scope, chan, conn, db)
 
 
 @hook.command("killers", autohelp=False)
-def killers(text, event, chan, conn, db):
-    """[{global|average}] - Prints a list of the top duck killers in the
-    channel, if 'global' is specified all channels in the database are
-    included.
+def killers(
+    chan: str,
+    conn: IrcClient,
+    db,
+    scope: Annotated[
+        Literal["global", "average"] | None,
+        Arg("Use all channels in the database, or their average"),
+    ] = None,
+):
+    """Prints a list of the top duck killers in the channel, if 'global' is
+    specified all channels in the database are included.
     """
-    return display_scores(SCORE_TYPES["killer"], event, text, chan, conn, db)
+    return display_scores(SCORE_TYPES["killer"], scope, chan, conn, db)
 
 
 @hook.command("duckforgive", permissions=["op", "ignore"])
-def duckforgive(text):
-    """<nick> - Allows people to be removed from the mandatory cooldown period."""
-    if text.lower() in scripters and scripters[text.lower()] > time():
-        scripters[text.lower()] = 0
-        return f"{text} has been removed from the mandatory cooldown period."
+def duckforgive(nick: Annotated[str, Arg("Nick to forgive", kind="user")]):
+    """Allows people to be removed from the mandatory cooldown period."""
+    if nick.lower() in scripters and scripters[nick.lower()] > time():
+        scripters[nick.lower()] = 0
+        return f"{nick} has been removed from the mandatory cooldown period."
 
     return "I couldn't find anyone banned from the hunt by that nick"
 
 
 @hook.command("hunt_opt_out", permissions=["op", "ignore"], autohelp=False)
-def hunt_opt_out(text, chan, db, conn):
-    """[{add <chan>|remove <chan>|list}] - Running this command without any arguments displays the status of the
+def hunt_opt_out(
+    chan: str,
+    db,
+    conn: IrcClient,
+    action: Annotated[Literal["add", "remove", "list"] | None, Arg()] = None,
+    channel: Annotated[
+        str | None, Arg("Channel to change", kind="channel")
+    ] = None,
+):
+    """Running this command without any arguments displays the status of the
     current channel. hunt_opt_out add #channel will disable all duck hunt commands in the specified channel.
     hunt_opt_out remove #channel will re-enable the game for the specified channel.
     """
-    if not text:
+    if not action:
         if is_opt_out(conn.name, chan):
             return f"Duck hunt is disabled in {chan}. To re-enable it run .hunt_opt_out remove #channel"
 
         return f"Duck hunt is enabled in {chan}. To disable it run .hunt_opt_out add #channel"
 
-    if text == "list":
+    if action == "list":
         return ", ".join(opt_out)
 
-    if len(text.split(" ")) < 2:
+    if not channel:
         return "please specify add or remove and a valid channel name"
 
-    command = text.split()[0]
-    channel = text.split()[1]
     if not channel.startswith("#"):
         return "Please specify a valid channel."
 
-    if command.lower() == "add":
+    if action == "add":
         if is_opt_out(conn.name, channel):
             return f"Duck hunt has already been disabled in {channel}."
 
@@ -722,7 +749,7 @@ def hunt_opt_out(text, chan, db, conn):
         load_optout(db)
         return f"The duckhunt has been successfully disabled in {channel}."
 
-    if command.lower() == "remove":
+    if action == "remove":
         if not is_opt_out(conn.name, channel):
             return f"Duck hunt is already enabled in {channel}."
 
@@ -735,13 +762,17 @@ def hunt_opt_out(text, chan, db, conn):
 
 
 @hook.command("duckmerge", permissions=["botcontrol"])
-def duck_merge(text, conn, db, message):
-    """<user1> <user2> - Moves the duck scores from one nick to another nick. Accepts two nicks as input the first will
+def duck_merge(
+    conn: IrcClient,
+    db,
+    event: CommandEvent,
+    user1: Annotated[str, Arg("Nick whose scores are removed", kind="user")],
+    user2: Annotated[str, Arg("Nick that receives the scores", kind="user")],
+):
+    """Moves the duck scores from one nick to another nick. Accepts two nicks as input the first will
     have their duck scores removed the second will have the first score added. Warning this cannot be undone.
     """
-    oldnick, newnick = text.lower().split()
-    if not oldnick or not newnick:
-        return "Please specify two nicks for this command."
+    oldnick, newnick = user1.lower(), user2.lower()
 
     oldnickscore = db.execute(
         select(table.c.name, table.c.chan, table.c.shot, table.c.befriend)
@@ -810,7 +841,7 @@ def duck_merge(text, conn, db, message):
 
     db.execute(query)
     db.commit()
-    message(
+    event.message(
         "Migrated {} and {} from {} to {}".format(
             pluralize_auto(total_kills, "duck kill"),
             pluralize_auto(total_friends, "duck friend"),
@@ -822,11 +853,18 @@ def duck_merge(text, conn, db, message):
 
 
 @hook.command("ducks", autohelp=False)
-def ducks_user(text, nick, chan, conn, db, message):
-    """<nick> - Prints a users duck stats. If no nick is input it will check the calling username."""
-    name = nick.lower()
-    if text:
-        name = text.split()[0].lower()
+def ducks_user(
+    nick: str,
+    chan: str,
+    conn: IrcClient,
+    db,
+    event: CommandEvent,
+    target: Annotated[
+        str | None, Arg("Nick to look up, yours by default", kind="user")
+    ] = None,
+):
+    """Prints a users duck stats. If no nick is input it will check the calling username."""
+    name = (target or nick).lower()
 
     ducks: dict[str, int] = defaultdict(int)
     scores = db.execute(
@@ -840,10 +878,7 @@ def ducks_user(text, nick, chan, conn, db, message):
         )
     ).fetchall()
 
-    if text:
-        name = text.split()[0]
-    else:
-        name = nick
+    name = target or nick
 
     if scores:
         has_hunted_in_chan = False
@@ -859,7 +894,7 @@ def ducks_user(text, nick, chan, conn, db, message):
 
         # Check if the user has only participated in the hunt in this channel
         if ducks["chans"] == 1 and has_hunted_in_chan:
-            message(
+            event.message(
                 "{} has killed {} and befriended {} in {}.".format(
                     name,
                     pluralize_auto(ducks["chankilled"], "duck"),
@@ -871,7 +906,7 @@ def ducks_user(text, nick, chan, conn, db, message):
 
         kill_average = int(ducks["killed"] / ducks["chans"])
         friend_average = int(ducks["friend"] / ducks["chans"])
-        message(
+        event.message(
             "\x02{}'s\x02 duck stats: \x02{}\x02 killed and \x02{}\x02 befriended in {}. "
             "Across {}: \x02{}\x02 killed and \x02{}\x02 befriended. "
             "Averaging \x02{}\x02 and \x02{}\x02 per channel.".format(
@@ -892,7 +927,7 @@ def ducks_user(text, nick, chan, conn, db, message):
 
 
 @hook.command("duckstats", autohelp=False)
-def duck_stats(chan, conn, db, message):
+def duck_stats(chan: str, conn: IrcClient, db, event: CommandEvent):
     """- Prints duck statistics for the entire channel and totals for the network."""
     scores = db.execute(
         select(
@@ -928,7 +963,7 @@ def duck_stats(chan, conn, db, message):
             key=operator.itemgetter(1),
             reverse=True,
         )[0]
-        message(
+        event.message(
             "\x02Duck Stats:\x02 {:,} killed and {:,} befriended in \x02{}\x02. "
             "Across {} \x02{:,}\x02 ducks have been killed and \x02{:,}\x02 befriended. "
             "\x02Top Channels:\x02 \x02{}\x02 with {} and \x02{}\x02 with {}".format(

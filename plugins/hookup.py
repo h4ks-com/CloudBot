@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from sqlalchemy import and_, select
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
 from cloudbot.util.database import metadata
@@ -21,7 +22,7 @@ def load_data(bot):
 
 
 @hook.command(autohelp=False)
-def hookup(db, chan):
+def hookup(db: Session, chan: str):
     """- matches two users from the channel in a sultry scene."""
     if seen_table.name not in metadata.tables:
         return None

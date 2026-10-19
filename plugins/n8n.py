@@ -1,7 +1,11 @@
 # H4ks specific n8n webhooks
+from typing import Annotated
+
 import requests
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.web import get_session
 
@@ -15,17 +19,18 @@ def request_webhook(
 
 
 @hook.command("meme")
-def meme(nick: str, text: str, reply) -> None:
-    """<prompt> - Generate a meme with the given prompt."""
-    if not text.strip():
-        reply("Usage: .meme <prompt>")
-        return
-    response = request_webhook("memegenerator", json_data={"prompt": text})
+def meme(
+    nick: str,
+    prompt: Annotated[str, Arg("Prompt for the meme")],
+    event: CommandEvent,
+) -> None:
+    """Generate a meme with the given prompt."""
+    response = request_webhook("memegenerator", json_data={"prompt": prompt})
     try:
         response.raise_for_status()
         data = response.json()
-        reply(data["url"])
+        event.reply(data["url"])
     except requests.HTTPError:
-        reply(
+        event.reply(
             f"Error reaching n8n: {response.status_code} - {formatting.truncate(response.text, 200)}"
         )

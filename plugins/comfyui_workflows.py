@@ -5,11 +5,13 @@ import tempfile
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 import requests
 
 from cloudbot import hook
+from cloudbot.client import Client
+from cloudbot.hook import Arg
 from cloudbot.util.web import TimeoutSession, get_session
 from plugins.huggingface import FileIrcResponseWrapper
 
@@ -381,20 +383,21 @@ def check_jobs(bot) -> None:
         _State.executor.check_pending_jobs(bot)
 
 
-@hook.command("aimusic", autohelp=False)
-def aiaudio_cmd(text: str, chan: str, nick: str, conn) -> str:
-    """<prompt> - Generate music from a prompt"""
+@hook.command("aimusic")
+def aiaudio_cmd(
+    prompt: Annotated[str, Arg("Description of the music")],
+    chan: str,
+    nick: str,
+    conn: Client,
+) -> str:
+    """Generate music from a prompt"""
     if not _State.executor:
         return "❌ ComfyUI workflows plugin not configured"
-
-    if not text or not text.strip():
-        return "Usage: .aimusic <prompt> - Example: .aimusic epic orchestral soundtrack"
 
     lock_error = _acquire_lock(nick)
     if lock_error:
         return lock_error
 
-    prompt = text.strip()
     return _State.executor.submit_workflow(
         "audio_stable_audio_example", prompt, chan, nick, conn.name
     )

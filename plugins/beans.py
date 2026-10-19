@@ -39,7 +39,7 @@ import random
 import re
 from datetime import datetime
 from time import time
-from typing import cast
+from typing import Annotated, Literal, cast
 
 import requests
 import sqlalchemy
@@ -52,10 +52,14 @@ from sqlalchemy import (
     Table,
     select,
 )
+from sqlalchemy.orm import Session
 from sqlalchemy.sql.base import Executable
 
 from cloudbot import hook
-from cloudbot.event import EventType
+from cloudbot.bot import CloudBot
+from cloudbot.client import Client
+from cloudbot.event import CommandEvent, EventType
+from cloudbot.hook import Arg
 from cloudbot.util import database, web
 
 logger = __import__("logging").getLogger("cloudbot")
@@ -496,12 +500,13 @@ def get_total_beans_db(db) -> int:
 
 
 @hook.command("beans", autohelp=False)
-def beans_cmd(text: str, nick: str, bot) -> str:
-    """[user] - Check how many beans you or another user has."""
-    if text:
-        target = text.strip()
-    else:
-        target = nick
+def beans_cmd(
+    nick: str,
+    bot: CloudBot,
+    user: Annotated[str | None, Arg("Nick to check", kind="user")] = None,
+) -> str:
+    """Check how many beans you or another [user] has."""
+    target = user or nick
 
     target = strip_nick(target)
     balance = get_wallet_balance(bot, target)
@@ -606,30 +611,29 @@ def _generate_top_beans_response(top_n: int, bot) -> str:
 
 @hook.command("topbeans", "beanstats", autohelp=False)
 def top_beans(
-    text: str, nick: str, chan: str, bot, notice, message
+    nick: str,
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    number: Annotated[int | None, Arg("How many users to show")] = None,
 ) -> str | None:
-    """[number] - Shows the top N users with the most beans (default is 10)."""
-    try:
-        top_n = int(text.strip()) if text else 10
-    except ValueError:
-        return (
-            "🚫 Please provide a valid number for the top users to display. 🚫"
-        )
+    """Shows the top [number] users with the most beans (default is 10)."""
+    top_n = 10 if number is None else number
 
     response = _generate_top_beans_response(top_n, bot)
     if top_n <= 10:
         return response.replace("\n", " ")
 
-    notice(f"📩 {nick}, check your DM for the top {top_n} bean holders!")
+    event.notice(f"📩 {nick}, check your DM for the top {top_n} bean holders!")
     # Loop 10 by 10 splits to generate chunks
     for i in range(0, len(response.splitlines()), 10):
         chunk = " ".join(response.splitlines()[i : i + 10])
-        message(chunk, nick)
+        event.message(chunk, nick)
     return None
 
 
 @hook.command("totalbeans", autohelp=False)
-def total_beans_cmd(bot) -> str:
+def total_beans_cmd(bot: CloudBot) -> str:
     """- Shows the total number of beans in circulation."""
     total = get_total_beans(bot)
 
@@ -640,7 +644,7 @@ def total_beans_cmd(bot) -> str:
 
 
 @hook.command("exportbeans", autohelp=False)
-def export_beans(bot) -> str:
+def export_beans(bot: CloudBot) -> str:
     """- Export all bean balances as a JSON file"""
     users = get_all_users(bot)
 
@@ -674,9 +678,15 @@ slot_cooldown_cache: TTLCache[str, dict[str, int]] = cast(
 
 @hook.command("slots", autohelp=False)
 def slots(
-    text: str, nick: str, chan: str, reply, db, conn, bot, message
+    nick: str,
+    chan: str,
+    event: CommandEvent,
+    db: Session,
+    conn: Client,
+    bot: CloudBot,
+    bet: Annotated[int | None, Arg("Beans to bet")] = None,
 ) -> str:
-    """[bet] - Play the slot machine! Default bet is 5 beans. Win big or lose it all!"""
+    """Play the slot machine! Default bet is 5 beans. Win big or lose it all!"""
     # NOTE: Slots use local DB for user beans (trivia/bets compatibility)
     # but bot wallet is tracked via external API
     emojis = ["🍒", "🍋", "🍉", "⭐", "🔔", "🍇", "🍊", "🍓"]
@@ -703,11 +713,8 @@ def slots(
     # Is also multiplied by the bet multiplier
     cooldown_time_multiplier = 1.5
 
-    # Determine bet amount
-    try:
-        bet = int(text.strip()) if text else min_bet
-    except ValueError:
-        return "Please provide a valid number for your bet."
+    if bet is None:
+        bet = min_bet
 
     if bet < min_bet:
         return f"Minimum bet is {min_bet} beans."
@@ -802,7 +809,7 @@ def slots(
             nick,
             max_prize,
             f"🎰 Slot machine JACKPOT! {result}",
-            message,
+            event.message,
         )
 
         if not success:
@@ -814,7 +821,11 @@ def slots(
 
         # Use helper function for 2-match prize
         success, error_msg, dm_msg = send_prize_gift_link(
-            bot, nick, prize, f"🎰 Slot machine prize! {result}", message
+            bot,
+            nick,
+            prize,
+            f"🎰 Slot machine prize! {result}",
+            event.message,
         )
 
         if not success:
@@ -1064,8 +1075,19 @@ def delete_trivia(trivia_id: int, db, conn) -> bool:
 
 
 @hook.command("trivia")
-def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
-    """<add|question|list|user|delete|help> [args] - Manage trivia questions
+def trivia_cmd(
+    nick: str,
+    db: Session,
+    conn: Client,
+    action: Annotated[
+        Literal["add", "question", "list", "user", "delete", "help"] | None,
+        Arg("Trivia action, help by default"),
+    ] = None,
+    args: Annotated[
+        str | None, Arg("Arguments for the action", rest=True)
+    ] = None,
+) -> str | list[str]:
+    """Manage trivia questions
 
     .trivia add <prize_amount> <question> -> <answer> - Add a new trivia question
     .trivia question [id] - Show a trivia question (latest by default)
@@ -1074,11 +1096,8 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
     .trivia delete <id> - Delete your trivia question
     .trivia help - Show help information
     """
-    if not text:
-        return trivia_cmd("help", nick, db, conn)
-
-    parts = text.strip().split(None, 1)
-    subcmd = parts[0].lower()
+    subcmd = action or "help"
+    parts = [subcmd, args] if args else [subcmd]
 
     if subcmd == "help":
         return [
@@ -1178,7 +1197,7 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
 
         return result
 
-    elif subcmd == "delete":
+    else:
         try:
             trivia_id = int(parts[1])
             trivia = get_trivia(trivia_id, db)
@@ -1208,9 +1227,6 @@ def trivia_cmd(text: str, nick: str, db, conn) -> str | list[str]:
 
         except ValueError:
             return "❌ Invalid trivia ID. Please provide a number."
-
-    else:
-        return f"❌ Unknown subcommand: {subcmd}. Use '.trivia help' for usage information."
 
 
 @hook.regex(re.compile(r"^\s*(\S+)\s*$", re.I))
@@ -1279,8 +1295,19 @@ def track_trivia_answers(
 
 
 @hook.command("bets", "bet")
-def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
-    """<trivia|help> [args] - Bet beans on trivia winners
+def bet_cmd(
+    nick: str,
+    db: Session,
+    conn: Client,
+    event: CommandEvent,
+    action: Annotated[
+        Literal["trivia", "help"] | None, Arg("Bet action, help by default")
+    ] = None,
+    args: Annotated[
+        str | None, Arg("Arguments for the action", rest=True)
+    ] = None,
+) -> str | list[str]:
+    """Bet beans on trivia winners
 
     .bet trivia <trivia_id> place <amount> bean(s) on <winner> - Bet on who will win a trivia
     .bet trivia list - Show recent trivias with bets
@@ -1288,12 +1315,7 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
     .bet trivia user <user> - Show bets placed by a user
     .bet help - Show help information
     """
-    if not text:
-        return bet_cmd("help", nick, db, conn, event)
-
-    parts = text.strip().split(None, 6)
-
-    if parts[0].lower() == "help":
+    if action != "trivia":
         return [
             "🎲 Betting Commands 🎲",
             "> .bet trivia <trivia_id> place <amount> bean(s) on <winner> - Bet on who will win a trivia",
@@ -1309,13 +1331,10 @@ def bet_cmd(text: str, nick: str, db, conn, event) -> str | list[str]:
             "- If you win, you get a share of the total bet pool proportional to your bet amount",
         ]
 
-    if len(parts) < 2:
+    if not args:
         return "❌ Missing arguments. Use '.bet help' for usage information."
 
-    subcmd = parts[0].lower()
-
-    if subcmd != "trivia":
-        return f"❌ Unknown subcommand: {subcmd}. Use '.bet help' for usage information."
+    parts = [action, *args.split(None, 5)]
 
     # Handle viewing bets
     if len(parts) == 2 and parts[1].lower() == "list":

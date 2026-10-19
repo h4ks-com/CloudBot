@@ -1,7 +1,12 @@
 import asyncio
 import time
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import Event
+from cloudbot.hook import Arg
 from cloudbot.util import colors
 
 
@@ -30,15 +35,21 @@ async def do_reconnect(conn, auto=True):
 
 
 @hook.command(autohelp=False, permissions=["botcontrol"], singlethread=True)
-async def reconnect(conn, text, bot):
-    """[connection] - Reconnects to [connection] or the current connection if not specified"""
-    if not text:
+async def reconnect(
+    conn: IrcClient,
+    bot: CloudBot,
+    connection: Annotated[
+        str | None, Arg("Connection name, the current one by default")
+    ] = None,
+):
+    """Reconnects to a connection, the current one by default"""
+    if not connection:
         to_reconnect = conn
     else:
         try:
-            to_reconnect = bot.connections[text.lower()]
+            to_reconnect = bot.connections[connection.lower()]
         except KeyError:
-            return f"Connection '{text}' not found"
+            return f"Connection '{connection}' not found"
 
     return await do_reconnect(to_reconnect, False)
 
@@ -73,7 +84,7 @@ def format_conn(conn):
 @hook.command(
     "connlist", "listconns", autohelp=False, permissions=["botcontrol"]
 )
-def list_conns(bot):
+def list_conns(bot: CloudBot):
     """- Lists all current connections and their status"""
     conns = ", ".join(map(format_conn, bot.connections.values()))
     return f"Current connections: {conns}"
@@ -92,7 +103,7 @@ def on_connect(conn):
 
 @hook.command("lagcheck", autohelp=False, permissions=["botcontrol"])
 @hook.periodic(5)
-def lag_check(bot, admin_log):
+def lag_check(bot: CloudBot, event: Event):
     """- Manually update lag times for all connections"""
     now = time.time()
     for conn in bot.connections.values():
@@ -110,7 +121,7 @@ def lag_check(bot, admin_log):
             lag = conn.memory.get("lag", 0)
             last_act = now - conn.memory.get("last_activity", 0)
             if lag > warning or last_act > warning:
-                admin_log(
+                event.admin_log(
                     f"[{conn.name}] Lag detected. {lag:.2f}s since last ping, {last_act:.2f}s since last activity"
                 )
 

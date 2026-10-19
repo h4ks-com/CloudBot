@@ -1,6 +1,9 @@
+from typing import Annotated
+
 import feedparser
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, web
 
 
@@ -49,15 +52,15 @@ def format_item(item):
 
 
 @hook.command("feed", "rss")
-def rss(text):
-    """<feed> - Gets the first three items from the RSS/ATOM feed <feed>."""
-    t = text.lower().strip()
+def rss(feed_name: Annotated[str, Arg("Feed alias or URL")]):
+    """Gets the first three items from the RSS/ATOM feed <feed>."""
+    t = feed_name.lower().strip()
     if t in ALIASES:
         alias = ALIASES[t]
         addr = alias.url
         limit = alias.limit
     else:
-        addr = text
+        addr = feed_name
         limit = 3
 
     feed = feedparser.parse(addr)

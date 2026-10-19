@@ -65,7 +65,7 @@ def match_language(fragment):
 
 
 @hook.command("google_translate")
-def translate(text, db):
+def translate(text: str, db):
     """[source language [target language]] <sentence> - translates <sentence> from source language (default autodetect)
     to target language (default English) using Google Translate"""
     api_key = bot.config.get_api_key("google")

@@ -1,7 +1,11 @@
 import random
 from pathlib import Path
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 joke_lines = {}
 
@@ -46,64 +50,69 @@ def load_jokes(bot):
     "urmum",
     autohelp=False,
 )
-def yomomma(text, nick, conn, is_nick_valid):
-    """<nick> - Tells a yo momma joke to <nick>."""
-    target = text.strip()
-    if not target:
-        target = nick
-    if not is_nick_valid(target) or target.lower() == conn.nick.lower():
+def yomomma(
+    nick: str,
+    conn: IrcClient,
+    event: CommandEvent,
+    target: Annotated[
+        str | None, Arg("Who gets the joke, you by default", kind="user")
+    ] = None,
+):
+    """Tells a yo momma joke to the nick."""
+    target = (target or "").strip() or nick
+    if not event.is_nick_valid(target) or target.lower() == conn.nick.lower():
         target = nick
     joke = random.choice(joke_lines["yo_momma"]).lower()
     return f"{target}, {joke}"
 
 
 @hook.command(autohelp=False)
-def doit(message):
+def doit(event: CommandEvent):
     """- Prints a do it line, example: mathematicians do with a pencil."""
-    message(random.choice(joke_lines["do_it"]))
+    event.message(random.choice(joke_lines["do_it"]))
 
 
 @hook.command(autohelp=False)
-def pun(message):
+def pun(event: CommandEvent):
     """- Come on everyone loves puns right?"""
-    message(random.choice(joke_lines["puns"]))
+    event.message(random.choice(joke_lines["puns"]))
 
 
 @hook.command(autohelp=False)
-def confucious(message):
+def confucious(event: CommandEvent):
     """- Confucious say man standing on toilet is high on pot.
     (Note that the spelling is deliberate: https://www.urbandictionary.com/define.php?term=Confucious)
     """
     saying = random.choice(joke_lines["confucious"]).lower()
-    message(f"Confucious say {saying}")
+    event.message(f"Confucious say {saying}")
 
 
 @hook.command(autohelp=False)
-def dadjoke(message):
+def dadjoke(event: CommandEvent):
     """- Love em or hate em, bring on the dad jokes."""
-    message(random.choice(joke_lines["one_liners"]))
+    event.message(random.choice(joke_lines["one_liners"]))
 
 
 @hook.command(autohelp=False)
-def wisdom(message):
+def wisdom(event: CommandEvent):
     """- Words of wisdom from various bathroom stalls."""
-    message(random.choice(joke_lines["wisdom"]))
+    event.message(random.choice(joke_lines["wisdom"]))
 
 
 @hook.command(autohelp=False)
-def bookpun(message):
+def bookpun(event: CommandEvent):
     """- Suggests a pun of a book title/author."""
     # suggestions = ["Why not try", "You should read", "You gotta check out"]
-    message(random.choice(joke_lines["book_puns"]))
+    event.message(random.choice(joke_lines["book_puns"]))
 
 
 @hook.command("boobs", "boobies")
-def boobies(text):
-    """<text> - Everything is better with boobies!"""
+def boobies(phrase: Annotated[str, Arg("Text to improve")]):
+    """Everything is better with boobies!"""
     boob = "\u2299"
-    out = text.strip()
+    out = phrase.strip()
     out = out.replace("o", boob).replace("O", boob).replace("0", boob)
-    if out == text.strip():
+    if out == phrase.strip():
         return f"Sorry I couldn't turn anything in '{out}' into boobs for you."
     return out
 
@@ -116,41 +125,44 @@ def zombs():
 
 
 @hook.command("awesome", "iscool", "cool")
-def awesome(text, is_nick_valid):
-    """<nick> - Returns a link to show <nick> how awesome they are.
+def awesome(
+    event: CommandEvent,
+    target: Annotated[str, Arg("Who is awesome", kind="user")],
+):
+    """Returns a link to show the nick how awesome they are.
     See https://github.com/sebastianbarfurth/is-awesome.cool
     """
-    target = text.split(" ")[0]
-    if not is_nick_valid(target):
+    target = target.split(" ")[0]
+    if not event.is_nick_valid(target):
         return f"Sorry I can't tell {target} how awesome they are."
     link = f"http://{target}.is-awesome.cool/"
     return f"{target}: I am blown away by your recent awesome action(s). Please read \x02{link}\x02"
 
 
 @hook.command(autohelp=False)
-def triforce(message):
+def triforce(event: CommandEvent):
     """- Returns a triforce!"""
     top = ["\u00a0\u25b2", "\u00a0\u00a0\u25b2", "\u25b2", "\u00a0\u25b2"]
     bottom = ["\u25b2\u00a0\u25b2", "\u25b2 \u25b2", "\u25b2\u25b2"]
-    message(random.choice(top))
-    message(random.choice(bottom))
+    event.message(random.choice(top))
+    event.message(random.choice(bottom))
 
 
 @hook.command("kero", "kerowhack")
-def kero(text):
-    """<text> - Returns the text input the way kerouac5 would say it."""
+def kero(phrase: Annotated[str, Arg("Text to say")]):
+    """Returns the text input the way kerouac5 would say it."""
     keror = random.choice(joke_lines["kero"]).upper()
     if keror == "???? WTF IS":
-        out = keror + " " + text.upper()
+        out = keror + " " + phrase.upper()
     else:
-        out = text.upper() + " " + keror
+        out = phrase.upper() + " " + keror
     return out
 
 
 @hook.command(autohelp=False)
-def lawyerjoke(message):
+def lawyerjoke(event: CommandEvent):
     """- Returns a lawyer joke, so lawyers know how much we hate them."""
-    message(random.choice(joke_lines["lawyerjoke"]))
+    event.message(random.choice(joke_lines["lawyerjoke"]))
 
 
 @hook.command(autohelp=False)

@@ -2,11 +2,15 @@ import random
 import re
 from collections import defaultdict
 from datetime import datetime
+from typing import Annotated
 
 from requests import HTTPError
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, formatting, timeformat
 from cloudbot.util.formatting import pluralize_auto
 from cloudbot.util.pager import CommandPager, paginated_list
@@ -112,8 +116,12 @@ def statuscheck(status, item):
 
 
 @hook.command("moremod", autohelp=False)
-def moremod(text, chan, conn):
-    """[page] - if a sub or mod list has lots of results the results are pagintated. If the most recent search is
+def moremod(
+    chan: str,
+    conn: IrcClient,
+    page: Annotated[str | None, Arg("Page number")] = None,
+):
+    """if a sub or mod list has lots of results the results are pagintated. If the most recent search is
     paginated the pages are stored for retreival. If no argument is given the next page will be returned else a page
     number can be specified."""
     chan_cf = chan.casefold()
@@ -121,7 +129,7 @@ def moremod(text, chan, conn):
     if not pages:
         return "There are no modlist pages to show."
 
-    return pages.handle_lookup(text)
+    return pages.handle_lookup(page)
 
 
 @hook.regex(post_re, singlethread=True)
@@ -141,29 +149,27 @@ def reddit_post_url(match):
 
 
 @hook.command(autohelp=False, singlethread=True)
-def reddit(text, reply):
-    """[subreddit] [n] - gets a random post from <subreddit>, or gets the [n]th post in the subreddit"""
+def reddit(
+    event: CommandEvent,
+    subreddit: Annotated[str | None, Arg("Subreddit to read")] = None,
+    n: Annotated[int | None, Arg("Post number, random when omitted")] = None,
+):
+    """gets a random post from <subreddit>, or gets the [n]th post in the subreddit"""
     id_num = None
 
-    if text:
-        # clean and split the input
-        parts = text.lower().strip().split()
-        sub = get_sub(parts.pop(0).strip())
+    if subreddit:
+        sub = get_sub(subreddit.lower())
         url = subreddit_url.format(sub)
 
-        # find the requested post number (if any)
-        if parts:
-            try:
-                id_num = int(parts[0]) - 1
-            except ValueError:
-                return "Invalid post number."
+        if n is not None:
+            id_num = n - 1
     else:
         url = "https://reddit.com"
 
     try:
         data = api_request(URL(url))
     except Exception as e:
-        reply("Error: " + str(e))
+        event.reply("Error: " + str(e))
         raise
 
     data = data["data"]["children"]
@@ -187,17 +193,22 @@ def reddit(text, reply):
 
 
 @hook.command("subs", "moderates", singlethread=True)
-def moderates(text, chan, conn, reply):
-    """<username> - This plugin prints the list of subreddits a user moderates listed in a reddit users profile.
+def moderates(
+    username: Annotated[str, Arg("Reddit username")],
+    chan: str,
+    conn: IrcClient,
+    event: CommandEvent,
+):
+    """This plugin prints the list of subreddits a user moderates listed in a reddit users profile.
     Private subreddits will not be listed."""
-    user = get_user(text)
+    user = get_user(username)
     r = get_session().get(
         user_url.format(user) + "moderated_subreddits.json", headers=agent
     )
     try:
         r.raise_for_status()
     except HTTPError as e:
-        reply(statuscheck(e.response.status_code, user))
+        event.reply(statuscheck(e.response.status_code, user))
         raise
 
     data = r.json()
@@ -226,10 +237,12 @@ def get_user_data(page, user, reply):
 
 
 @hook.command("karma", "ruser", singlethread=True)
-def karma(text, reply):
-    """<reddituser> - will return the information about the specified reddit username"""
-    user = get_user(text)
-    data = get_user_data("about.json", user, reply)
+def karma(
+    reddituser: Annotated[str, Arg("Reddit username")], event: CommandEvent
+):
+    """will return the information about the specified reddit username"""
+    user = get_user(reddituser)
+    data = get_user_data("about.json", user, event.reply)
     data = data["data"]
 
     out = f"$(b){user}$(b) "
@@ -267,10 +280,12 @@ def karma(text, reply):
 
 
 @hook.command("cakeday", singlethread=True)
-def cake_day(text, reply):
-    """<reddituser> - will return the cakeday for the given reddit username."""
-    user = get_user(text)
-    data = get_user_data("about.json", user, reply)
+def cake_day(
+    reddituser: Annotated[str, Arg("Reddit username")], event: CommandEvent
+):
+    """will return the cakeday for the given reddit username."""
+    user = get_user(reddituser)
+    data = get_user_data("about.json", user, event.reply)
     out = colors.parse(f"$(b){user}'s$(b) ")
     out += "cake day is {}, ".format(
         datetime.fromtimestamp(data["data"]["created_utc"]).strftime("%B %d")
@@ -314,11 +329,16 @@ def get_sub_data(url, sub, reply):
 
 
 @hook.command("submods", "mods", "rmods", singlethread=True)
-def submods(text, chan, conn, reply):
-    """<subreddit> - prints the moderators of the specified subreddit."""
-    sub = get_sub(text)
+def submods(
+    subreddit: Annotated[str, Arg("Subreddit name")],
+    chan: str,
+    conn: IrcClient,
+    event: CommandEvent,
+):
+    """prints the moderators of the specified subreddit."""
+    sub = get_sub(subreddit)
     url = subreddit_url + "about/moderators.json"
-    data = get_sub_data(url, sub, reply)
+    data = get_sub_data(url, sub, event.reply)
     if data is None:
         return None
 
@@ -344,11 +364,13 @@ def submods(text, chan, conn, reply):
 
 
 @hook.command("subinfo", "subreddit", "sub", "rinfo", singlethread=True)
-def subinfo(text, reply):
-    """<subreddit> - fetches information about the specified subreddit."""
-    sub = get_sub(text)
+def subinfo(
+    subreddit: Annotated[str, Arg("Subreddit name")], event: CommandEvent
+):
+    """fetches information about the specified subreddit."""
+    sub = get_sub(subreddit)
     url = subreddit_url + "about.json"
-    data = get_sub_data(url, sub, reply)
+    data = get_sub_data(url, sub, event.reply)
     if data is None:
         return None
 

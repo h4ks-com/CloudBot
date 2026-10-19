@@ -5,6 +5,7 @@ import shlex
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Annotated
 
 import googlemaps
 import pytz
@@ -14,6 +15,9 @@ from pyproj import Geod
 from streetview import get_streetview, search_panoramas
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import timeformat
 from cloudbot.util.formatting import html_to_irc
 from cloudbot.util.web import get_session
@@ -72,7 +76,9 @@ def ratelimit(db) -> str | None:
 
 
 @hook.command("gd", "gmd", "directions", autohelp=False)
-def directions(text, event, reply, bot, nick, chan, db):
+def directions(
+    text: str, event: CommandEvent, bot: CloudBot, nick: str, chan: str, db
+):
     """<type> <origin> to <destination> - Get directions from Google Maps"""
     msg = ratelimit(db)
     if msg:
@@ -117,7 +123,7 @@ def directions(text, event, reply, bot, nick, chan, db):
     if len(points) != 2:
         return usage_msg
 
-    reply(
+    event.reply(
         f"🔍 Searching directions from '{points[0]}' to '{points[1]}' using '{mode or 'all'}'"
     )
     now = datetime.now(pytz.timezone("UTC"))
@@ -145,11 +151,11 @@ def directions(text, event, reply, bot, nick, chan, db):
         distance = leg["distance"]["text"]
         from_ = leg["start_address"]
         to = leg["end_address"]
-        reply(f"📍 \x02{from_}  -  {to} ({distance}, {duration})")
+        event.reply(f"📍 \x02{from_}  -  {to} ({distance}, {duration})")
         for step in leg["steps"]:
             # Only limit in channels
             if i >= MAX_OUTPUT_LINES and chan.startswith("#"):
-                reply(
+                event.reply(
                     f"🔽 More steps: {len(leg['steps']) - i}. Repeat the command in a private message for full details."
                 )
                 break
@@ -166,7 +172,7 @@ def directions(text, event, reply, bot, nick, chan, db):
                 headsign = step.get("transit_details", {}).get("headsign", "")
                 num_stops = step.get("transit_details", {}).get("num_stops", "")
                 msg += f" - {headsign} ({arrival_time}) - {num_stops} stops"
-            reply(msg)
+            event.reply(msg)
 
             i += 1
 
@@ -184,7 +190,7 @@ def upload_image(image: Image) -> str:
 
 
 @hook.command("sv", "streetview", autohelp=False)
-def streetview(text, reply, bot, db):
+def streetview(text: str, bot: CloudBot, db):
     """<location> - Get a street view image from Google Maps. Possible parameters are: fov, heading, pitch, width, height, move (meters), move_heading - e.g. 'sv 40.7128, -74.0060 fov:120'"""
     text = text.strip()
     if not text:
@@ -327,9 +333,16 @@ def new_guess_game(bot, chan, db) -> str:
 
 
 @hook.command("geoguess", autohelp=False)
-def geo_guess(text, chan, nick, reply, bot, db):
-    """[country] - Play a game of GeoGuessr with a random location. Use 'reveal' to show the answer."""
-    text = text.strip()
+def geo_guess(
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    bot: CloudBot,
+    db,
+    country: Annotated[str | None, Arg("Country guess, or reveal")] = None,
+):
+    """Play a game of GeoGuessr with a random location. Use 'reveal' to show the answer."""
+    text = country or ""
     if text == "reveal":
         if chan not in guess_games:
             return "There is no active GeoGuess game in this channel. Start one with '.geoguess'."
@@ -355,5 +368,5 @@ def geo_guess(text, chan, nick, reply, bot, db):
     ) > datetime.now(pytz.timezone("UTC")):
         return f"There is already an active GeoGuess game in this channel {guess_games[chan].image_url} - Try to guess the country with '.geoguess <country>'."
 
-    reply("🔍 Starting a new GeoGuess game...")
+    event.reply("🔍 Starting a new GeoGuess game...")
     return new_guess_game(bot, chan, db)

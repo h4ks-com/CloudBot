@@ -1,6 +1,7 @@
 import random
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 
 kenm_data: list[str] = []
 
@@ -15,6 +16,6 @@ def load_kenm(bot):
 
 
 @hook.command("kenm", autohelp=False)
-def kenm(message):
+def kenm(event: CommandEvent):
     """- Wisdom from Ken M."""
-    message(random.choice(kenm_data))
+    event.message(random.choice(kenm_data))

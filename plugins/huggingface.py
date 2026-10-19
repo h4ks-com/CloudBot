@@ -10,12 +10,16 @@ from datetime import datetime
 from functools import lru_cache
 from tempfile import TemporaryDirectory
 from time import sleep, time
+from typing import Annotated
 from urllib.parse import quote
 
 import magic
 import requests
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.queue import Queue
 from cloudbot.util.web import get_session
@@ -330,11 +334,16 @@ current_queue = Queue()
 
 
 @hook.command("huggingface_next", "hfn", autohelp=False)
-def hfn(text: str, chan: str, nick: str):
-    """[nick] - gets the next result from the last hugingface search"""
-    args = text.strip().split()
-    if len(args) > 0:
-        nick = args[0]
+def hfn(
+    chan: str,
+    nick: str,
+    target: Annotated[
+        str | None, Arg("Whose results to page, yours by default", kind="user")
+    ] = None,
+):
+    """gets the next result from the last hugingface search"""
+    if target:
+        nick = target
 
     results_queue = get_queue()
     results = results_queue[chan][nick]
@@ -351,17 +360,22 @@ def hfn(text: str, chan: str, nick: str):
 
 
 @hook.command("huggingface", "hf")
-def hf(bot, text: str, chan: str, nick: str):
-    """<query> - searches for a model on huggingface"""
+def hf(
+    bot: CloudBot,
+    query: Annotated[str, Arg("Model to search for")],
+    chan: str,
+    nick: str,
+):
+    """searches for a model on huggingface"""
     api_key = bot.config.get_api_key("huggingface")
     if not api_key:
         return "error: missing api key for huggingface"
 
-    text = text.strip()
+    query = query.strip()
     client = HuggingFaceClient([api_key])
     queue = get_queue()
-    queue[chan][nick] = client.search_model(text)
-    return hfn("", chan, nick)
+    queue[chan][nick] = client.search_model(query)
+    return hfn(chan, nick)
 
 
 def process_response(
@@ -388,7 +402,7 @@ def attempt_inference(
     client: HuggingFaceClient,
     text: str,
     model: str,
-    reply,
+    event: CommandEvent,
     fail_on_model_loading=False,
 ) -> requests.Response | str:
     try:
@@ -401,23 +415,26 @@ def attempt_inference(
         except json.JSONDecodeError:
             pass
         if check and check[1] is not None and not fail_on_model_loading:
-            reply(check[0])
+            event.reply(check[0])
             sleep(check[1])
-            return attempt_inference(client, text, model, reply, True)
+            return attempt_inference(client, text, model, event, True)
         return f"error: {e} - {e.response.text}"
     return response
 
 
-def _hfi(bot, reply, text: str, chan: str, nick: str):
+def _hfi(
+    bot: CloudBot,
+    event: CommandEvent,
+    model: str,
+    text: str,
+    chan: str,
+    nick: str,
+):
     api_key = bot.config.get_api_key("huggingface")
     if not api_key:
         return "error: missing api key for huggingface"
 
     client = HuggingFaceClient([api_key])
-    try:
-        model, text = text.split(maxsplit=1)
-    except ValueError:
-        return "Usage: .hfi <model> <text>"
 
     if model.isdigit() and int(model) > 0:
         results = current_queue[chan][nick]
@@ -427,7 +444,7 @@ def _hfi(bot, reply, text: str, chan: str, nick: str):
             return f"Cannot pick model {model} because there are only {len(results)} results"
         model = results[int(model) - 1].modelId
 
-    response = attempt_inference(client, text, model, reply)
+    response = attempt_inference(client, text, model, event)
     if isinstance(response, str):
         return response
     txt = process_response(response, chan, nick)
@@ -439,31 +456,42 @@ def _hfi(bot, reply, text: str, chan: str, nick: str):
 
 
 @hook.command("hfinference", "hfi")
-def hfi(bot, reply, text: str, chan: str, nick: str):
-    """<model> <text> - sends text to the model for inference. Model can be the number of a result from the last search or actual model id"""
-    return _hfi(bot, reply, text, chan, nick)
+def hfi(
+    bot: CloudBot,
+    event: CommandEvent,
+    chan: str,
+    nick: str,
+    model: Annotated[
+        str, Arg("Result number from the last search, or model id")
+    ],
+    prompt: Annotated[str, Arg("Text to send to the model")],
+):
+    """sends text to the model for inference. Model can be the number of a result from the last search or actual model id"""
+    return _hfi(bot, event, model, prompt, chan, nick)
 
 
 @hook.command("hfalias", "hfa")
-def hfa(bot, reply, text: str, chan: str, nick: str):
-    """<alias> <text> - sends text to the aliased model for inference. Similar to .hfi. Use .hfa list to see available aliases"""
+def hfa(
+    bot: CloudBot,
+    event: CommandEvent,
+    chan: str,
+    nick: str,
+    alias: Annotated[str, Arg("Model alias, or list to see them")],
+    prompt: Annotated[str | None, Arg("Text to send to the model")] = None,
+):
+    """sends text to the aliased model for inference. Similar to .hfi. Use .hfa list to see available aliases"""
     fail_msg = [
         "The following aliases are available: "
     ] + formatting.json_format(
         {alias: info.id for alias, info in ALIASES.items()}
     )
-    if text.strip() == "list":
-        return fail_msg
-
-    if len(text.strip().split()) < 2:
-        return "Usage: .hfa <alias> <text>"
-
-    alias, query = text.strip().split(maxsplit=1)
     if alias == "list":
         return fail_msg
+
+    if not prompt:
+        return "Usage: .hfa <alias> <text>"
 
     if alias not in ALIASES:
         return "error: alias not found. Use .hfa list to see available aliases"
 
-    text = ALIASES[alias].id + " " + query
-    return _hfi(bot, reply, text, chan, nick)
+    return _hfi(bot, event, ALIASES[alias].id, prompt, chan, nick)

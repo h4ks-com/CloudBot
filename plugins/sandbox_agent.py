@@ -12,12 +12,15 @@ Sandbox connection config lives in plugins.sandbox_agent section.
 import json
 import logging
 from datetime import datetime
+from typing import Annotated
 
 import httpx
 from agents import Agent, FunctionTool, RunContextWrapper
 
 from cloudbot import hook
 from cloudbot.agent.subagent import SubagentError, run_subagent
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.typing import (
     start_typing_for_command,
     stop_typing_for_command,
@@ -320,21 +323,21 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
         await stop_typing_for_command(event.conn, target, typing_id)
 
 
-@hook.command("prove", "pv", autohelp=False)
-async def prove_command(text, event):
-    """<theorem> - prove a mathematical theorem step by step using Coq/Rocq."""
-    if not text:
-        event.reply("usage: .prove <theorem or math problem>")
-        return
+@hook.command("prove", "pv")
+async def prove_command(
+    event: CommandEvent,
+    theorem: Annotated[str, Arg("Theorem or math problem to prove")],
+):
+    """prove a mathematical <theorem> step by step using Coq/Rocq."""
     event.reply("Working on the proof, this may take a minute...")
-    await _run_sandbox_agent("prove", event, text)
+    await _run_sandbox_agent("prove", event, theorem)
 
 
-@hook.command("code", "cd", autohelp=False)
-async def code_command(text, event):
-    """<task> - write, run, and verify code in any supported language."""
-    if not text:
-        event.reply("usage: .code <coding task>")
-        return
+@hook.command("code", "cd")
+async def code_command(
+    event: CommandEvent,
+    task: Annotated[str, Arg("Coding task to carry out")],
+):
+    """write, run, and verify code for <task> in any supported language."""
     event.reply("Writing and testing code...")
-    await _run_sandbox_agent("code", event, text)
+    await _run_sandbox_agent("code", event, task)

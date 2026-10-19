@@ -8,7 +8,7 @@ import re
 from collections import defaultdict
 from threading import Lock, Timer
 from time import sleep, time
-from typing import NamedTuple, TypedDict, TypeVar, cast
+from typing import Annotated, Literal, NamedTuple, TypedDict, TypeVar, cast
 
 from cachetools import TTLCache
 from sqlalchemy import (
@@ -24,6 +24,9 @@ from sqlalchemy import (
 from sqlalchemy.sql import select
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database
 from cloudbot.util.formatting import pluralize_auto, truncate
 from cloudbot.util.func_utils import call_with_args
@@ -214,7 +217,7 @@ def set_game_state(db, conn, chan, active=None, duel_kick=None):
 @hook.command(
     "startduel", autohelp=False, permissions=["chanop", "op", "botcontrol"]
 )
-def start_duel(db, chan, message, conn):
+def start_duel(db, chan: str, event: CommandEvent, conn: IrcClient):
     """- This command enables duels in your channel, to disable the duels use .stopduel"""
     if is_opt_out(conn.name, chan):
         return "Dueling is currently disabled in this channel. (OPT OUT)"
@@ -227,7 +230,7 @@ def start_duel(db, chan, message, conn):
         return f"Duels are already enabled in {chan}."
 
     set_game_state(db, conn, chan, active=True)
-    message(
+    event.message(
         "This is now a self regulated town, eye for eye tooth for tooth."
         "All problems must be solved in a duel."
         "Use .duel [nick] to challenge someone, .accept to accept a duel and"
@@ -240,7 +243,7 @@ def start_duel(db, chan, message, conn):
 @hook.command(
     "stopduel", autohelp=False, permissions=["chanop", "op", "botcontrol"]
 )
-def stop_hunt(db, chan, conn):
+def stop_hunt(db, chan: str, conn: IrcClient):
     """- This command disables duels on this channel. Scores will be preserved"""
     if is_opt_out(conn.name, chan):
         return None
@@ -549,7 +552,13 @@ DISPLAY_FUNCS = {
 }
 
 
-def display_scores(score_type: ScoreType, event, text, chan, conn, db):
+def display_scores(
+    score_type: ScoreType,
+    scope: Literal["global", "average"] | None,
+    chan,
+    conn,
+    db,
+):
     if is_opt_out(conn.name, chan):
         return None
 
@@ -557,13 +566,9 @@ def display_scores(score_type: ScoreType, event, text, chan, conn, db):
     chan_pfx = f"duel {score_type.noun} scores in {chan}: "
     no_duels = f"It appears no one has {score_type.verb} any duels yet."
 
-    out = global_pfx if text else chan_pfx
+    out = global_pfx if scope else chan_pfx
 
-    try:
-        func = DISPLAY_FUNCS[text.lower() or None]
-    except KeyError:
-        event.notice_doc()
-        return None
+    func = DISPLAY_FUNCS[scope]
 
     scores_dict = call_with_args(
         func,
@@ -582,38 +587,57 @@ def display_scores(score_type: ScoreType, event, text, chan, conn, db):
 
 
 @hook.command("mostwanted", autohelp=False)
-def killers(text, event, chan, conn, db):
-    """[{global|average}] - Prints a list of the top duel killers in the
+def killers(
+    chan: str,
+    conn: IrcClient,
+    db,
+    scope: Annotated[
+        Literal["global", "average"] | None,
+        Arg("Count every channel, or average per channel"),
+    ] = None,
+):
+    """Prints a list of the top duel killers in the
     channel, if 'global' is specified all channels in the database are
     included.
     """
-    return display_scores(SCORE_TYPES["killer"], event, text, chan, conn, db)
+    return display_scores(SCORE_TYPES["killer"], scope, chan, conn, db)
 
 
 @hook.command("duel_opt_out", permissions=["op", "ignore"], autohelp=False)
-def hunt_opt_out(text, chan, db, conn):
-    """[{add <chan>|remove <chan>|list}] - Running this command without any arguments displays the status of the
+def hunt_opt_out(
+    chan: str,
+    db,
+    conn: IrcClient,
+    action: Annotated[
+        Literal["add", "remove", "list"] | None,
+        Arg(
+            "Disable or re-enable the game in a channel, or list the opted out channels"
+        ),
+    ] = None,
+    channel: Annotated[
+        str | None, Arg("Channel to change", kind="channel")
+    ] = None,
+):
+    """Running this command without any arguments displays the status of the
     current channel. hunt_opt_out add #channel will disable all duel commands in the specified channel.
     hunt_opt_out remove #channel will re-enable the game for the specified channel.
     """
-    if not text:
+    if action is None:
         if is_opt_out(conn.name, chan):
             return f"duel is disabled in {chan}. To re-enable it run .hunt_opt_out remove #channel"
 
         return f"duel is enabled in {chan}. To disable it run .hunt_opt_out add #channel"
 
-    if text == "list":
+    if action == "list":
         return ", ".join(opt_out)
 
-    if len(text.split(" ")) < 2:
+    if channel is None:
         return "please specify add or remove and a valid channel name"
 
-    command = text.split()[0]
-    channel = text.split()[1]
     if not channel.startswith("#"):
         return "Please specify a valid channel."
 
-    if command.lower() == "add":
+    if action == "add":
         if is_opt_out(conn.name, channel):
             return f"duel has already been disabled in {channel}."
 
@@ -623,26 +647,29 @@ def hunt_opt_out(text, chan, db, conn):
         load_optout(db)
         return f"The duelhunt has been successfully disabled in {channel}."
 
-    if command.lower() == "remove":
-        if not is_opt_out(conn.name, channel):
-            return f"duel is already enabled in {channel}."
+    if not is_opt_out(conn.name, channel):
+        return f"duel is already enabled in {channel}."
 
-        delete = optout.delete().where(optout.c.chan == channel.lower())
-        db.execute(delete)
-        db.commit()
-        load_optout(db)
-
+    delete = optout.delete().where(optout.c.chan == channel.lower())
+    db.execute(delete)
+    db.commit()
+    load_optout(db)
     return None
 
 
 @hook.command("duelmerge", permissions=["botcontrol"])
-def duel_merge(text, conn, db, message):
-    """<user1> <user2> - Moves the duel scores from one nick to another nick. Accepts two nicks as input the first will
+def duel_merge(
+    conn: IrcClient,
+    db,
+    event: CommandEvent,
+    user1: Annotated[str, Arg("Nick whose scores are moved", kind="user")],
+    user2: Annotated[str, Arg("Nick that receives the scores", kind="user")],
+):
+    """Moves the duel scores from one nick to another nick. Accepts two nicks as input the first will
     have their duel scores removed the second will have the first score added. Warning this cannot be undone.
     """
-    oldnick, newnick = text.lower().split()
-    if not oldnick or not newnick:
-        return "Please specify two nicks for this command."
+    oldnick = user1.lower()
+    newnick = user2.lower()
 
     oldnickscore = db.execute(
         select(table.c.name, table.c.chan, table.c.shot)
@@ -704,7 +731,7 @@ def duel_merge(text, conn, db, message):
 
     db.execute(query)
     db.commit()
-    message(
+    event.message(
         "Migrated {} from {} to {}".format(
             pluralize_auto(total_kills, "duel kills"),
             oldnick,
@@ -715,11 +742,16 @@ def duel_merge(text, conn, db, message):
 
 
 @hook.command("duels", autohelp=False)
-def duels_user(text, nick, chan, conn, db, message):
-    """<nick> - Prints a users duel stats. If no nick is input it will check the calling username."""
-    name = nick.lower()
-    if text:
-        name = text.split()[0].lower()
+def duels_user(
+    nick: str,
+    chan: str,
+    conn: IrcClient,
+    db,
+    event: CommandEvent,
+    user: Annotated[str | None, Arg("Nick to look up", kind="user")] = None,
+):
+    """Prints a users duel stats. If no nick is input it will check the calling username."""
+    name = (user or nick).lower()
 
     duels: dict[str, int] = defaultdict(int)
     scores = db.execute(
@@ -731,10 +763,7 @@ def duels_user(text, nick, chan, conn, db, message):
         )
     ).fetchall()
 
-    if text:
-        name = text.split()[0]
-    else:
-        name = nick
+    name = user or nick
 
     if scores:
         has_hunted_in_chan = False
@@ -748,7 +777,7 @@ def duels_user(text, nick, chan, conn, db, message):
 
         # Check if the user has only participated in the hunt in this channel
         if duels["chans"] == 1 and has_hunted_in_chan:
-            message(
+            event.message(
                 "{} has killed {} people in {}.".format(
                     name,
                     duels["chankilled"],
@@ -758,7 +787,7 @@ def duels_user(text, nick, chan, conn, db, message):
             return None
 
         kill_average = int(duels["killed"] / duels["chans"])
-        message(
+        event.message(
             "\x02{}'s\x02 duel stats: \x02{}\x02 killed in {}. "
             "Across {}: \x02{}\x02 killed."
             "Averaging \x02{}\x02 per channel.".format(
@@ -776,7 +805,7 @@ def duels_user(text, nick, chan, conn, db, message):
 
 
 @hook.command("duelstats", autohelp=False)
-def duel_stats(chan, conn, db, message):
+def duel_stats(chan: str, conn: IrcClient, db, event: CommandEvent):
     """- Prints duel statistics for the entire channel and totals for the network."""
     scores = db.execute(
         select(table.c.name, table.c.chan, table.c.shot).where(
@@ -801,7 +830,7 @@ def duel_stats(chan, conn, db, message):
         killerchan, killscore = sorted(
             kill_chan.items(), key=operator.itemgetter(1), reverse=True
         )[0]
-        message(
+        event.message(
             "\x02duel Stats:\x02 {:,} killed in \x02{}\x02. "
             "Across {} \x02{:,}\x02 people have been killed. "
             "\x02Top Channels:\x02 \x02{}\x02 with {}".format(
@@ -847,15 +876,18 @@ def clean_duel(n1, n2, checkonly=False):
 
 
 @hook.command("duel", autohelp=False)
-def duel(text, nick, chan, message, conn, event):
-    """<nick> - Starts a duel with a user."""
+def duel(
+    nick: str,
+    chan: str,
+    conn: IrcClient,
+    event: CommandEvent,
+    opponent: Annotated[str, Arg("Nick to duel", kind="user")],
+):
+    """Starts a duel with a user."""
     check = get_state_table(conn.name, chan).game_on
     if not check:
         return f"Dueling is not currently enabled in {chan}."
-    parts = text.split()
-    nick2 = parts[0].strip() if parts else ""
-    if not nick2:
-        return "Please specify a user to duel with."
+    nick2 = opponent
     if not event.is_nick_valid(nick2):
         return "That nickname is impossible to use!"
     if nick2.casefold() == nick.casefold():
@@ -875,7 +907,7 @@ def duel(text, nick, chan, message, conn, event):
 
 
 @hook.command("accept", autohelp=False)
-def accept_duel(nick, chan, message, conn):
+def accept_duel(nick: str, chan: str, event: CommandEvent, conn: IrcClient):
     """- Accepts duel from user."""
     check = get_state_table(conn.name, chan).game_on
     if not check:
@@ -897,27 +929,30 @@ def accept_duel(nick, chan, message, conn):
     duel_opponents[nick2.casefold()] = nick.casefold()
     delay = random.randrange(3, 12)
     countdown_start = 3
-    message(
+    event.message(
         f"<{nick2}> {nick} has accepted your duel request! The duel will begin in {delay + countdown_start} seconds. Use .bang <user> to shoot. If you shoot too early you lose, whoever shoots first win!"
     )
     Timer(
         delay,
         duel_start_countdown,
-        [countdown_start, nick, nick2, chan, message, conn],
+        [countdown_start, nick, nick2, chan, event.message, conn],
     ).start()
     return None
 
 
 @hook.command("duelcancel", "cancel", "cancelduel", autohelp=False)
-def cancel_duel(text, nick, chan, message, conn):
-    """<nick> - Cancels pending duel with user."""
+def cancel_duel(
+    nick: str,
+    chan: str,
+    conn: IrcClient,
+    opponent: Annotated[str, Arg("Nick whose duel to cancel", kind="user")],
+):
+    """Cancels pending duel with user."""
     check = get_state_table(conn.name, chan).game_on
     err = ""
     if not check:
         return f"Dueling is not currently enabled in {chan}."
-    if not text:
-        return "Please specify a user to cancel the duel with."
-    nick21 = text.split()[0].strip().casefold()
+    nick21 = opponent.casefold()
     nick22 = pending.get(nick.casefold(), {}).get(chan)
     is_pending = False
     if nick21 not in pending and not nick22:

@@ -3,6 +3,7 @@ import re
 from thefuzz import fuzz
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 from cloudbot.util.web import get_session
 
 API = "https://blackbeard.fly.dev/"
@@ -51,7 +52,7 @@ def search_show(provider, search):
 
 
 @hook.command("blackbeard", "blb")
-def blackbeard(text, reply):
+def blackbeard(text: str, event: CommandEvent):
     """[provider] <search> [N] - searches <provider> for <search>. Pass -N to get the Nth episode. Use `list` to list providers"""
     args = text.strip().split()
     if len(args) < 1:
@@ -97,14 +98,14 @@ def blackbeard(text, reply):
         ),
     )
 
-    reply("Show/Movie: " + show["Title"] + " - " + show["Url"])
+    event.reply("Show/Movie: " + show["Title"] + " - " + show["Url"])
     if episode is None:
         msg = "Description: " + show["Metadata"]["Description"][:400].replace(
             "\n", " "
         )
         if len(show["Metadata"]["Description"]) > 512:
             msg += f" -->  {pastebin(show['Metadata']['Description'])}"
-        reply(msg)
+        event.reply(msg)
         return None
 
     episodes = getJson(
@@ -123,21 +124,21 @@ def blackbeard(text, reply):
     url = ep["Url"]
     if len(url) > 150:
         url = pastebin(url)
-    reply("Episode/Video: " + ep["Title"] + " - " + url)
+    event.reply("Episode/Video: " + ep["Title"] + " - " + url)
 
     msg = "Description: " + ep["Metadata"]["Description"][:400].replace(
         "\n", " "
     )
     if len(ep["Metadata"]["Description"]) > 512:
         msg += f" -->  {pastebin(ep['Metadata']['Description'])}"
-    reply(msg)
+    event.reply(msg)
 
     video = getJson("video", {"provider": show["provider"], "epurl": ep["Url"]})
     url = video.get("Request", {}).get("Url")
     cmd = video.get("Metadata", {}).get("CurlCommand")
     if cmd:
         cmd = f"{cmd} --compressed | mpv -"
-        reply(f"Run with curl and mpv: {pastebin(cmd)}")
+        event.reply(f"Run with curl and mpv: {pastebin(cmd)}")
     if url:
-        reply(f"Direct url: {pastebin(url)}")
+        event.reply(f"Direct url: {pastebin(url)}")
     return None

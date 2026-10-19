@@ -57,7 +57,7 @@ def _make_mock_response(page_html: str, status: int = 200) -> MagicMock:
 
 
 def _run(text: str, page_html: str, parsed: bool | str = False) -> str | None:
-    reply = MagicMock()
+    event = MagicMock()
     with (
         patch("plugins.amazon.get_session") as mock_session,
         patch("plugins.amazon.web.try_shorten", side_effect=lambda u, **_: u),
@@ -65,7 +65,7 @@ def _run(text: str, page_html: str, parsed: bool | str = False) -> str | None:
         mock_session.return_value.get.return_value = _make_mock_response(
             page_html
         )
-        return amazon.amazon(text, reply, _parsed=parsed)
+        return amazon.amazon(text, event, _parsed=parsed)
 
 
 # --- happy path ---
@@ -201,7 +201,7 @@ def test_non_parsed_result_missing_title_returns_message():
 
 
 def test_http_error_calls_reply():
-    reply = MagicMock()
+    event = MagicMock()
     with (
         patch("plugins.amazon.get_session") as mock_session,
         patch("plugins.amazon.web.try_shorten", side_effect=lambda u, **_: u),
@@ -213,9 +213,9 @@ def test_http_error_calls_reply():
         mock_session.return_value.get.return_value = mock_resp
 
         with pytest.raises(amazon.HTTPError):
-            amazon.amazon("python", reply)
+            amazon.amazon("python", event)
 
-    reply.assert_called_once_with("Amazon API error occurred.")
+    event.reply.assert_called_once_with("Amazon API error occurred.")
 
 
 # --- RATING_RE ---

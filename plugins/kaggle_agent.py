@@ -16,6 +16,7 @@ and uses this command's larger budget only when a job needs it.
 
 import re
 from functools import lru_cache, partial
+from typing import Annotated
 
 from agents import Agent
 
@@ -42,6 +43,7 @@ from cloudbot.agent.tools.kaggle import (
 from cloudbot.agent.tools.web import upload_markdown_paste
 from cloudbot.bot import CloudBot
 from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors
 from cloudbot.util.ai_common import format_reply_lines
 from cloudbot.util.queue import Queue
@@ -320,9 +322,16 @@ def _page(chan: str, nick: str) -> list[str]:
     autohelp=False,
     allow_private=False,
 )
-async def kaggle_notebooks_command(text, chan, nick) -> list[str]:
-    """[search] - Kaggle notebooks the bot made, with what each is for and its link. Searches ref/title/description. .knotebooksn for more."""
-    search = text.strip()
+async def kaggle_notebooks_command(
+    chan: str,
+    nick: str,
+    search: Annotated[
+        str | None,
+        Arg("Text to find in a notebook's ref, title or description"),
+    ] = None,
+) -> list[str]:
+    """Kaggle notebooks the bot made, with what each is for and its link. Searches ref/title/description. .knotebooksn for more."""
+    search = search or ""
     rows = await run_in_executor(
         partial(list_notebooks, search=search, limit=_SEARCH_MAX)
     )
@@ -335,19 +344,17 @@ async def kaggle_notebooks_command(text, chan, nick) -> list[str]:
 
 
 @hook.command("knotebooksn", "kn", autohelp=False, allow_private=False)
-def kaggle_notebooks_next(chan, nick) -> list[str]:
+def kaggle_notebooks_next(chan: str, nick: str) -> list[str]:
     """- next page of the last .knotebooks list."""
     return _page(chan, nick)
 
 
 @hook.command("kaggle", autohelp=False, allow_private=False)
-async def kaggle_command(text, event):
-    """<request> - write and run a Python notebook on Kaggle's free compute; returns the notebook URL and results."""
-    if not text:
-        event.reply(
-            "usage: .kaggle <what you want computed / built / analysed>"
-        )
-        return
+async def kaggle_command(
+    event: CommandEvent,
+    request: Annotated[str, Arg("What to compute, build or analyse")],
+):
+    """write and run a Python notebook on Kaggle's free compute; returns the notebook URL and results."""
     # Deliberately vague: this command also lists, polls, shares and deletes, so
     # naming an action here would be wrong more often than right.
     event.reply("On it, this may take a minute...")
@@ -360,7 +367,7 @@ async def kaggle_command(text, event):
     try:
         answer = await run_kaggle(
             event.bot,
-            text,
+            request,
             event=event,
             on_tool_step=bot_cmds.tool_step_sink(
                 event.conn, target, workflow_id

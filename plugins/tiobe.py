@@ -9,6 +9,7 @@ from enum import Enum, auto
 from bs4 import BeautifulSoup, Tag
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 from cloudbot.util.web import get_session
 
 BASE_URL = "https://www.tiobe.com"
@@ -130,7 +131,7 @@ def get_table() -> list[TiobeRow]:
 
 
 @hook.command("tiobe", "tiobeindex", autohelp=False)
-def tiobe(reply, text):
+def tiobe(event: CommandEvent, text: str):
     """- Show the tiobe index ranking for the month."""
     rows = get_table()
     arg = ""
@@ -139,18 +140,20 @@ def tiobe(reply, text):
     # If is digit return the ranking for the language
     if arg.isdigit():
         try:
-            reply(*[str(row) for row in rows[int(arg) - 1 : int(arg) + 5]])
+            event.reply(
+                *[str(row) for row in rows[int(arg) - 1 : int(arg) + 5]]
+            )
         except IndexError:
-            reply("Invalid rank position")
+            event.reply("Invalid rank position")
 
     # If is a language return the ranking for the language
     elif arg:
         for row in rows:
             if arg.casefold() in row.language.casefold():
-                reply(str(row))
+                event.reply(str(row))
                 return
-        reply("Language not found in the top 50")
+        event.reply("Language not found in the top 50")
         return
 
     else:
-        reply(*[str(row) for row in rows[:5]])
+        event.reply(*[str(row) for row in rows[:5]])

@@ -2,7 +2,8 @@ import time
 from collections import deque
 
 from cloudbot import hook
-from cloudbot.event import EventType
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent, EventType
 
 
 def track_history(event, message_time, conn):
@@ -28,7 +29,7 @@ def chat_tracker(event, conn):
 
 
 @hook.command(autohelp=False)
-async def resethistory(event, conn):
+async def resethistory(event: CommandEvent, conn: IrcClient):
     """- resets chat history for the current channel"""
     try:
         conn.history[event.chan].clear()

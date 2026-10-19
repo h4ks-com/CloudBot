@@ -1,22 +1,24 @@
 import re
 import socket
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 URL = "https://json.geoiplookup.io/{}"
 
 
 @hook.command()
-def geoip(text, loop, reply):
-    """<host|ip> - Looks up the physical location of <host|ip> using Maxmind GeoLite"""
-    if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", text):
-        ip = text
-    elif re.match(r"(([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4})", text):
-        ip = text
+def geoip(host: Annotated[str, Arg("Host name or IP address")]):
+    """Looks up the physical location of the host or ip using Maxmind GeoLite"""
+    if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", host):
+        ip = host
+    elif re.match(r"(([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4})", host):
+        ip = host
     else:
         try:
-            ip = socket.gethostbyname(text)
+            ip = socket.gethostbyname(host)
         except socket.gaierror:
             return "Invalid input."
 

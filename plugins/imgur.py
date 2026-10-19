@@ -2,11 +2,14 @@ import random
 import re
 from contextlib import suppress
 from re import Match
+from typing import Annotated
 
 from imgurpython import ImgurClient
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.hook import Arg
 from cloudbot.util import web
 
 # imgurpython has an issue where it does not allow anonymous album creation
@@ -71,11 +74,16 @@ def get_items(text):
 
 
 @hook.command(autohelp=False)
-def imgur(text):
-    """[search term] / [/r/subreddit] / [/user/username] / memes / random - returns a link to a random imgur image based
+def imgur(
+    query: Annotated[
+        str | None,
+        Arg("Search term, /r/subreddit, /user/username, memes or random"),
+    ] = None,
+):
+    """returns a link to a random imgur image based
     on your input. if no input is given the bot will get an image from the imgur frontpage
     """
-    text = text.strip().lower()
+    text = (query or "").strip().lower()
 
     if not container.api:
         return "No imgur API details"
@@ -130,11 +138,17 @@ def imgur(text):
 
 
 @hook.command("imguralbum", "multiimgur", "imgalbum", "album", autohelp=False)
-def imguralbum(text, conn):
-    """[search term] / [/r/subreddit] / [/user/username] / memes / random - returns a link to lots of random images
+def imguralbum(
+    conn: IrcClient,
+    query: Annotated[
+        str | None,
+        Arg("Search term, /r/subreddit, /user/username, memes or random"),
+    ] = None,
+):
+    """returns a link to lots of random images
     based on your input. if no input is given the bot will get images from the imgur frontpage
     """
-    text = text.strip().lower()
+    text = (query or "").strip().lower()
 
     if not container.api:
         return "No imgur API details"

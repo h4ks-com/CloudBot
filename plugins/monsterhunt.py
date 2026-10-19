@@ -3,6 +3,7 @@ import operator
 import random
 from collections import defaultdict
 from time import time
+from typing import Annotated, Literal
 
 from sqlalchemy import (
     Column,
@@ -12,9 +13,13 @@ from sqlalchemy import (
     Table,
     desc,
 )
+from sqlalchemy.orm import Session
 from sqlalchemy.sql import select
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database, web
 
 duck = [
@@ -416,13 +421,21 @@ def smart_truncate(content, length=320, suffix="..."):
 
 
 @hook.command("monsterfriends", autohelp=False)
-def friends(text, chan, conn, db):
-    """[{global|average}] - Prints a list of the top monster friends in the channel, if 'global' is specified all channels in the database are included."""
+def friends(
+    chan: str,
+    conn: IrcClient,
+    db: Session,
+    scope: Annotated[
+        Literal["global", "average"] | None,
+        Arg("Count every channel, or average per channel"),
+    ] = None,
+):
+    """Prints a list of the top monster friends in the channel, if 'global' is specified all channels in the database are included."""
     if chan in opt_out:
         return None
     friends: dict[str, int] = defaultdict(int)
     chancount: dict[str, int] = defaultdict(int)
-    if text.lower() == "global" or text.lower() == "average":
+    if scope:
         out = "Monster friend scores across the network: "
         scores = db.execute(
             select(table.c.name, table.c.befriend)
@@ -435,7 +448,7 @@ def friends(text, chan, conn, db):
                     continue
                 chancount[row[0]] += 1
                 friends[row[0]] += row[1]
-            if text.lower() == "average":
+            if scope == "average":
                 for k, v in friends.items():
                     friends[k] = v // chancount[k]
         else:
@@ -472,13 +485,21 @@ def friends(text, chan, conn, db):
 
 
 @hook.command("monsterkillers", autohelp=False)
-def killers(text, chan, conn, db):
-    """[{global|average}] - Prints a list of the top monster killers in the channel, if 'global' is specified all channels in the database are included."""
+def killers(
+    chan: str,
+    conn: IrcClient,
+    db: Session,
+    scope: Annotated[
+        Literal["global", "average"] | None,
+        Arg("Count every channel, or average per channel"),
+    ] = None,
+):
+    """Prints a list of the top monster killers in the channel, if 'global' is specified all channels in the database are included."""
     if chan in opt_out:
         return None
     killers: dict[str, int] = defaultdict(int)
     chancount: dict[str, int] = defaultdict(int)
-    if text.lower() == "global" or text.lower() == "average":
+    if scope:
         out = "Monster killer scores across the network: "
         scores = db.execute(
             select(table.c.name, table.c.shot)
@@ -491,7 +512,7 @@ def killers(text, chan, conn, db):
                     continue
                 chancount[row[0]] += 1
                 killers[row[0]] += row[1]
-            if text.lower() == "average":
+            if scope == "average":
                 for k, v in killers.items():
                     killers[k] = v // chancount[k]
         else:
@@ -655,11 +676,16 @@ def duck_merge(text, conn, db, message):
 
 
 @hook.command("monsters", autohelp=False)
-def ducks_user(text, nick, chan, conn, db, message):
-    """<nick> - Prints a users monster stats. If no nick is input it will check the calling username."""
-    name = nick.lower()
-    if text:
-        name = text.split()[0].lower()
+def ducks_user(
+    nick: str,
+    chan: str,
+    conn: IrcClient,
+    db: Session,
+    event: CommandEvent,
+    user: Annotated[str | None, Arg("Nick to look up", kind="user")] = None,
+):
+    """Prints a users monster stats. If no nick is input it will check the calling username."""
+    name = (user or nick).lower()
     ducks: dict[str, int] = defaultdict(int)
     scores = db.execute(
         select(table.c.name, table.c.chan, table.c.shot, table.c.befriend)
@@ -675,7 +701,7 @@ def ducks_user(text, nick, chan, conn, db, message):
             ducks["friend"] += row["befriend"]
             ducks["chans"] += 1
         if ducks["chans"] == 1:
-            message(
+            event.message(
                 "{} has killed {} and befriended {} monsters in {}.".format(
                     name, ducks["chankilled"], ducks["chanfriends"], chan
                 )
@@ -683,7 +709,7 @@ def ducks_user(text, nick, chan, conn, db, message):
             return None
         kill_average = ducks["killed"] // ducks["chans"]
         friend_average = ducks["friend"] // ducks["chans"]
-        message(
+        event.message(
             "\x02{}'s\x02 duck stats: \x02{}\x02 killed and \x02{}\x02 befriended in {}. Across {} channels: \x02{}\x02 killed and \x02{}\x02 befriended. Averaging \x02{}\x02 kills and \x02{}\x02 friends per channel.".format(
                 name,
                 ducks["chankilled"],
@@ -701,7 +727,7 @@ def ducks_user(text, nick, chan, conn, db, message):
 
 
 @hook.command("monsterstats", autohelp=False)
-def duck_stats(chan, conn, db, message):
+def duck_stats(chan: str, conn: IrcClient, db: Session, event: CommandEvent):
     """- Prints monster statistics for the entire channel and totals for the network."""
     totals: dict[str, int] = defaultdict(int)
     friendchan: dict[str, int] = defaultdict(int)
@@ -729,7 +755,7 @@ def duck_stats(chan, conn, db, message):
             key=operator.itemgetter(1),
             reverse=True,
         )[0]
-        message(
+        event.message(
             "\x02Monster Stats:\x02 {} killed and {} befriended in \x02{}\x02. Across {} channels \x02{}\x02 monsters have been killed and \x02{}\x02 befriended. \x02Top Channels:\x02 \x02{}\x02 with {} kills and \x02{}\x02 with {} friends".format(
                 totals["chankilled"],
                 totals["chanfriends"],

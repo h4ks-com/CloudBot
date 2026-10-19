@@ -18,6 +18,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
+from typing import TypedDict
 
 from irclib.parser import Message
 
@@ -25,7 +26,15 @@ from cloudbot import hook
 from cloudbot.hook import Priority
 from cloudbot.plugin_hooks import CommandInfo
 from cloudbot.util import async_util
-from cloudbot.util.irc import is_channel
+from cloudbot.util.command_args import (
+    NAMED_ARGS_TAG,
+    ArgSpec,
+    CommandArgError,
+    CommandSpec,
+    OptionType,
+    encode_named_args,
+)
+from cloudbot.util.irc import chantypes, is_channel
 
 CAPS = [
     "message-tags",
@@ -62,14 +71,28 @@ _FRAGMENT_BYTES = 3500
 # payload by ~4/3, so the compact JSON must stay under this to fit in one tag.
 JSON_BUDGET = 2400
 
-# CloudBot commands take free text, so every command exposes one `text` option
+_DESCRIPTION_CHARS = 100
+
+
+class _RequiredOption(TypedDict):
+    name: str
+    type: OptionType
+    required: bool
+    description: str
+
+
+class CommandOption(_RequiredOption, total=False):
+    choices: list[str]
+
+
+# A command without Arg parameters that reads `text` exposes one `text` option
 # capturing the whole trailing payload.
-_DEFAULT_OPTION = {
-    "name": "text",
-    "type": "string",
-    "required": False,
-    "description": "Arguments for the command.",
-}
+_DEFAULT_OPTION = CommandOption(
+    name="text",
+    type="string",
+    required=False,
+    description="Arguments for the command.",
+)
 
 
 # --------------------------------------------------------------------------
@@ -120,16 +143,34 @@ class PendingInvocation:
 # --------------------------------------------------------------------------
 
 
+def _truncate(text: str) -> str:
+    if len(text) > _DESCRIPTION_CHARS:
+        return text[: _DESCRIPTION_CHARS - 3].rstrip() + "..."
+    return text
+
+
+def _build_option(arg: ArgSpec) -> CommandOption:
+    option = CommandOption(
+        name=arg.name,
+        type=arg.option_type,
+        required=arg.required,
+        description=_truncate(arg.help),
+    )
+    if arg.choices:
+        option["choices"] = list(arg.choices)
+    return option
+
+
 def _build_command_object(info: CommandInfo) -> dict[str, object]:
-    description = info.description
-    if len(description) > 100:
-        description = description[:97].rstrip() + "..."
+    options = [_build_option(arg) for arg in info.args]
+    if not options and info.takes_text:
+        options = [_DEFAULT_OPTION]
     return {
         "name": info.name,
-        "description": description or "(no description)",
+        "description": _truncate(info.description) or "(no description)",
         "aliases": info.aliases,
         "contexts": ["public", "pm"],
-        "options": [dict(_DEFAULT_OPTION)],
+        "options": options,
     }
 
 
@@ -273,17 +314,38 @@ def discard_pending(conn, msgid: str) -> None:
 
 
 def _inject_legacy_invocation(
-    conn, channel: str, invoker_mask: str, prefix_text: str
+    conn,
+    channel: str,
+    invoker_mask: str,
+    prefix_text: str,
+    named_args: dict[str, object] | None = None,
 ) -> bool:
-    """Replay a synthesised PRIVMSG so CloudBot's normal command pipeline runs."""
+    """Replay a synthesised PRIVMSG so CloudBot's normal command pipeline runs.
+    Named Arg values ride an internal tag the command dispatch parses."""
     protocol = conn._protocol
     if protocol is None:
         return False
-    event = protocol.parse_line(
-        f":{invoker_mask} PRIVMSG {channel} :{prefix_text}"
-    )
+    tags = None
+    if named_args is not None:
+        tags = {NAMED_ARGS_TAG: encode_named_args(named_args)}
+    line = Message(tags, invoker_mask, "PRIVMSG", [channel, prefix_text])
+    event = protocol.parse_line(str(line))
     async_util.wrap_future(conn.bot.process(event), loop=conn.loop)
     return True
+
+
+def _named_args(
+    spec: CommandSpec, options: dict[str, object], text: str, chantypes: str
+) -> dict[str, object] | None:
+    """Validate the options against the command's Args. Returns the options to
+    replay by name, or None when the command reads the free text."""
+    if not spec.args:
+        return None
+    if "text" in options and "text" not in spec.names:
+        spec.parse_text(text, chantypes)
+        return None
+    spec.parse_named(options)
+    return options
 
 
 def _dispatch_invocation(
@@ -319,7 +381,8 @@ def _dispatch_invocation(
         )
         return
 
-    if not conn.bot.plugin_manager.commands.get(cmd_name.casefold()):
+    cmd_hook = conn.bot.plugin_manager.commands.get(cmd_name.casefold())
+    if not cmd_hook:
         _send_cmd_error(
             conn,
             event.nick,
@@ -359,6 +422,19 @@ def _dispatch_invocation(
     else:
         args = " ".join(str(v) for v in options.values() if v not in (None, ""))
 
+    try:
+        named_args = _named_args(cmd_hook.spec, options, args, chantypes(conn))
+    except CommandArgError as e:
+        _send_cmd_error(
+            conn,
+            event.nick,
+            "INVALID_CMD_ARGS",
+            f"Invalid arguments for {cmd_name}: {e}.",
+            invocation_msgid=msgid,
+            channel=channel,
+        )
+        return
+
     pending = PendingInvocation(
         target=inject_target,
         invoker=event.nick,
@@ -372,7 +448,7 @@ def _dispatch_invocation(
 
     line_body = f"{_command_prefix(conn)}{cmd_name}{' ' if args else ''}{args}"
     if not _inject_legacy_invocation(
-        conn, inject_target, event.mask or event.nick, line_body
+        conn, inject_target, event.mask or event.nick, line_body, named_args
     ):
         _send_cmd_error(
             conn,

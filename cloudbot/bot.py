@@ -24,6 +24,7 @@ from cloudbot.hook import Action
 from cloudbot.plugin import PluginManager
 from cloudbot.reloader import ConfigReloader, PluginReloader
 from cloudbot.util import async_util, database, formatting
+from cloudbot.util.command_args import NAMED_ARGS_TAG, decode_named_args
 from cloudbot.util.mapping import KeyFoldDict
 from cloudbot.util.messages import MessageLog
 
@@ -445,6 +446,9 @@ class CloudBot(AbstractBot):
                     triggered_command=command,
                     base_event=event,
                     cmd_prefix=prefix,
+                    named_args=decode_named_args(
+                        event.tag_value(NAMED_ARGS_TAG)
+                    ),
                 )
 
                 def dispatch_command(command_hook):

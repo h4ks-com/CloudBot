@@ -14,8 +14,6 @@ output and never taken from the model's prose.
 ``create_video`` tool.
 """
 
-from __future__ import annotations
-
 import asyncio
 import itertools
 import json
@@ -23,7 +21,7 @@ import logging
 import re
 import time
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import requests
 from agents import Agent, FunctionTool, RunContextWrapper
@@ -36,6 +34,8 @@ from cloudbot.agent.common import (
 )
 from cloudbot.agent.runs import recent_block, record_run
 from cloudbot.agent.subagent import SubagentError, run_subagent
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import hyperframes
 from cloudbot.util.typing import (
     start_typing_for_command,
@@ -539,17 +539,16 @@ def spawn_video(
 
 
 @hook.command("video", autohelp=False, allow_private=False)
-async def video_command(text, event):
-    """<brief> - create a video; renders in the background and posts the MP4 link here when ready."""
-    if not text:
-        event.reply("usage: .video <what the video should be>")
-        return
+async def video_command(
+    event: CommandEvent, brief: Annotated[str, Arg("What the video should be")]
+):
+    """create a video; renders in the background and posts the MP4 link here when ready."""
     try:
         spawn_video(
             event.bot,
             event.conn,
             event.chan,
-            text,
+            brief,
             trigger_msgid=event.tag_value("msgid"),
         )
     except hyperframes.HyperframesNotConfigured:
@@ -574,19 +573,22 @@ def spawn_voice(
 
 
 @hook.command("speak", autohelp=False, allow_private=False)
-async def speak_command(text, event):
-    """<what to say> - generate a spoken voice clip (any delivery + voice cloning); posts the audio link here. Include a URL to clone that voice."""
-    if not text:
-        event.reply(
-            "usage: .speak <what to say> (add a direction like 'angrily' or 'terrified whisper', and paste a clip URL to clone that voice)"
-        )
-        return
+async def speak_command(
+    event: CommandEvent,
+    speech: Annotated[
+        str,
+        Arg(
+            "What to say, with a direction like 'angrily' or a clip URL to clone that voice"
+        ),
+    ],
+):
+    """generate a spoken voice clip (any delivery + voice cloning); posts the audio link here. Include a URL to clone that voice."""
     try:
         spawn_voice(
             event.bot,
             event.conn,
             event.chan,
-            text,
+            speech,
             trigger_msgid=event.tag_value("msgid"),
         )
     except hyperframes.HyperframesNotConfigured:

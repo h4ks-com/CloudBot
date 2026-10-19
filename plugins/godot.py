@@ -3,18 +3,20 @@
 import datetime
 import io
 import urllib.parse
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 import pyocr.builders
 from gazpacho import Soup, get
 from PIL import Image
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 
 @hook.command(autohelp=False)
-def jamdate(reply):
+def jamdate(event: CommandEvent):
     """- Next godot jam date"""
     from_date: datetime.datetime
     to_date: datetime.datetime
@@ -29,7 +31,7 @@ def jamdate(reply):
         text = elm.text
         from_text = cast(list[Soup], elm.find("span"))[0].text
         to_text = cast(list[Soup], elm.find("span"))[1].text
-        reply(f"itch.io Godot Wild Jam: {text} {from_text} to {to_text}")
+        event.reply(f"itch.io Godot Wild Jam: {text} {from_text} to {to_text}")
         from_date = datetime.datetime.strptime(from_text, "%Y-%m-%d %H:%M:%S")
         to_date = datetime.datetime.strptime(to_text, "%Y-%m-%d %H:%M:%S")
     except Exception:
@@ -43,7 +45,7 @@ def jamdate(reply):
     end_time_left = to_date - datetime.datetime.utcnow()
 
     if end_time_left.days < 0:
-        reply("This month's Godot Wild Jam is over.")
+        event.reply("This month's Godot Wild Jam is over.")
         now = datetime.datetime.utcnow()
         firstday = now.replace(day=1, month=now.month + 1)
         # This is the friday after the 1st weekend
@@ -55,20 +57,22 @@ def jamdate(reply):
         end_time_left = to_date - datetime.datetime.utcnow()
 
     if start_time_left.days < 0:
-        reply("Jam has already begun.")
+        event.reply("Jam has already begun.")
     else:
-        reply(
+        event.reply(
             f"Next Jam starts in {start_time_left.days} days {start_time_left.seconds // 3600} hours {(start_time_left.seconds // 60) % 60} minutes."
         )
-    reply(
+    event.reply(
         f"Jam ends in {end_time_left.days} days {end_time_left.seconds // 3600} hours {(end_time_left.seconds // 60) % 60} minutes."
     )
 
 
 @hook.command()
-def godocs(text, reply):
-    """<text> - Searches on godot documentation"""
-    query = urllib.parse.quote(text)
+def godocs(
+    event: CommandEvent, query: Annotated[str, Arg("What to search for")]
+):
+    """Searches on godot documentation"""
+    query = urllib.parse.quote(query)
     url = f"https://docs.godotengine.org/_/api/v2/search/?q={query}&project=godot&version=stable&language=en"
     data = cast(dict[str, Any], get(url))
 
@@ -92,7 +96,7 @@ def godocs(text, reply):
 
         i += 1
         used.add(item["path"])
-        reply(
+        event.reply(
             f"{item['title']}: {description} - {item['domain'] + item['path']}"
         )
 
@@ -138,7 +142,7 @@ class WildJamCardPaser:
 
 
 @hook.command("theme", autohelp=False)
-def theme(reply):
+def theme(event: CommandEvent):
     """- Current godot wild jam theme"""
     soup = Soup(cast(str, get("https://godotwildjam.com")))
     elm = cast(Soup, soup.find("div", {"class": "page-content"}))
@@ -152,7 +156,7 @@ def theme(reply):
 
     not_started = "theme to be announced" in title.lower()
     if not_started:
-        reply(title)
+        event.reply(title)
         return
 
     elms = cast(
@@ -165,6 +169,6 @@ def theme(reply):
     theme = parser.get_theme()
     cards = parser.get_cards()
 
-    reply(
+    event.reply(
         f"\x02{title}\x02: {theme} - \x02CARDS: \x02{cards[0]}, {cards[1]}, {cards[2]}"
     )

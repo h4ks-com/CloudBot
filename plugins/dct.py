@@ -3,10 +3,12 @@
 # dict.c bot: pip install dict.cc.py
 
 import logging
+from typing import Annotated
 
 from dictcc import AVAILABLE_LANGUAGES, Dict
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 
 next_msg = "  ----- Type `.tn` for more translations"
 logger = logging.getLogger("cloudbot")
@@ -16,21 +18,23 @@ translator = Dict()
 
 
 @hook.command("t")
-def dcc(text, nick):
-    """<in> <out> <query> - translate <query> from <in> to <out> where <in> and <out> are two-letter language codes"""
-    text = text.strip().split()
-    if len(text) < 3:
-        return "Usage: .t <in> <out> <query>"
-    inp = text[0]
-    out = text[1]
-    query = " ".join(text[2:])
+def dcc(
+    nick: str,
+    lang_in: Annotated[str, Arg("Two-letter input language code")],
+    lang_out: Annotated[str, Arg("Two-letter output language code")],
+    query: Annotated[str, Arg("Text to translate")],
+):
+    """translate <query> from <lang_in> to <lang_out> where <lang_in> and <lang_out> are two-letter language codes"""
+    query = " ".join(query.split())
 
-    if inp not in AVAILABLE_LANGUAGES:
-        return f"Invalid input language: {inp}"
-    if out not in AVAILABLE_LANGUAGES:
-        return f"Invalid output language: {out}"
+    if lang_in not in AVAILABLE_LANGUAGES:
+        return f"Invalid input language: {lang_in}"
+    if lang_out not in AVAILABLE_LANGUAGES:
+        return f"Invalid output language: {lang_out}"
 
-    results = translator.translate(query, from_language=inp, to_language=out)
+    results = translator.translate(
+        query, from_language=lang_in, to_language=lang_out
+    )
     logger.info(results)
     if len(results.translation_tuples) == 0:
         return "No transations were found!"
@@ -40,7 +44,7 @@ def dcc(text, nick):
 
 
 @hook.command("tn")
-def dcc_next(text, nick):
+def dcc_next(text: str, nick: str):
     """- Show the next translation"""
     results = last_results[nick]
     result = results.translation_tuples.pop(0)

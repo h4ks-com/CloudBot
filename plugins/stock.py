@@ -7,8 +7,10 @@ Authors:
 
 import math
 from decimal import Decimal
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import colors
 from cloudbot.util.web import get_session
 
@@ -105,12 +107,10 @@ def setup_api(bot):
 
 
 @hook.command()
-def stock(text):
-    """<symbol> - Get stock information from the AlphaVantage API"""
+def stock(symbol: Annotated[str, Arg("Ticker symbol", rest=False)]):
+    """Get stock information from the AlphaVantage API"""
     if not api:
         return "This command requires an AlphaVantage API key from https://alphavantage.co"
-
-    symbol = text.strip().split()[0]
 
     try:
         data = api.lookup(symbol)

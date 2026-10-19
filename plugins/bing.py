@@ -1,9 +1,13 @@
 import random
+from typing import Annotated
 
 from lxml import html
 from requests import HTTPError
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, filesize, formatting
 from cloudbot.util.web import get_session
 
@@ -30,15 +34,19 @@ def bingify(s):
 
 
 @hook.command("bing", "b")
-def bing(text, bot, reply):
-    """<query> - returns the first bing search result for <query>"""
+def bing(
+    bot: CloudBot,
+    event: CommandEvent,
+    query: Annotated[str, Arg("Search query")],
+):
+    """returns the first bing search result for <query>"""
     api_key = bot.config.get("api_keys", {}).get("bing_azure")
 
     # handle NSFW
-    show_nsfw = text.endswith(" nsfw")
+    show_nsfw = query.endswith(" nsfw")
     # remove "nsfw" from the input string after checking for it
     if show_nsfw:
-        text = text[:-5].strip().lower()
+        query = query[:-5].strip().lower()
 
     rating = NSFW_FILTER if show_nsfw else DEFAULT_FILTER
 
@@ -48,7 +56,7 @@ def bing(text, bot, reply):
     # why are these all differing formats and why does format have a $? ask microsoft
     params = {
         "Sources": bingify("web"),
-        "Query": bingify(text),
+        "Query": bingify(query),
         "Adult": bingify(rating),
         "$format": "json",
     }
@@ -58,7 +66,7 @@ def bing(text, bot, reply):
     try:
         request.raise_for_status()
     except HTTPError:
-        reply("Bing API error occurred.")
+        event.reply("Bing API error occurred.")
         raise
 
     # I'm not even going to pretend to know why results are in ['d']['results'][0]
@@ -80,16 +88,20 @@ def bing(text, bot, reply):
 
 
 @hook.command("bingimage", "bis")
-def bingimage(text, bot, reply):
-    """<query> - returns the first bing image search result for <query>"""
+def bingimage(
+    bot: CloudBot,
+    event: CommandEvent,
+    query: Annotated[str, Arg("Search query")],
+):
+    """returns the first bing image search result for <query>"""
     api_key = bot.config.get("api_keys", {}).get("bing_azure")
 
     # handle NSFW
-    show_nsfw = text.endswith(" nsfw")
+    show_nsfw = query.endswith(" nsfw")
 
     # remove "nsfw" from the input string after checking for it
     if show_nsfw:
-        text = text[:-5].strip().lower()
+        query = query[:-5].strip().lower()
 
     rating = NSFW_FILTER if show_nsfw else DEFAULT_FILTER
 
@@ -99,7 +111,7 @@ def bingimage(text, bot, reply):
     # why are these all differing formats and why does format have a $? ask microsoft
     params = {
         "Sources": bingify("image"),
-        "Query": bingify(text),
+        "Query": bingify(query),
         "Adult": bingify(rating),
         "$format": "json",
     }
@@ -109,7 +121,7 @@ def bingimage(text, bot, reply):
     try:
         request.raise_for_status()
     except HTTPError:
-        reply("Bing API error occurred.")
+        event.reply("Bing API error occurred.")
         raise
 
     # I'm not even going to pretend to know why results are in ['d']['results'][0]

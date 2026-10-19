@@ -1,8 +1,9 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import responses
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import pkg
 
 
@@ -628,43 +629,44 @@ def test_pop3_no_results():
 
 
 def test_pkgn_no_queue_for_nick():
-    result = pkg.pkgn("", None, "#chan", "alice", lambda *a: None)
+    result = pkg.pkgn(None, "#chan", "alice", MagicMock())
     assert result == "Nick 'alice' has no queue."
 
 
 def test_pkgn_no_queue_for_named_user():
     pkg.results_queue[("#chan", "alice")] = iter(["x"])
-    result = pkg.pkgn("bob", None, "#chan", "alice", lambda *a: None)
+    result = pkg.pkgn(None, "#chan", "alice", MagicMock(), "bob")
     assert result == "Nick 'bob' has no queue."
 
 
 def test_pkgn_returns_next_for_self():
     pkg.results_queue[("#chan", "alice")] = iter(["a", "b"])
-    replies = []
-    result = pkg.pkgn("", None, "#chan", "alice", lambda *a: replies.extend(a))
+    event = MagicMock()
+    result = pkg.pkgn(None, "#chan", "alice", event)
     assert result is None
-    assert replies == ["a", "b"]
+    event.reply.assert_called_once_with("a", "b")
 
 
 def test_pkgn_returns_next_for_named_user():
     pkg.results_queue[("#chan", "alice")] = iter(["a"])
     pkg.results_queue[("#chan", "bob")] = iter(["z"])
-    replies = []
-    result = pkg.pkgn(
-        "bob", None, "#chan", "alice", lambda *a: replies.extend(a)
-    )
+    event = MagicMock()
+    result = pkg.pkgn(None, "#chan", "alice", event, "bob")
     assert result is None
-    assert replies == ["z"]
+    event.reply.assert_called_once_with("z")
 
 
-def test_pkg_empty_text():
-    result = pkg.pkg("", None, "#chan", "alice", lambda *a: None)
-    assert result == "Please specify a repo and query."
+def test_pkg_args():
+    spec = build_spec(pkg.pkg)
+    assert spec.parse_text("APT foo bar") == {"repo": "apt", "query": "foo bar"}
+    assert spec.parse_text("apt") == {"repo": "apt", "query": None}
+    with pytest.raises(CommandArgError):
+        spec.parse_text("")
 
 
-def test_pkg_unknown_repo():
-    result = pkg.pkg("notarepo foo", None, "#chan", "alice", lambda *a: None)
-    assert "not found" in result
+def test_pkg_unknown_repo_is_rejected_by_the_arg_spec():
+    with pytest.raises(CommandArgError):
+        build_spec(pkg.pkg).parse_text("notarepo foo")
 
 
 def test_pkg_success_stores_queue_and_replies():
@@ -672,18 +674,14 @@ def test_pkg_success_stores_queue_and_replies():
         yield pkg.Package("found", "1.0", "", f"query was {query}")
 
     with patch.dict(pkg.REPOS, {"testrepo": fake_search}):
-        replies = []
+        event = MagicMock()
         result = pkg.pkg(
-            "testrepo hello world",
-            None,
-            "#chan",
-            "alice",
-            lambda *a: replies.extend(a),
+            None, "#chan", "alice", event, "testrepo", "hello world"
         )
     assert result is None
-    assert len(replies) == 1
-    assert "found" in replies[0]
-    assert "query was hello world" in replies[0]
+    (reply_line,) = event.reply.call_args.args
+    assert "found" in reply_line
+    assert "query was hello world" in reply_line
     assert ("#chan", "alice") in pkg.results_queue
 
 
@@ -692,7 +690,5 @@ def test_pkg_no_results():
         return iter([])
 
     with patch.dict(pkg.REPOS, {"testrepo": fake_search}):
-        result = pkg.pkg(
-            "testrepo foo", None, "#chan", "alice", lambda *a: None
-        )
+        result = pkg.pkg(None, "#chan", "alice", MagicMock(), "testrepo", "foo")
     assert result == "No [more] results found."

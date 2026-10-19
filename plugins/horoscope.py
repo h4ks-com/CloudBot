@@ -1,10 +1,16 @@
 # Plugin by Infinity - <https://github.com/infinitylabs/UguuBot>
+from typing import Annotated, Literal
+
 import requests
 from bs4 import Tag
 from sqlalchemy import Column, String, Table, select
+from sqlalchemy.orm import Session
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, database
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
@@ -57,42 +63,20 @@ def set_sign(db, nick, sign):
     db.commit()
 
 
-def parse_input(text):
-    """
-    >>> parse_input('')
-    (None, False)
-    >>> parse_input('aries')
-    ('aries', False)
-    >>> parse_input('aries dontsave')
-    ('aries', True)
-    """
-    if not text:
-        return None, False
-
-    args = text.split()
-    sign = args.pop(0)
-
-    dontsave = "dontsave" in args
-
-    return sign, dontsave
-
-
-def parse_or_lookup(text, db, nick, event):
-    sign, dontsave = parse_input(text)
-
+def parse_or_lookup(sign, db, nick, event):
     if not sign:
         sign = get_sign(db, nick)
         if not sign:
             event.notice_doc()
-            return None, None
+            return None
 
         sign = sign.strip().lower()
 
     if sign not in SIGN_MAP:
         event.notice(f"Unknown sign: {sign}")
-        return None, None
+        return None
 
-    return sign, dontsave
+    return sign
 
 
 class HoroscopeParseError(Exception):
@@ -128,17 +112,28 @@ def parse_page(content):
 
 
 @hook.command(autohelp=False)
-def horoscope(text, db, bot, nick, event):
-    """[sign] - get your horoscope"""
+def horoscope(
+    db: Session,
+    bot: CloudBot,
+    nick: str,
+    event: CommandEvent,
+    sign: Annotated[
+        str | None, Arg("Zodiac sign, your saved one by default")
+    ] = None,
+    dontsave: Annotated[
+        Literal["dontsave"] | None, Arg("Skip saving [sign] as your sign")
+    ] = None,
+):
+    """get your horoscope"""
 
     headers = {"User-Agent": bot.user_agent}
 
-    sign, dontsave = parse_or_lookup(text, db, nick, event)
+    resolved = parse_or_lookup(sign, db, nick, event)
 
-    if not sign:
+    if not resolved:
         return
 
-    params = {"sign": SIGN_MAP[sign]}
+    params = {"sign": SIGN_MAP[resolved]}
 
     try:
         with get_session().get(
@@ -158,9 +153,9 @@ def horoscope(text, db, bot, nick, event):
         event.reply("Unable to parse horoscope posting")
         raise
 
-    result = colors.parse("$(b){}$(b) {}").format(sign, horoscope_text)
+    result = colors.parse("$(b){}$(b) {}").format(resolved, horoscope_text)
 
-    if text and not dontsave:
-        set_sign(db, nick, sign)
+    if sign and not dontsave:
+        set_sign(db, nick, resolved)
 
     event.message(result)

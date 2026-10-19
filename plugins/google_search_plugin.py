@@ -1,10 +1,12 @@
 import json
 import random
+from typing import Annotated
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, http
 from plugins.ddg import search as ddg_search_impl
 
@@ -111,9 +113,9 @@ last_results: list[dict[str, str]] = []
 
 
 @hook.command("g")
-def g_search(text):
-    """<query> - returns the top web search results for <query> via SearXNG"""
-    results = searx_search(text)
+def g_search(query: Annotated[str, Arg("What to search for")]):
+    """returns the top web search results for <query> via SearXNG"""
+    results = searx_search(query)
     if not results:
         return "No results found."
     last_results.clear()
@@ -123,7 +125,7 @@ def g_search(text):
 
 
 @hook.command("gn", "ddg_next", autohelp=False)
-def g_next(text):
+def g_next(text: str):
     """- Show the next result from your last .g search"""
     if not last_results:
         return "No search results left"
@@ -132,9 +134,9 @@ def g_next(text):
 
 
 @hook.command("ddg")
-def ddg_search(text):
-    """<query> - returns the first DuckDuckGo search result for <query>"""
-    results = ddg_search_impl(text)
+def ddg_search(query: Annotated[str, Arg("What to search for")]):
+    """returns the first DuckDuckGo search result for <query>"""
+    results = ddg_search_impl(query)
     if not results:
         return "No results found."
     result = results[0]

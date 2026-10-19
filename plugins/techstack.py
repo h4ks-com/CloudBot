@@ -4,10 +4,12 @@
 
 import re
 import urllib.parse
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 UA = (
@@ -110,9 +112,8 @@ def _scan_re(hints, text, found):
 
 
 @hook.command()
-def stack(text):
-    """<url> - fingerprint a website's tech stack from headers and HTML"""
-    url = text.strip()
+def stack(url: Annotated[str, Arg("Website to fingerprint")]):
+    """fingerprint a website's tech stack from headers and HTML"""
     if "://" not in url:
         url = "http://" + url
 

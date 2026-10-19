@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import cypher
 
 
@@ -17,8 +18,7 @@ from plugins import cypher
     ],
 )
 def test_encipher(plaintext, key, ciphertext):
-    event = MagicMock()
-    assert cypher.cypher(f"{key} {plaintext}", event) == ciphertext
+    assert cypher.cypher(key, plaintext) == ciphertext
 
 
 @pytest.mark.parametrize(
@@ -34,25 +34,24 @@ def test_encipher(plaintext, key, ciphertext):
 )
 def test_decipher(ciphertext, key, plaintext):
     event = MagicMock()
-    assert cypher.decypher(f"{key} {ciphertext}", event) == plaintext
+    assert cypher.decypher(key, ciphertext, event) == plaintext
 
 
 def test_base64_error():
     event = MagicMock()
-    assert cypher.decypher("thing stuff and things", event) is None
+    assert cypher.decypher("thing", "stuff and things", event) is None
 
     event.notice.assert_called_with("Invalid input 'stuff and things'")
 
 
-def test_encipher_param_error():
-    event = MagicMock()
-    assert cypher.cypher("", event) is None
-
-    assert event.notice_doc.call_count == 1
-
-
-def test_decipher_param_error():
-    event = MagicMock()
-    assert cypher.decypher("", event) is None
-
-    assert event.notice_doc.call_count == 1
+@pytest.mark.parametrize("func", [cypher.cypher, cypher.decypher])
+def test_param_error(func):
+    spec = build_spec(func)
+    assert spec.parse_text("key some text") == {
+        "password": "key",
+        "string": "some text",
+    }
+    with pytest.raises(CommandArgError):
+        spec.parse_text("")
+    with pytest.raises(CommandArgError):
+        spec.parse_text("key")

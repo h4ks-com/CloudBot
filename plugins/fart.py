@@ -6,10 +6,13 @@
 
 import random
 from tempfile import NamedTemporaryFile
+from typing import Annotated
 
 from pydub import AudioSegment
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 
@@ -93,19 +96,24 @@ def fart_text(text: str) -> str:
 
 
 @hook.command("fart", autohelp=False)
-def fart(text: str, conn, chan, nick, reply):
-    """<sentence> - Farts out a sentence or someone."""
-    if not text.strip():
+def fart(
+    conn: IrcClient,
+    chan: str,
+    nick: str,
+    sentence: Annotated[str | None, Arg("Sentence or nick to fart out")] = None,
+):
+    """Farts out a sentence or someone."""
+    if not sentence:
         with NamedTemporaryFile(suffix=".wav") as temp:
             fart = randomize_audio(AudioSegment.from_wav("data/fart.wav"))
             fart.export(temp.name, format="wav")
             return upload_file(temp)
 
-    nick = text.strip().split()[0]
-    if text.strip() == nick:
+    nick = sentence.split()[0]
+    if sentence == nick:
         line = get_latest_line(conn, chan, nick)
         if line is not None:
-            text = line
+            sentence = line
             if line.startswith("\x01ACTION"):
-                text = line[8:].strip(" \x01")
-    return fart_text(text)
+                sentence = line[8:].strip(" \x01")
+    return fart_text(sentence)

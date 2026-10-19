@@ -1,9 +1,12 @@
 import re
+from typing import Annotated
 
 import requests
 from bs4 import Tag
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.http import parse_soup
 from cloudbot.util.web import get_session
@@ -128,14 +131,16 @@ def get_data(user, currency="us"):
 
 
 @hook.command("steamcalc", "steamdb")
-def steamcalc(text, reply):
-    """<username> - Gets value of steam account. Uses steamcommunity.com/id/<nickname>."""
-    user = text.strip().lower()
+def steamcalc(
+    username: Annotated[str, Arg("Steam username")], event: CommandEvent
+):
+    """Gets value of steam account. Uses steamcommunity.com/id/<nickname>."""
+    user = username.lower()
 
     try:
         data = get_data(user)
     except SteamError as e:
-        reply(f"{e}")
+        event.reply(f"{e}")
         raise
 
     data["short_url"] = web.try_shorten(data["url"])

@@ -6,6 +6,7 @@ import responses
 from requests.exceptions import ConnectionError as RequestsConnectionError
 
 from cloudbot.event import EventType
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import history
 from tests.util.mock_conn import MockConn
 
@@ -284,9 +285,7 @@ def test_chat_tracker_action_event_wraps_content(mock_db, freeze_time):
 def test_seen_asking_about_bot(seen_db):
     conn = MockConn(nick="MyBot")
     event = make_event(conn=conn, is_nick_valid=lambda n: True)
-    result = history.seen(
-        "MyBot", "alice", "#chan", seen_db, event, lambda n: True
-    )
+    result = history.seen("MyBot", "alice", "#chan", seen_db, event)
     assert result == "You need to get your eyes checked."
 
 
@@ -296,8 +295,7 @@ def test_seen_asking_about_self(seen_db):
         "alice",
         "#chan",
         seen_db,
-        make_event(conn=MockConn()),
-        lambda n: True,
+        make_event(conn=MockConn(), is_nick_valid=lambda n: True),
     )
     assert result == "Have you looked in a mirror lately?"
 
@@ -308,8 +306,7 @@ def test_seen_invalid_nick(seen_db):
         "alice",
         "#chan",
         seen_db,
-        make_event(conn=MockConn()),
-        lambda n: False,
+        make_event(conn=MockConn(), is_nick_valid=lambda n: False),
     )
     assert result == "I can't look up that name, its impossible to use!"
 
@@ -320,8 +317,7 @@ def test_seen_never_seen(seen_db):
         "alice",
         "#chan",
         seen_db,
-        make_event(conn=MockConn()),
-        lambda n: True,
+        make_event(conn=MockConn(), is_nick_valid=lambda n: True),
     )
     assert result == "I've never seen bob talking in this channel."
 
@@ -340,8 +336,7 @@ def test_seen_regular_message(seen_db, freeze_time):
         "alice",
         "#chan",
         seen_db,
-        make_event(conn=MockConn()),
-        lambda n: True,
+        make_event(conn=MockConn(), is_nick_valid=lambda n: True),
     )
     assert result == "bob was last seen 60 seconds ago saying: hello world"
 
@@ -363,8 +358,7 @@ def test_seen_action_message(seen_db, freeze_time):
         "alice",
         "#chan",
         seen_db,
-        make_event(conn=MockConn()),
-        lambda n: True,
+        make_event(conn=MockConn(), is_nick_valid=lambda n: True),
     )
     assert result == "bob was last seen 0 minutes ago: * bob waves"
 
@@ -374,13 +368,13 @@ def test_seen_action_message(seen_db, freeze_time):
 
 def test_lastlink_no_links(urls_db):
     conn = MockConn(name="testconn")
-    assert history.lastlink("", "#chan", conn, urls_db) == "No links found"
+    assert history.lastlink("#chan", conn, urls_db) == "No links found"
 
 
 def test_lastlink_no_links_for_nick(urls_db):
     conn = MockConn(name="testconn")
     assert (
-        history.lastlink("bob", "#chan", conn, urls_db)
+        history.lastlink("#chan", conn, urls_db, "bob")
         == "No links found for nick: bob"
     )
 
@@ -398,7 +392,7 @@ def test_lastlink_general(urls_db):
         )
     )
     urls_db.commit()
-    result = history.lastlink("", "#chan", conn, urls_db)
+    result = history.lastlink("#chan", conn, urls_db)
     assert "bob: Example - http://example.com" in result
 
 
@@ -415,7 +409,7 @@ def test_lastlink_for_specific_nick(urls_db):
         )
     )
     urls_db.commit()
-    result = history.lastlink("bob", "#chan", conn, urls_db)
+    result = history.lastlink("#chan", conn, urls_db, "bob")
     assert "bob: No title available - http://example.com" in result
 
 
@@ -424,13 +418,13 @@ def test_lastlink_for_specific_nick(urls_db):
 
 def test_userlinks_no_links(urls_db):
     conn = MockConn(name="testconn")
-    result = history.userlinks("", "#chan", conn, urls_db, "alice")
+    result = history.userlinks("#chan", conn, urls_db, "alice")
     assert result == "No links found"
 
 
 def test_userlinks_no_links_for_nick(urls_db):
     conn = MockConn(name="testconn")
-    result = history.userlinks("bob", "#chan", conn, urls_db, "alice")
+    result = history.userlinks("#chan", conn, urls_db, "alice", "bob")
     assert result == "No links found for nick: bob"
 
 
@@ -452,7 +446,7 @@ def _seed_urls(db, conn_name, chan, nick, count):
 def test_userlinks_default_nick_shows_recent_and_queues(urls_db):
     conn = MockConn(name="testconn")
     _seed_urls(urls_db, "testconn", "#chan", "alice", 5)
-    result = history.userlinks("", "#chan", conn, urls_db, "alice")
+    result = history.userlinks("#chan", conn, urls_db, "alice")
     assert result.startswith("Recent links in channel: (showing 3 of 5")
     assert "1. Title 4 - http://example.com/4" in result
     assert len(history.url_results_queue["#chan"]["alice"]) == 5
@@ -461,7 +455,7 @@ def test_userlinks_default_nick_shows_recent_and_queues(urls_db):
 def test_userlinks_for_nick_no_pagination_hint(urls_db):
     conn = MockConn(name="testconn")
     _seed_urls(urls_db, "testconn", "#chan", "bob", 2)
-    result = history.userlinks("bob", "#chan", conn, urls_db, "alice")
+    result = history.userlinks("#chan", conn, urls_db, "alice", "bob")
     assert result.startswith("Recent links for bob: ")
     assert "(showing" not in result
 
@@ -479,7 +473,7 @@ def test_userlinks_truncates_long_titles(urls_db):
         )
     )
     urls_db.commit()
-    result = history.userlinks("", "#chan", conn, urls_db, "alice")
+    result = history.userlinks("#chan", conn, urls_db, "alice")
     assert "..." in result
 
 
@@ -490,13 +484,13 @@ def test_urls_next_no_queue():
     # url_results_queue auto-vivifies missing keys to an empty list (see
     # cloudbot.util.queue.Queue), so this never hits the KeyError branch and
     # falls through to the same message as an emptied queue.
-    result = history.urls_next("", "#chan", MockConn(), "alice")
+    result = history.urls_next("#chan", MockConn(), "alice")
     assert result == "No [more] results found."
 
 
 def test_urls_next_empty_queue():
     history.url_results_queue["#chan"]["alice"] = []
-    result = history.urls_next("", "#chan", MockConn(), "alice")
+    result = history.urls_next("#chan", MockConn(), "alice")
     assert result == "No [more] results found."
 
 
@@ -505,7 +499,7 @@ def test_urls_next_exhausts_queue():
         ("http://a", "A", 1.0),
         ("http://b", "B", 2.0),
     ]
-    result = history.urls_next("", "#chan", MockConn(), "alice")
+    result = history.urls_next("#chan", MockConn(), "alice")
     assert result == "No more results found."
     assert history.url_results_queue["#chan"]["alice"] == []
 
@@ -513,8 +507,8 @@ def test_urls_next_exhausts_queue():
 def test_urls_next_returns_next_page(urls_db):
     conn = MockConn(name="testconn")
     _seed_urls(urls_db, "testconn", "#chan", "alice", 5)
-    history.userlinks("", "#chan", conn, urls_db, "alice")
-    result = history.urls_next("", "#chan", conn, "alice")
+    history.userlinks("#chan", conn, urls_db, "alice")
+    result = history.urls_next("#chan", conn, "alice")
     assert result.startswith("More links in channel: ")
     assert "4. Title 1 - http://example.com/1" in result
     assert "5. Title 0 - http://example.com/0" in result
@@ -525,15 +519,22 @@ def test_urls_next_returns_next_page(urls_db):
 
 def test_searchword_no_history():
     conn = MockConn()
-    result = history.searchword("bob hello", "#chan", conn)
+    result = history.searchword("#chan", conn, "bob", "hello")
     assert result == "There is no history for this channel."
 
 
 def test_searchword_missing_args():
-    conn = MockConn()
-    conn.history["#chan"] = [("bob", 1.0, "hi")]
-    result = history.searchword("bob", "#chan", conn)
-    assert result == "Please provide a nick and a search string."
+    with pytest.raises(CommandArgError):
+        build_spec(history.searchword).parse_text("bob")
+
+
+def test_searchword_parses_nick_and_rest():
+    parsed = build_spec(history.searchword).parse_text("bob  hello  world")
+    assert parsed == {"target": "bob", "needle": "hello  world"}
+
+
+def test_lastlink_target_is_optional():
+    assert build_spec(history.lastlink).parse_text("") == {"target": None}
 
 
 def test_searchword_finds_match():
@@ -542,7 +543,7 @@ def test_searchword_finds_match():
         ("bob", 900.0, "hello world"),
         ("bob", 1000.0, "the current invocation"),
     ]
-    result = history.searchword("bob world", "#chan", conn)
+    result = history.searchword("#chan", conn, "bob", "world")
     assert "bob: hello \x02world\x02" in result
 
 
@@ -552,7 +553,7 @@ def test_searchword_wildcard_nick():
         ("bob", 900.0, "special text here"),
         ("alice", 1000.0, "the current invocation"),
     ]
-    result = history.searchword("* special", "#chan", conn)
+    result = history.searchword("#chan", conn, "*", "special")
     assert "bob: \x02special\x02 text here" in result
 
 
@@ -562,14 +563,14 @@ def test_searchword_action_message_transform():
         ("bob", 900.0, "\x01ACTION waves hello\x01"),
         ("bob", 1000.0, "invocation"),
     ]
-    result = history.searchword("bob hello", "#chan", conn)
+    result = history.searchword("#chan", conn, "bob", "hello")
     assert "* waves \x02hello\x02" in result
 
 
 def test_searchword_not_found():
     conn = MockConn()
     conn.history["#chan"] = [("bob", 1000.0, "invocation")]
-    result = history.searchword("bob missing", "#chan", conn)
+    result = history.searchword("#chan", conn, "bob", "missing")
     assert (
         result
         == "Seems like bob hasn't said anything containing 'missing' recently"

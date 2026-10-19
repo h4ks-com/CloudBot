@@ -35,7 +35,7 @@ def pretty_dict(dict):
 
 
 @hook.command("chinese", autohelp=False)
-def chinese(text):
+def chinese(text: str):
     """<command> <args> - Chinese lang tools"""
     # If no arguments are provided list commands
     if not text:
@@ -86,7 +86,7 @@ def chinese(text):
 
 
 @hook.command("transliterate", autohelp=False)
-def transliterate(text):
+def transliterate(text: str):
     """<source> <text> - Transliterate text"""
     if not text:
         return "Usage: .transliterate <source> <text>"

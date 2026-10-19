@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Annotated, Any, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -12,6 +12,7 @@ from cachetools import TTLCache
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.hook import Arg
 from cloudbot.util.formatting import truncate
 from cloudbot.util.web import get_session
 from cloudbot.webhooks.handlers import register_webhook_handler
@@ -777,40 +778,49 @@ def add_url_to_queue(
 
 @hook.command("queue", "request", "req")
 def queue_add(
-    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+    url: Annotated[str, Arg("YouTube or SoundCloud URL")],
+    event: Any,
+    bot: Any,
+    conn: Any,
+    nick: str,
+    chan: str,
 ) -> str:
-    """<url> - Add a song to the user queue"""
-    if not text or not text.strip():
-        return "Usage: .queue <url> or .request <url> - Add a YouTube/SoundCloud URL to user queue"
-
+    """Add a song to the user queue"""
     config = bot.config.get("plugins", {}).get("radio", {})
-    url = text.strip()
     return add_url_to_queue(url, "user", config, event, conn, nick, chan)
 
 
 @hook.command("adminqueue", "adminrequest", "areq", permissions=["botcontrol"])
 def admin_queue_add(
-    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+    url: Annotated[str, Arg("YouTube or SoundCloud URL")],
+    event: Any,
+    bot: Any,
+    conn: Any,
+    nick: str,
+    chan: str,
 ) -> str:
-    """<url> - Add a song to the fallback playlist"""
-    if not text or not text.strip():
-        return "Usage: .adminqueue <url> or .adminrequest <url> - Add a URL to fallback playlist"
-
+    """Add a song to the fallback playlist"""
     auth_error = check_user_authenticated(conn, nick)
     if auth_error:
         return auth_error
 
     config = bot.config.get("plugins", {}).get("radio", {})
-    url = text.strip()
     return add_url_to_queue(url, "fallback", config, event, conn, nick, chan)
 
 
 @hook.command("reqyt", autohelp=False)
 def queue_add_youtube(
-    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+    event: Any,
+    bot: Any,
+    conn: Any,
+    nick: str,
+    chan: str,
+    user: Annotated[
+        str | None, Arg("Nick whose search to add", kind="user")
+    ] = None,
 ) -> str:
-    """[nick] - Add your last YouTube search result (or another user's) to the user queue"""
-    target_nick = text.strip() if text and text.strip() else nick
+    """Add your last YouTube search result (or [user]'s) to the user queue"""
+    target_nick = user or nick
 
     url = last_youtube_url.get((chan, target_nick))
     if not url:
@@ -825,10 +835,17 @@ def queue_add_youtube(
 
 @hook.command("reqgse", autohelp=False)
 def queue_add_gse(
-    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+    event: Any,
+    bot: Any,
+    conn: Any,
+    nick: str,
+    chan: str,
+    user: Annotated[
+        str | None, Arg("Nick whose search to add", kind="user")
+    ] = None,
 ) -> str:
-    """[nick] - Add your last Google search result (or another user's) to the user queue"""
-    target_nick = text.strip() if text and text.strip() else nick
+    """Add your last Google search result (or [user]'s) to the user queue"""
+    target_nick = user or nick
 
     url = last_gse_url.get((chan, target_nick))
     if not url:
@@ -843,14 +860,21 @@ def queue_add_gse(
 
 @hook.command("areqyt", autohelp=False, permissions=["botcontrol"])
 def admin_queue_add_youtube(
-    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+    event: Any,
+    bot: Any,
+    conn: Any,
+    nick: str,
+    chan: str,
+    user: Annotated[
+        str | None, Arg("Nick whose search to add", kind="user")
+    ] = None,
 ) -> str:
-    """[nick] - Add your last YouTube search result (or another user's) to the fallback playlist"""
+    """Add your last YouTube search result (or [user]'s) to the fallback playlist"""
     auth_error = check_user_authenticated(conn, nick)
     if auth_error:
         return auth_error
 
-    target_nick = text.strip() if text and text.strip() else nick
+    target_nick = user or nick
 
     url = last_youtube_url.get((chan, target_nick))
     if not url:
@@ -865,14 +889,21 @@ def admin_queue_add_youtube(
 
 @hook.command("areqgse", autohelp=False, permissions=["botcontrol"])
 def admin_queue_add_gse(
-    text: str, event: Any, bot: Any, conn: Any, nick: str, chan: str
+    event: Any,
+    bot: Any,
+    conn: Any,
+    nick: str,
+    chan: str,
+    user: Annotated[
+        str | None, Arg("Nick whose search to add", kind="user")
+    ] = None,
 ) -> str:
-    """[nick] - Add your last Google search result (or another user's) to the fallback playlist"""
+    """Add your last Google search result (or [user]'s) to the fallback playlist"""
     auth_error = check_user_authenticated(conn, nick)
     if auth_error:
         return auth_error
 
-    target_nick = text.strip() if text and text.strip() else nick
+    target_nick = user or nick
 
     url = last_gse_url.get((chan, target_nick))
     if not url:

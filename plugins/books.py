@@ -1,6 +1,12 @@
+from typing import Annotated
+
 from requests import HTTPError
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, web
 from cloudbot.util.web import get_session
 from plugins.ratelimit import Limit, check, record
@@ -20,8 +26,13 @@ BOOKS_LIMITS = [
 
 
 @hook.command("books", "gbooks")
-def books(text, reply, bot, db):
-    """<query> - Searches Google Books for <query>."""
+def books(
+    query: Annotated[str, Arg("What to search Google Books for")],
+    event: CommandEvent,
+    bot: CloudBot,
+    db: Session,
+):
+    """Searches Google Books for <query>."""
     api_key = bot.config.get_api_key("google")
     if not api_key:
         return "This command requires a Google API key."
@@ -31,12 +42,12 @@ def books(text, reply, bot, db):
         return cap_msg
 
     with get_session().get(
-        book_search_api, params={"q": text, "key": api_key, "country": "US"}
+        book_search_api, params={"q": query, "key": api_key, "country": "US"}
     ) as response:
         try:
             response.raise_for_status()
         except HTTPError:
-            reply("API error occurred.")
+            event.reply("API error occurred.")
             raise
 
         json = response.json()

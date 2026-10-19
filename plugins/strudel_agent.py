@@ -15,11 +15,9 @@ and the strudel.cc link is built locally, never taken from the model's prose.
 ``compose_strudel`` tool.
 """
 
-from __future__ import annotations
-
 import re
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from agents import Agent, FunctionTool, RunContextWrapper
 
@@ -31,6 +29,8 @@ from cloudbot.agent.common import (
 )
 from cloudbot.agent.runs import recent_runs, record_run
 from cloudbot.agent.subagent import SubagentError, run_subagent
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import strudel, web
 from cloudbot.util.typing import (
     start_typing_for_command,
@@ -220,12 +220,12 @@ async def run_strudel(
     return reply
 
 
-@hook.command("strudel", autohelp=False, allow_private=False)
-async def strudel_command(text, event):
-    """<description> - compose and render a short song with Strudel; returns links."""
-    if not text:
-        event.reply("usage: .strudel <song description or Strudel code>")
-        return
+@hook.command("strudel", allow_private=False)
+async def strudel_command(
+    event: CommandEvent,
+    description: Annotated[str, Arg("Song description or Strudel code")],
+):
+    """compose and render a short song with Strudel; returns links."""
     event.reply("Composing with Strudel, this may take a minute...")
     typing_id = id(event)
     target = event.chan or event.nick
@@ -236,7 +236,7 @@ async def strudel_command(text, event):
     try:
         answer = await run_strudel(
             event.bot,
-            text,
+            description,
             channel=target,
             on_tool_step=bot_cmds.tool_step_sink(
                 event.conn, target, workflow_id

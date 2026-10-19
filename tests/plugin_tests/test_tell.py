@@ -1,11 +1,14 @@
 import datetime
 from unittest.mock import MagicMock, call, patch
 
+import pytest
 import sqlalchemy as sa
 from irclib.parser import Prefix
 
 from cloudbot.util import database
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import tell
+from tests.util import call_command
 from tests.util.mock_conn import MockConn
 
 
@@ -91,31 +94,22 @@ def test_tellcmd(mock_db):
     sender = Prefix("TestUser", "user", "example.com")
 
     def _test(text, output):
-        tell.tell_cmd(
+        call_command(
+            tell.tell_cmd,
             text,
-            sender.nick,
-            session,
-            mock_conn,
-            sender.mask,
-            mock_event,
+            nick=sender.nick,
+            db=session,
+            conn=mock_conn,
+            mask=sender.mask,
+            event=mock_event,
         )
 
         mock_event.notice.assert_called_with(output)
 
         mock_event.reset_mock()
 
-    tell.tell_cmd(
-        "OtherUser",
-        sender.nick,
-        session,
-        mock_conn,
-        sender.mask,
-        mock_event,
-    )
-
-    mock_event.notice_doc.assert_called_once_with()
-
-    mock_event.reset_mock()
+    with pytest.raises(CommandArgError):
+        build_spec(tell.tell_cmd).parse_text("OtherUser")
 
     _test(
         "OtherUser some message",
@@ -184,7 +178,7 @@ def test_showtells(mock_db, freeze_time):
     ]
 
     freeze_time.tick(datetime.timedelta(minutes=1))
-    res = tell.showtells(nick, event.notice, db, conn)
+    res = tell.showtells(nick, event, db, conn)
     assert res is None
     assert event.mock_calls == [
         call.notice("foo sent you a message 60 seconds ago: bar")
@@ -209,7 +203,7 @@ def test_showtells_no_tells(mock_db, freeze_time):
     conn = MockConn()
     nick = "other"
     event = MagicMock()
-    res = tell.showtells(nick, event.notice, db, conn)
+    res = tell.showtells(nick, event, db, conn)
     assert res is None
     assert event.mock_calls == [call.notice("You have no pending messages.")]
 
@@ -505,7 +499,7 @@ def test_tell_disable(mock_db, freeze_time):
     db = mock_db.session()
     text = ""
     nick = "foo"
-    res = tell.tell_disable(conn, db, text, nick, event)
+    res = tell.tell_disable(conn, db, nick, event, text or None)
     assert res == "Tells are now disabled for you."
     assert event.mock_calls == []
     assert mock_db.get_data(tell.disable_table) == [
@@ -522,7 +516,7 @@ def test_tell_disable_self(mock_db, freeze_time):
     db = mock_db.session()
     nick = "foo"
     text = nick
-    res = tell.tell_disable(conn, db, text, nick, event)
+    res = tell.tell_disable(conn, db, nick, event, text or None)
     assert res == "Tells are now disabled for you."
     assert event.mock_calls == []
     assert mock_db.get_data(tell.disable_table) == [
@@ -539,7 +533,7 @@ def test_tell_disable_no_perms(mock_db, freeze_time):
     db = mock_db.session()
     nick = "foo"
     text = "other"
-    res = tell.tell_disable(conn, db, text, nick, event)
+    res = tell.tell_disable(conn, db, nick, event, text or None)
     assert res is None
     assert event.mock_calls == [
         call.has_permission("botcontrol"),
@@ -558,7 +552,7 @@ def test_tell_disable_other(mock_db, freeze_time):
     db = mock_db.session()
     nick = "foo"
     text = "other"
-    res = tell.tell_disable(conn, db, text, nick, event)
+    res = tell.tell_disable(conn, db, nick, event, text or None)
     assert res == "Tells are now disabled for 'other'."
     assert event.mock_calls == [call.has_permission("botcontrol")]
     assert mock_db.get_data(tell.disable_table) == [
@@ -583,7 +577,7 @@ def test_tell_disable_already_disabled(mock_db, freeze_time):
     tell.load_disabled(mock_db.session())
     event.has_permission.return_value = True
     db = mock_db.session()
-    res = tell.tell_disable(conn, db, text, nick, event)
+    res = tell.tell_disable(conn, db, nick, event, text or None)
     assert res == "Tells are already disabled for you."
     assert event.mock_calls == []
     assert mock_db.get_data(tell.disable_table) == [
@@ -608,7 +602,7 @@ def test_tell_disable_already_disabled_other(mock_db, freeze_time):
     tell.load_disabled(mock_db.session())
     event.has_permission.return_value = True
     db = mock_db.session()
-    res = tell.tell_disable(conn, db, text, nick, event)
+    res = tell.tell_disable(conn, db, nick, event, text or None)
     assert res == "Tells are already disabled for 'other'."
     assert event.mock_calls == [call.has_permission("botcontrol")]
     assert mock_db.get_data(tell.disable_table) == [
@@ -633,7 +627,7 @@ def test_tell_enable(mock_db, freeze_time):
     tell.load_disabled(mock_db.session())
     event.has_permission.return_value = True
     db = mock_db.session()
-    res = tell.tell_enable(conn, db, text, event, nick)
+    res = tell.tell_enable(conn, db, event, nick, text or None)
     assert res == "Tells are now enabled for you."
     assert event.mock_calls == []
     assert mock_db.get_data(tell.disable_table) == []
@@ -656,7 +650,7 @@ def test_tell_enable_self(mock_db, freeze_time):
         set_at=datetime.datetime.now(),
     )
     tell.load_disabled(mock_db.session())
-    res = tell.tell_enable(conn, db, text, event, nick)
+    res = tell.tell_enable(conn, db, event, nick, text or None)
     assert res == "Tells are now enabled for you."
     assert event.mock_calls == []
     assert mock_db.get_data(tell.disable_table) == []
@@ -671,7 +665,7 @@ def test_tell_enable_no_perms(mock_db, freeze_time):
     db = mock_db.session()
     nick = "foo"
     text = "other"
-    res = tell.tell_enable(conn, db, text, event, nick)
+    res = tell.tell_enable(conn, db, event, nick, text or None)
     assert res is None
     assert event.mock_calls == [
         call.has_permission("botcontrol"),
@@ -698,7 +692,7 @@ def test_tell_enable_other(mock_db, freeze_time):
         set_at=datetime.datetime.now(),
     )
     tell.load_disabled(mock_db.session())
-    res = tell.tell_enable(conn, db, text, event, nick)
+    res = tell.tell_enable(conn, db, event, nick, text or None)
     assert res == "Tells are now enabled for 'other'."
     assert event.mock_calls == [call.has_permission("botcontrol")]
     assert mock_db.get_data(tell.disable_table) == []
@@ -713,7 +707,7 @@ def test_tell_enable_already_enabled(mock_db, freeze_time):
     conn = MockConn()
     event.has_permission.return_value = True
     db = mock_db.session()
-    res = tell.tell_enable(conn, db, text, event, nick)
+    res = tell.tell_enable(conn, db, event, nick, text or None)
     assert res == "Tells are already enabled for you."
     assert event.mock_calls == []
     assert mock_db.get_data(tell.disable_table) == []
@@ -728,7 +722,7 @@ def test_tell_enable_already_enabled_other(mock_db, freeze_time):
     conn = MockConn()
     event.has_permission.return_value = True
     db = mock_db.session()
-    res = tell.tell_enable(conn, db, text, event, nick)
+    res = tell.tell_enable(conn, db, event, nick, text or None)
     assert res == "Tells are already enabled for 'other'."
     assert event.mock_calls == [call.has_permission("botcontrol")]
     assert mock_db.get_data(tell.disable_table) == []
@@ -776,7 +770,7 @@ def test_tell_ignore(mock_db, freeze_time):
     text = "other"
     db = mock_db.session()
     tell.load_ignores(mock_db.session())
-    res = tell.tell_ignore(db, conn, nick, text, event.notice)
+    res = tell.tell_ignore(db, conn, nick, text, event)
     assert res is None
     assert event.mock_calls == [
         call.notice("You are now ignoring tells from 'other'")
@@ -796,7 +790,7 @@ def test_tell_ignore_existing(mock_db, freeze_time):
     text = "other"
     db = mock_db.session()
     tell.add_ignore(db, conn, nick, text, now=datetime.datetime.now())
-    res = tell.tell_ignore(db, conn, nick, text, event.notice)
+    res = tell.tell_ignore(db, conn, nick, text, event)
     assert res is None
     assert event.mock_calls == [
         call.notice("You are already ignoring tells from 'other'")
@@ -816,7 +810,7 @@ def test_tell_unignore_not_Set(mock_db, freeze_time):
     text = "other"
     db = mock_db.session()
     tell.load_ignores(mock_db.session())
-    res = tell.tell_unignore(db, conn, nick, text, event.notice)
+    res = tell.tell_unignore(db, conn, nick, text, event)
     assert res is None
     assert event.mock_calls == [
         call.notice("No ignore matching 'other' exists.")
@@ -841,7 +835,7 @@ def test_tell_unignore(mock_db, freeze_time):
         set_at=datetime.datetime.now(),
     )
     tell.load_ignores(mock_db.session())
-    res = tell.tell_unignore(db, conn, nick, text, event.notice)
+    res = tell.tell_unignore(db, conn, nick, text, event)
     assert res is None
     assert event.mock_calls == [call.notice("'other' has been unignored")]
     assert mock_db.get_data(tell.ignore_table) == []

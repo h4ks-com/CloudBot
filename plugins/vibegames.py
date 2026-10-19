@@ -1,10 +1,12 @@
 import base64
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 
@@ -136,13 +138,14 @@ class VibeClient:
         return self._handle_response(response)
 
 
-@hook.command("vibegame", "vibefind", "vibesearch", autohelp=False)
-def vibegame(text: str, chan: str, nick: str, reply) -> None | str:
-    """<name> - Get a vibe game"""
-    if not text.strip():
-        return "Usage: .vibegame <name>"
-
-    name = text.strip()
+@hook.command("vibegame", "vibefind", "vibesearch")
+def vibegame(
+    name: Annotated[str, Arg("Game name")],
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+) -> None | str:
+    """Get a vibe game"""
     client = VibeClient()
     response = client.search(name)
     if not response:
@@ -157,20 +160,18 @@ def vibegame(text: str, chan: str, nick: str, reply) -> None | str:
             f"{result['project']} at {preferred_url} ({result['num_opens']} opens) - {result['github_url']}"
         )
     if lines:
-        reply(*lines)
+        event.reply(*lines)
     return None
 
 
-@hook.command("vibeadd", "vibecreate", autohelp=False)
-def vibe(text: str, chan: str, nick: str) -> str:
-    """<name> <prompt> - Vibe create a new game"""
-    if not text.strip():
-        return "Usage: .vibeadd <name> <prompt>"
-
-    if len(text.split()) < 2:
-        return "Usage: .vibeadd <name> <prompt>"
-
-    name, prompt = text.split(maxsplit=1)
+@hook.command("vibeadd", "vibecreate")
+def vibe(
+    name: Annotated[str, Arg("Game name")],
+    prompt: Annotated[str, Arg("What the game should be")],
+    chan: str,
+    nick: str,
+) -> str:
+    """Vibe create a new game"""
     client = VibeClient()
     response = client.create(name, prompt)
     if response["status"] != "success":
@@ -179,16 +180,14 @@ def vibe(text: str, chan: str, nick: str) -> str:
     return f"Created {name} at {response['url']}"
 
 
-@hook.command("vibeedit", autohelp=False)
-def vibe_edit(text: str, chan: str, nick: str) -> str:
-    """<name> <prompt> - Vibe edit a game"""
-    if not text.strip():
-        return "Usage: .vibeedit <name> <prompt>"
-
-    if len(text.split()) < 2:
-        return "Usage: .vibeedit <name> <prompt>"
-
-    name, prompt = text.split(maxsplit=1)
+@hook.command("vibeedit")
+def vibe_edit(
+    name: Annotated[str, Arg("Game name")],
+    prompt: Annotated[str, Arg("What to change")],
+    chan: str,
+    nick: str,
+) -> str:
+    """Vibe edit a game"""
     client = VibeClient()
     response = client.update(name, prompt)
     if response["status"] != "success":
@@ -196,13 +195,14 @@ def vibe_edit(text: str, chan: str, nick: str) -> str:
     return f"Updated {name} at {response['url']}"
 
 
-@hook.command("vibeimport", autohelp=False)
-def vibe_import(text: str, chan: str, nick: str) -> str:
-    """<name> <url> - Vibe import a game from a URL"""
-    if not text.strip() or len(text.split()) < 2:
-        return "Usage: .vibeimport <name>/[file/path] <url>"
-
-    name, url, *_ = text.split()
+@hook.command("vibeimport")
+def vibe_import(
+    name: Annotated[str, Arg("Game name, optionally followed by /file/path")],
+    url: Annotated[str, Arg("URL to import from")],
+    chan: str,
+    nick: str,
+) -> str:
+    """Vibe import a game from a URL"""
     client = VibeClient()
     http_response = requests.get(url)
     if http_response.status_code != 200:
@@ -224,26 +224,22 @@ def vibe_import(text: str, chan: str, nick: str) -> str:
     return f"Imported {name} at {response['url']}"
 
 
-@hook.command("vibedelete", autohelp=False)
-def vibe_delete(text: str, chan: str, nick: str) -> str:
-    """<name> - Vibe delete a game"""
-    if not text.strip():
-        return "Usage: .vibedelete <name>"
-
-    name = text.strip()
+@hook.command("vibedelete")
+def vibe_delete(
+    name: Annotated[str, Arg("Game name")], chan: str, nick: str
+) -> str:
+    """Vibe delete a game"""
     client = VibeClient()
     if not client.delete(name):
         return f"Error: {name} not found"
     return f"Deleted {name}"
 
 
-@hook.command("viberollback", "viberevert", autohelp=False)
-def vibe_rollback(text: str, chan: str, nick: str) -> str:
-    """<name> - Vibe revert a game"""
-    if not text.strip():
-        return "Usage: .viberollback <name>"
-
-    name = text.strip()
+@hook.command("viberollback", "viberevert")
+def vibe_rollback(
+    name: Annotated[str, Arg("Game name")], chan: str, nick: str
+) -> str:
+    """Vibe revert a game"""
     client = VibeClient()
     response = client.revert(name)
     if response["status"] != "success":

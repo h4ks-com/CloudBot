@@ -9,6 +9,7 @@ import pytest
 from cloudbot.event import CommandEvent, Event
 from cloudbot.util.func_utils import call_with_args
 from plugins import attacks, foods
+from tests.util import command_hook
 
 
 def _call(func, event):
@@ -57,10 +58,11 @@ def _do_test(
     cmd_event = CommandEvent(
         text=text or "",
         cmd_prefix=".",
-        hook=MagicMock(),
+        hook=command_hook(cmd_func),
         triggered_command="foo",
         base_event=event,
     )
+    assert cmd_event.parse_command_args()
     if is_nick_valid:
         with patch.object(cmd_event, "is_nick_valid", new=is_nick_valid):
             res = _call(cmd_func, cmd_event), cmd_event
@@ -80,10 +82,6 @@ def _do_test(
         ("lenny", "load_faces", "lenny_data", "lenny"),
         ("lenny", "load_faces", "lenny_data", "flenny"),
         ("penis", None, None, "penis"),
-        ("reactions", "load_macros", "reaction_macros", "deal_with_it"),
-        ("reactions", "load_macros", "reaction_macros", "face_palm"),
-        ("reactions", "load_macros", "reaction_macros", "head_desk"),
-        ("reactions", "load_macros", "reaction_macros", "my_fetish"),
     ],
 )
 def test_message_reply(
@@ -95,6 +93,22 @@ def test_message_reply(
     assert event.conn.message.called
     _, event = _do_test(
         plugin_name, loader, data_name, cmd, event_loop, mock_bot_factory
+    )
+    assert event.conn.message.called
+
+
+@pytest.mark.parametrize(
+    "cmd", ["deal_with_it", "face_palm", "head_desk", "my_fetish"]
+)
+def test_reactions_reply(cmd, event_loop, mock_bot_factory):
+    _, event = _do_test(
+        "reactions",
+        "load_macros",
+        "reaction_macros",
+        cmd,
+        event_loop,
+        mock_bot_factory,
+        "bob",
     )
     assert event.conn.message.called
 

@@ -1,10 +1,14 @@
 """Searches wikipedia and returns first sentence of article
 Scaevolus 2009"""
 
+from typing import Annotated
+
 from requests import RequestException
 from yarl import URL
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.web import get_session
 
@@ -31,10 +35,12 @@ def get_info(title):
 
 
 @hook.command("wiki", "wikipedia", "w")
-def wiki(text, reply):
-    """<phrase> - Gets first sentence of Wikipedia article on <phrase>."""
+def wiki(
+    event: CommandEvent, phrase: Annotated[str, Arg("Article to look up")]
+):
+    """Gets first sentence of Wikipedia article on the phrase."""
 
-    search_params = {"srsearch": text.strip()}
+    search_params = {"srsearch": phrase.strip()}
     try:
         with get_session().get(
             search_url, params=search_params, headers=headers
@@ -42,7 +48,7 @@ def wiki(text, reply):
             response.raise_for_status()
             data = response.json()
     except RequestException:
-        reply("Could not get Wikipedia page")
+        event.reply("Could not get Wikipedia page")
         raise
 
     for result in data["query"]["search"]:

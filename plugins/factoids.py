@@ -1,10 +1,13 @@
 import re
 import string
 from collections import defaultdict
+from typing import Annotated
 
 from sqlalchemy import Column, PrimaryKeyConstraint, String, Table, and_
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import colors, database, web
 from cloudbot.util.formatting import gen_markdown_table, get_text_list
 from cloudbot.util.web import NoPasteException
@@ -72,16 +75,17 @@ def del_factoid(db, chan, word=None):
 
 
 @hook.command("r", "remember", permissions=["op", "chanop"])
-def remember(text, nick, db, chan, notice, event):
-    """<word> [+]<data> - remembers <data> with <word> - add + to <data> to append. If the input starts with <act> the
+def remember(
+    nick: str,
+    db,
+    chan: str,
+    event: CommandEvent,
+    word: Annotated[str, Arg("Name of the factoid")],
+    data: Annotated[str, Arg("What to remember, start with + to append")],
+):
+    """remembers the data with the word - add + to the data to append. If the input starts with <act> the
     message will be sent as an action. If <user> in in the message it will be replaced by input arguments when command
     is called."""
-    try:
-        word, data = text.split(None, 1)
-    except ValueError:
-        event.notice_doc()
-        return
-
     word = word.lower()
     try:
         old_data = factoid_cache[chan][word]
@@ -97,13 +101,13 @@ def remember(text, nick, db, chan, notice, event):
             data = old_data + new_data
         else:
             data = old_data + " " + new_data
-        notice(f"Appending \x02{new_data}\x02 to \x02{old_data}\x02")
+        event.notice(f"Appending \x02{new_data}\x02 to \x02{old_data}\x02")
     else:
-        notice(
+        event.notice(
             f"Remembering \x02{data}\x02 for \x02{word}\x02. Type {FACTOID_CHAR}{word} to see it."
         )
         if old_data:
-            notice(f"Previous data was \x02{old_data}\x02")
+            event.notice(f"Previous data was \x02{old_data}\x02")
 
     add_factoid(db, word, chan, data, nick)
 
@@ -143,30 +147,39 @@ def remove_fact(chan, names, db, notice):
 
 
 @hook.command("f", "forget", permissions=["op", "chanop"])
-def forget(text, chan, db, notice):
-    """<word>... - Remove factoids with the specified names"""
-    remove_fact(chan, text.split(), db, notice)
+def forget(
+    chan: str,
+    db,
+    event: CommandEvent,
+    words: Annotated[str, Arg("Names of the factoids, separated by spaces")],
+):
+    """Remove factoids with the specified names"""
+    remove_fact(chan, words.split(), db, event.notice)
 
 
 @hook.command(
     "forgetall", "clearfacts", autohelp=False, permissions=["op", "chanop"]
 )
-def forget_all(chan, db):
+def forget_all(chan: str, db):
     """- Remove all factoids in the current channel"""
     del_factoid(db, chan)
     return "Facts cleared."
 
 
 @hook.command()
-def info(text, chan, notice):
-    """<factoid> - shows the source of a factoid"""
+def info(
+    chan: str,
+    event: CommandEvent,
+    word: Annotated[str, Arg("Name of the factoid")],
+):
+    """shows the source of a factoid"""
 
-    text = text.strip().lower()
+    word = word.strip().lower()
 
-    if text in factoid_cache[chan]:
-        notice(factoid_cache[chan][text])
+    if word in factoid_cache[chan]:
+        event.notice(factoid_cache[chan][word])
     else:
-        notice("Unknown Factoid.")
+        event.notice("Unknown Factoid.")
 
 
 factoid_re = re.compile(rf"^{re.escape(FACTOID_CHAR)} ?(.+)", re.I)
@@ -198,7 +211,7 @@ def factoid(content, match, chan, message, action):
 
 
 @hook.command("listfacts", autohelp=False)
-def listfactoids(notice, chan):
+def listfactoids(event: CommandEvent, chan: str):
     """- lists all available factoids"""
     reply_text: list[str] = []
     reply_text_length = 0
@@ -206,17 +219,17 @@ def listfactoids(notice, chan):
         text = FACTOID_CHAR + word
         added_length = len(text) + 2
         if reply_text_length + added_length > 400:
-            notice(", ".join(reply_text))
+            event.notice(", ".join(reply_text))
             reply_text = []
             reply_text_length = 0
 
         reply_text.append(text)
         reply_text_length += added_length
 
-    notice(", ".join(reply_text))
+    event.notice(", ".join(reply_text))
 
 
 @hook.command("listdetailedfacts", autohelp=False)
-def listdetailedfactoids(chan):
+def listdetailedfactoids(chan: str):
     """- lists all available factoids with their respective data"""
     return paste_facts(factoid_cache[chan])

@@ -12,8 +12,12 @@ from base64 import (
     b85encode,
 )
 from hashlib import blake2b, blake2s, md5, sha1, sha224, sha256, sha384, sha512
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.hook import Arg
+
+TextArg = Annotated[str, Arg("Text to convert")]
 
 
 def compute_hash(text: str, hash_func) -> str:
@@ -33,14 +37,14 @@ def base_encode(text: str, base_func) -> str:
 
 
 @hook.command("sha384")
-def sha384_hash(text: str) -> str:
-    """<text> - Computes the SHA384 hash of <text>."""
+def sha384_hash(text: TextArg) -> str:
+    """Computes the SHA384 hash of <text>."""
     return compute_hash(text, sha384)
 
 
 @hook.command("sha512")
-def sha512_hash(text: str) -> str:
-    """<text> - Computes the SHA512 hash of <text>."""
+def sha512_hash(text: TextArg) -> str:
+    """Computes the SHA512 hash of <text>."""
     return compute_hash(text, sha512)
 
 
@@ -53,8 +57,8 @@ def sha512_hash(text: str) -> str:
     "sha256sums",
     "sha256sumss",
 )
-def sha256sum(text):
-    """<text> - Computes the SHA256 hash of <text>."""
+def sha256sum(text: TextArg):
+    """Computes the SHA256 hash of <text>."""
     return "SHA256: " + compute_hash(text, sha256)
 
 
@@ -67,24 +71,24 @@ def sha256sum(text):
     "sha224sums",
     "sha224sumss",
 )
-def sha224sum(text):
-    """<text> - Computes the SHA224 hash of <text>."""
+def sha224sum(text: TextArg):
+    """Computes the SHA224 hash of <text>."""
     return "SHA224: " + compute_hash(text, sha224)
 
 
 @hook.command(
     "sha1", "sha1sum", "sha1s", "sha1sums", "sha1sumss", "sha1sums", "sha1sumss"
 )
-def sha1sum(text):
-    """<text> - Computes the SHA1 hash of <text>."""
+def sha1sum(text: TextArg):
+    """Computes the SHA1 hash of <text>."""
     return "SHA1: " + compute_hash(text, sha1)
 
 
 @hook.command(
     "md5", "md5sum", "md5s", "md5sums", "md5sumss", "md5sums", "md5sumss"
 )
-def md5sum(text):
-    """<text> - Computes the MD5 hash of <text>."""
+def md5sum(text: TextArg):
+    """Computes the MD5 hash of <text>."""
     return "MD5: " + compute_hash(text, md5)
 
 
@@ -97,8 +101,8 @@ def md5sum(text):
     "blake2bsums",
     "blake2bsumss",
 )
-def blake2bsum(text):
-    """<text> - Computes the BLAKE2b hash of <text>."""
+def blake2bsum(text: TextArg):
+    """Computes the BLAKE2b hash of <text>."""
     return "BLAKE2b: " + compute_hash(text, blake2b)
 
 
@@ -111,8 +115,8 @@ def blake2bsum(text):
     "blake2ssums",
     "blake2ssumss",
 )
-def blake2ssum(text):
-    """<text> - Computes the BLAKE2s hash of <text>."""
+def blake2ssum(text: TextArg):
+    """Computes the BLAKE2s hash of <text>."""
     return "BLAKE2s: " + compute_hash(text, blake2s)
 
 
@@ -126,8 +130,8 @@ def blake2ssum(text):
     "base85encodes",
     "base85encodes",
 )
-def base85encode(text):
-    """<text> - Encodes <text> in base85."""
+def base85encode(text: TextArg):
+    """Encodes <text> in base85."""
     return "Base85: " + base_encode(text, b85encode)
 
 
@@ -141,8 +145,8 @@ def base85encode(text):
     "base85decodes",
     "base85decodes",
 )
-def base85decode(text):
-    """<text> - Decodes <text> from base85."""
+def base85decode(text: TextArg):
+    """Decodes <text> from base85."""
     return "Base85: " + base_encode(text, b85decode)
 
 
@@ -156,8 +160,8 @@ def base85decode(text):
     "base32encodes",
     "base32encodes",
 )
-def base32encode(text):
-    """<text> - Encodes <text> in base32."""
+def base32encode(text: TextArg):
+    """Encodes <text> in base32."""
     return "Base32: " + base_encode(text, b32encode)
 
 
@@ -171,8 +175,8 @@ def base32encode(text):
     "base32decodes",
     "base32decodes",
 )
-def base32decode(text):
-    """<text> - Decodes <text> from base32."""
+def base32decode(text: TextArg):
+    """Decodes <text> from base32."""
     return "Base32: " + base_encode(text, b32decode)
 
 
@@ -186,8 +190,8 @@ def base32decode(text):
     "base16encodes",
     "base16encodes",
 )
-def base16encode(text):
-    """<text> - Encodes <text> in base16."""
+def base16encode(text: TextArg):
+    """Encodes <text> in base16."""
     return "Base16: " + base_encode(text, b16encode)
 
 
@@ -201,20 +205,20 @@ def base16encode(text):
     "base16decodes",
     "base16decodes",
 )
-def base16decode(text):
-    """<text> - Decodes <text> from base16."""
+def base16decode(text: TextArg):
+    """Decodes <text> from base16."""
     return "Base16: " + base_encode(text, b16decode)
 
 
 @hook.command("bin")
-def mybin(text):
-    """<text> - Converts <text> to binary."""
+def mybin(text: TextArg):
+    """Converts <text> to binary."""
     return "Binary: " + " ".join(f"{byte:08b}" for byte in text.encode())
 
 
 @hook.command("bindecode")
-def mybindecode(text):
-    """<text> - Converts <text> from binary."""
+def mybindecode(text: TextArg):
+    """Converts <text> from binary."""
     text = text.replace(" ", "")
     if len(text) % 8 != 0:
         return "Invalid binary. Length must be a multiple of 8."
@@ -233,14 +237,14 @@ def mybindecode(text):
 
 
 @hook.command("dec")
-def mydec(text):
-    """<text> - Converts <text> to decimal."""
+def mydec(text: TextArg):
+    """Converts <text> to decimal."""
     return "Decimal: " + " ".join(str(ord(c)) for c in text)
 
 
 @hook.command("decdecode")
-def mydecdecode(text):
-    """<text> - Converts <text> from decimal."""
+def mydecdecode(text: TextArg):
+    """Converts <text> from decimal."""
     for n in text.split(" "):
         if not n.isdigit():
             return f"Invalid decimal: {n}. Must be digits."
@@ -248,14 +252,14 @@ def mydecdecode(text):
 
 
 @hook.command("hex")
-def myhex(text):
-    """<text> - Converts <text> to hex."""
+def myhex(text: TextArg):
+    """Converts <text> to hex."""
     return "Hex: " + " ".join(hex(byte)[2:] for byte in text.encode())
 
 
 @hook.command("hexdecode")
-def myhexdecode(text):
-    """<text> - Converts <text> from hex."""
+def myhexdecode(text: TextArg):
+    """Converts <text> from hex."""
     text = text.replace(" ", "")
     if len(text) % 2 != 0:
         return "Invalid hex. Length must be a multiple of 2."

@@ -5,9 +5,12 @@ Usage:
 """
 
 import re
+from typing import Annotated
 from urllib.parse import ParseResult, urlparse, urlunparse
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 REDLIB_INSTANCE: str = "redlib.nadeko.net"
 
@@ -53,19 +56,26 @@ def redlib_track(match: re.Match[str], nick: str, chan: str) -> None:
 
 
 @hook.command("redlib")
-def redlib(text: str, nick: str, chan: str, notice) -> str | None:
-    """[nick] - Rewrite your own (or [nick]'s) last reddit.com URL to a redlib instance"""
-    target: str = text.strip().lower() if text.strip() else nick.lower()
+def redlib(
+    nick: str,
+    chan: str,
+    event: CommandEvent,
+    user: Annotated[
+        str | None, Arg("Nick whose link to rewrite", kind="user")
+    ] = None,
+) -> str | None:
+    """Rewrite your own (or [user]'s) last reddit.com URL to a redlib instance"""
+    target: str = user.lower() if user else nick.lower()
     key: tuple[str, str] = (chan, target)
 
     if key not in url_cache:
         who: str = target if target != nick.lower() else "you"
-        notice(f"No recent reddit link found for {who}.")
+        event.notice(f"No recent reddit link found for {who}.")
         return None
 
     url: str = url_cache[key]
     rewritten: str | None = _rewrite(url)
     if rewritten:
         return rewritten
-    notice("That URL doesn't appear to be a reddit link.")
+    event.notice("That URL doesn't appear to be a reddit link.")
     return None

@@ -1,4 +1,10 @@
+from typing import Annotated
+
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting, web
 
 
@@ -12,11 +18,12 @@ def get_potential_commands(bot, cmd_name):
                 yield name, _hook
 
 
-def help_flood(bot, chan, notice, message, has_permission, triggered_prefix):
+def help_flood(bot: CloudBot, chan: str, event: CommandEvent):
     commands = []
     for command in bot.plugin_manager.command_infos():
         if command.permissions and not any(
-            has_permission(perm, notice=False) for perm in command.permissions
+            event.has_permission(perm, notice=False)
+            for perm in command.permissions
         ):
             continue
         commands.append(command.name)
@@ -28,34 +35,37 @@ def help_flood(bot, chan, notice, message, has_permission, triggered_prefix):
 
     for line in lines:
         if chan[:1] == "#":
-            notice(line)
+            event.notice(line)
         else:
             # This is an user in this case.
-            message(line)
+            event.message(line)
 
-    notice(
-        f"For detailed help, use {triggered_prefix}help <command>, without the brackets."
+    event.notice(
+        f"For detailed help, use {event.triggered_prefix}help <command>, without the brackets."
     )
 
 
 @hook.command("help", autohelp=False)
 async def help_command(
-    text, chan, bot, notice, message, has_permission, triggered_prefix
+    chan: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    command: Annotated[str | None, Arg("Command to explain")] = None,
 ):
-    """[command] - gives help for [command], or lists all available commands if no command is specified"""
-    if text:
-        searching_for = text.lower().strip()
+    """gives help for the command, or lists all available commands if no command is specified"""
+    if command:
+        searching_for = command.lower().strip()
     else:
         searching_for = None
 
-    if text:
-        cmds = list(get_potential_commands(bot, text))
+    if command:
+        cmds = list(get_potential_commands(bot, command))
         if not cmds:
-            notice(f"Unknown command '{text}'")
+            event.notice(f"Unknown command '{command}'")
             return
 
         if len({cmd_hook for _, cmd_hook in cmds}) > 1:
-            notice(
+            event.notice(
                 "Possible matches: {}".format(
                     formatting.get_text_list(
                         sorted([command for command, _ in cmds])
@@ -67,28 +77,34 @@ async def help_command(
         doc = cmds[0][1].doc
 
         if doc:
-            notice(f"{triggered_prefix}{searching_for} {doc}")
+            event.notice(f"{event.triggered_prefix}{searching_for} {doc}")
         else:
-            notice(f"Command {searching_for} has no additional documentation.")
+            event.notice(
+                f"Command {searching_for} has no additional documentation."
+            )
     else:
         webhooks_config = bot.config.get("webhooks", {})
         base_url = webhooks_config.get("base_url")
         if base_url:
             return base_url
-        help_flood(bot, chan, notice, message, has_permission, triggered_prefix)
+        help_flood(bot, chan, event)
 
 
 @hook.command()
-async def cmdinfo(text, bot, notice):
-    """<command> - Gets various information about a command"""
-    name = text.split()[0]
+async def cmdinfo(
+    bot: CloudBot,
+    event: CommandEvent,
+    command: Annotated[str, Arg("Command to inspect", rest=False)],
+):
+    """Gets various information about a command"""
+    name = command
     cmds = list(get_potential_commands(bot, name))
     if not cmds:
-        notice(f"Unknown command: '{name}'")
+        event.notice(f"Unknown command: '{name}'")
         return
 
     if len({cmd_hook for _, cmd_hook in cmds}) > 1:
-        notice(
+        event.notice(
             "Possible matches: {}".format(
                 formatting.get_text_list(
                     sorted([command for command, _ in cmds])
@@ -107,11 +123,11 @@ async def cmdinfo(text, bot, notice):
     if cmd_hook.permissions:
         info += ", Permissions: [{}]".format(", ".join(cmd_hook.permissions))
 
-    notice(info)
+    event.notice(info)
 
 
 @hook.command(permissions=["botcontrol"], autohelp=False)
-def generatehelp(conn, bot):
+def generatehelp(conn: IrcClient, bot: CloudBot):
     """- Dumps a list of commands with their help text to the docs directory formatted using markdown."""
     message = f"{conn.nick} Command list\n"
     message += "------\n"

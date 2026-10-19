@@ -2,9 +2,14 @@ import os
 import platform
 import time
 from datetime import timedelta
+from typing import Annotated, Literal
 
 import cloudbot
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.filesize import size as format_bytes
 
 try:
@@ -14,9 +19,16 @@ except ImportError:
 
 
 @hook.command(autohelp=False)
-def about(text, conn, bot):
-    """- Gives information about CloudBot. Use .about license for licensing information"""
-    if text.lower() in ("license", "gpl", "source"):
+def about(
+    conn: IrcClient,
+    bot: CloudBot,
+    topic: Annotated[
+        Literal["license", "gpl", "source"] | None,
+        Arg("Show the licensing information"),
+    ] = None,
+):
+    """Gives information about CloudBot. Use .about license for licensing information"""
+    if topic:
         return (
             "CloudBot Refresh is released under the GPL v3 license, get the source code "
             f"at {bot.repo_link}"
@@ -26,7 +38,7 @@ def about(text, conn, bot):
 
 
 @hook.command(autohelp=False)
-def system(reply, message):
+def system(event: CommandEvent):
     """- Retrieves information about the host system."""
 
     # Get general system info
@@ -36,7 +48,7 @@ def system(reply, message):
     sys_architecture = "-".join(platform.architecture())
     sys_cpu_count = platform.machine()
 
-    reply(
+    event.reply(
         f"OS: \x02{sys_os}\x02, "
         f"Python: \x02{python_implementation} {python_version}\x02, "
         f"Architecture: \x02{sys_architecture}\x02 (\x02{sys_cpu_count}\x02)"
@@ -51,7 +63,7 @@ def system(reply, message):
         memory_usage = format_bytes(process.memory_info()[0])
         uptime = timedelta(seconds=round(time.time() - process.create_time()))
 
-        message(
+        event.message(
             f"Uptime: \x02{uptime}\x02, "
             f"Threads: \x02{thread_count}\x02, "
             f"CPU Usage: \x02{cpu_usage}\x02, "
@@ -60,7 +72,7 @@ def system(reply, message):
 
 
 @hook.command("sauce", "source", autohelp=False)
-def sauce(bot):
+def sauce(bot: CloudBot):
     """- Returns a link to the source"""
     return (
         "Check out my source code! I am a fork of cloudbot: "

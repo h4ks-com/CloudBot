@@ -3,6 +3,7 @@ from collections.abc import Callable
 import pytest
 from responses import RequestsMock
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import lyricsnmusic as plugin
 from plugins.lyricsnmusic import Song
 
@@ -92,19 +93,19 @@ def test_take_page_stops_when_the_queue_empties_underneath_it():
 def test_lyricsn_rejects_an_unknown_nick():
     _, reply = collect()
     assert (
-        plugin.lyricsn("bob", "#chan", "matt", reply)
+        plugin.lyricsn("#chan", "matt", reply, "bob")
         == "Nick 'bob' has no queue."
     )
 
 
 def test_getlyrics_needs_a_listing_first():
-    assert "Nothing listed" in plugin.getlyrics("1", "#chan", "matt")
+    assert "Nothing listed" in plugin.getlyrics("#chan", "matt", "1")
 
 
 @pytest.mark.parametrize("choice", ["0", "4", "abc", "²", "-1", ""])
 def test_getlyrics_rejects_bad_choices(choice: str):
     plugin.listed["#chan"]["matt"] = SONGS[:3]
-    assert plugin.getlyrics(choice, "#chan", "matt") == (
+    assert plugin.getlyrics("#chan", "matt", choice) == (
         "Pick a number between 1 and 3."
     )
 
@@ -116,7 +117,7 @@ def test_getlyrics_pastes_the_full_words(monkeypatch: pytest.MonkeyPatch):
     )
     monkeypatch.setattr(plugin.web, "paste", lambda data, ext: "http://paste/x")
 
-    out = plugin.getlyrics("2", "#chan", "matt")
+    out = plugin.getlyrics("#chan", "matt", "2")
     assert out == "Artist 1 - Song 1: one / two / three... full: http://paste/x"
 
 
@@ -125,7 +126,7 @@ def test_getlyrics_reports_a_song_with_no_lyrics(
 ):
     plugin.listed["#chan"]["matt"] = SONGS[:3]
     monkeypatch.setattr(plugin, "fetch_lyrics", lambda song: "")
-    assert plugin.getlyrics("1", "#chan", "matt") == (
+    assert plugin.getlyrics("#chan", "matt", "1") == (
         "No lyrics available for Artist 0 - Song 0."
     )
 
@@ -331,6 +332,13 @@ def test_getlyrics_reports_a_dead_upstream(mock_requests: RequestsMock):
         Song("Radiohead", "Creep", "https://genius.com/rc-lyrics")
     ]
     mock_requests.add("GET", "https://genius.com/rc-lyrics", status=503)
-    assert plugin.getlyrics("1", "#chan", "matt").startswith(
+    assert plugin.getlyrics("#chan", "matt", "1").startswith(
         "Lyrics service error:"
     )
+
+
+def test_getlyrics_args():
+    spec = build_spec(plugin.getlyrics)
+    assert spec.parse_text("2") == {"n": "2"}
+    with pytest.raises(CommandArgError):
+        spec.parse_text("")

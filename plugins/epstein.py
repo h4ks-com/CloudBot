@@ -1,5 +1,6 @@
 import io
 from functools import lru_cache
+from typing import Annotated
 from urllib.parse import quote
 
 import httpx
@@ -7,6 +8,9 @@ from curl_cffi import requests
 from pypdf import PdfReader
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.queue import Queue
 
@@ -130,13 +134,15 @@ async def send_pdf_context(event, file_url: str, query: str):
         )
 
 
-@hook.command("epstein", autohelp=False)
-async def epstein_search(text: str, bot, chan: str, nick: str, event):
-    """<query> - Searches the Epstein files for occurrences of the query"""
-    query = text.strip()
-    if not query:
-        return "Please provide a search query."
-
+@hook.command("epstein")
+async def epstein_search(
+    query: Annotated[str, Arg("What to search for")],
+    bot: CloudBot,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+):
+    """Searches the Epstein files for occurrences of the query"""
     try:
         data = search_files(query)
         total = data["hits"]["total"]["value"]
@@ -173,9 +179,16 @@ async def epstein_search(text: str, bot, chan: str, nick: str, event):
 
 
 @hook.command("epstein_next", "epsteinn", autohelp=False)
-async def epstein_next(text: str, chan: str, nick: str, event):
-    """[nick] - Gets the next result from the last Epstein search"""
-    target_nick = text.strip() or nick
+async def epstein_next(
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    user: Annotated[
+        str | None, Arg("Nick whose search to continue", kind="user")
+    ] = None,
+):
+    """Gets the next result from the last Epstein search"""
+    target_nick = user or nick
 
     queue = get_queue()
     query_cache = get_query_cache()

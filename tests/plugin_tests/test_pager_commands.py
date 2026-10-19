@@ -1,7 +1,9 @@
 import importlib
+from unittest.mock import MagicMock
 
 import pytest
 
+from cloudbot.util.command_args import build_spec
 from cloudbot.util.pager import CommandPager
 from plugins import profile
 
@@ -37,35 +39,35 @@ def test_page_commands(plugin_name, hook_name, pages_name, page_type):
     out_of_range = "Please specify a valid page number between 1 and 2."
     no_number = "Please specify an integer value."
 
-    assert hook("", "#testchannel", conn) == no_grabs
+    assert hook("#testchannel", conn) == no_grabs
 
     pages["testconn1"]["#testchannel1"] = CommandPager(["a", "b", "c"])
 
-    assert hook("", "#testchannel", conn) == no_grabs
+    assert hook("#testchannel", conn) == no_grabs
 
     pages["testconn"]["#testchannel1"] = CommandPager(["a", "b", "c"])
 
-    assert hook("", "#testchannel", conn) == no_grabs
+    assert hook("#testchannel", conn) == no_grabs
 
     pages["testconn1"]["#testchannel"] = CommandPager(["a", "b", "c"])
 
-    assert hook("", "#testchannel", conn) == no_grabs
+    assert hook("#testchannel", conn) == no_grabs
 
     pages["testconn"]["#testchannel"] = CommandPager(["a", "b", "c"])
 
-    assert hook("", "#testchannel", conn) == ["a", "b (page 1/2)"]
-    assert hook("", "#testchannel", conn) == ["c (page 2/2)"]
-    assert hook("", "#testchannel", conn) == [done]
+    assert hook("#testchannel", conn) == ["a", "b (page 1/2)"]
+    assert hook("#testchannel", conn) == ["c (page 2/2)"]
+    assert hook("#testchannel", conn) == [done]
 
-    assert hook("-3", "#testchannel", conn) == [out_of_range]
-    assert hook("-2", "#testchannel", conn) == ["a", "b (page 1/2)"]
-    assert hook("-1", "#testchannel", conn) == ["c (page 2/2)"]
-    assert hook("0", "#testchannel", conn) == [out_of_range]
-    assert hook("1", "#testchannel", conn) == ["a", "b (page 1/2)"]
-    assert hook("2", "#testchannel", conn) == ["c (page 2/2)"]
-    assert hook("3", "#testchannel", conn) == [out_of_range]
+    assert hook("#testchannel", conn, "-3") == [out_of_range]
+    assert hook("#testchannel", conn, "-2") == ["a", "b (page 1/2)"]
+    assert hook("#testchannel", conn, "-1") == ["c (page 2/2)"]
+    assert hook("#testchannel", conn, "0") == [out_of_range]
+    assert hook("#testchannel", conn, "1") == ["a", "b (page 1/2)"]
+    assert hook("#testchannel", conn, "2") == ["c (page 2/2)"]
+    assert hook("#testchannel", conn, "3") == [out_of_range]
 
-    assert hook("a", "#testchannel", conn) == [no_number]
+    assert hook("#testchannel", conn, "a") == [no_number]
 
 
 class CaptureCalls:
@@ -81,9 +83,9 @@ def test_profile_pager():
 
     pages = profile.cat_pages
 
-    def call(*args):
+    def call(page, chan, nick):
         notice = CaptureCalls()
-        hook(*args, notice=notice)
+        hook(chan, nick, MagicMock(notice=notice), page)
         return notice.lines
 
     no_grabs = "There are no category pages to show."
@@ -123,3 +125,14 @@ def test_profile_pager():
     assert call("3", "#testchannel", "testuser") == [out_of_range]
 
     assert call("a", "#testchannel", "testuser") == [no_number]
+
+
+@pytest.mark.parametrize(
+    "func,text,expected",
+    [
+        (profile.moreprofile, "", {"page": None}),
+        (profile.moreprofile, "2", {"page": "2"}),
+    ],
+)
+def test_page_args(func, text, expected):
+    assert build_spec(func).parse_text(text) == expected

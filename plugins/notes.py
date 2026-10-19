@@ -3,6 +3,7 @@ Notes/todo list
 """
 
 from datetime import datetime
+from typing import Annotated, Literal
 
 from sqlalchemy import (
     Boolean,
@@ -16,9 +17,12 @@ from sqlalchemy import (
     func,
     not_,
 )
+from sqlalchemy.orm import Session
 from sqlalchemy.sql import select
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database
 
 table = Table(
@@ -114,47 +118,52 @@ def format_note(data):
     return f"\x02Note #{note_id}:\x02 {note_text} - \x02{added_string}\x02"
 
 
+NoteAction = Literal[
+    "add",
+    "new",
+    "del",
+    "delete",
+    "remove",
+    "clear",
+    "get",
+    "share",
+    "show",
+    "list",
+    "listall",
+]
+
+
 @hook.command("note", "notes", "todo")
-def note(text, db, event):
-    """<add|list|get|del|clear> args - manipulates your list of notes"""
-    notice = event.notice
-    args, cmd = parse_args(text)
-
-    if cmd in ["add", "new"]:
-        return cmd_add(args, db, event)
-
-    if cmd in ["del", "delete", "remove"]:
-        return cmd_del(args, db, event)
-
-    if cmd == "clear":
-        cmd_clear(db, event)
-        return None
-
-    if cmd == "get":
-        return cmd_get(args, db, event)
-
-    if cmd in ["share", "show"]:
-        return cmd_show(args, db, event)
-
-    if cmd == "list":
-        return cmd_list(db, event)
-
-    if cmd == "listall":
-        return cmd_listall(db, event)
-
-    notice(f"Unknown command: {cmd}")
+def note(
+    db: Session,
+    event: CommandEvent,
+    action: Annotated[
+        NoteAction | None, Arg("What to do with your notes")
+    ] = None,
+    args: Annotated[
+        str | None, Arg("Note text or note number", rest=True)
+    ] = None,
+):
+    """manipulates your list of notes"""
+    words = args.split() if args else []
+    match action:
+        case "add" | "new":
+            return cmd_add(words, db, event)
+        case "del" | "delete" | "remove":
+            return cmd_del(words, db, event)
+        case "clear":
+            cmd_clear(db, event)
+        case "get":
+            return cmd_get(words, db, event)
+        case "share" | "show":
+            return cmd_show(words, db, event)
+        case "list":
+            return cmd_list(db, event)
+        case "listall":
+            return cmd_listall(db, event)
+        case None:
+            event.notice_doc()
     return None
-
-
-def parse_args(text):
-    parts = text.split()
-    if len(parts) == 1 and text.isdigit():
-        cmd = "get"
-        args = parts
-    else:
-        cmd = parts[0].lower()
-        args = parts[1:]
-    return args, cmd
 
 
 def cmd_clear(db, event):

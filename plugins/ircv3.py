@@ -8,7 +8,11 @@ Usage:
     .ircv3 <query>   (aliases: .ircv3search, .ircv3issues)
 """
 
+from typing import Annotated
+
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.web import get_session
 
@@ -35,12 +39,8 @@ def format_item(item):
 
 
 @hook.command("ircv3", "ircv3search", "ircv3issues")
-def ircv3_cmd(text, bot):
-    """<query> - searches issues and PRs in the ircv3-ideas and ircv3-specification repos"""
-    query = text.strip()
-    if not query:
-        return "Usage: ircv3 <query>"
-
+def ircv3_cmd(bot: CloudBot, query: Annotated[str, Arg("Text to search for")]):
+    """searches issues and PRs in the ircv3-ideas and ircv3-specification repos"""
     headers = {"Accept": "application/vnd.github+json"}
     token = bot.config.get("api_keys", {}).get("github", None)
     if token:

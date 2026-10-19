@@ -3,13 +3,19 @@
 import asyncio
 from collections import deque
 from types import SimpleNamespace
+from typing import Annotated, Literal
 from unittest.mock import MagicMock, patch
 
 import pytest
 from openai import OpenAIError
 
+from cloudbot import hook
 from cloudbot.agent import common as agent_common
 from cloudbot.agent.tools import history as history_tools
+from cloudbot.hook import Arg
+from cloudbot.plugin_hooks import CommandHook
+from cloudbot.util import HOOK_ATTR
+from cloudbot.util.func_utils import call_with_args
 from cloudbot.util.messages import ChatMessage
 from plugins import agent as agent_plugin
 from plugins.agent import (
@@ -365,7 +371,7 @@ class TestConcurrentRequests:
             await asyncio.gather(
                 *(
                     agent_plugin.agent_command(
-                        text=nick, event=request(nick), reply_to=None
+                        prompt=nick, event=request(nick), reply_to=None
                     )
                     for nick in askers
                 )
@@ -522,3 +528,84 @@ def test_only_the_tail_of_the_system_prompt_changes_between_requests(
     head, tail = prompts[0].rsplit("\n- Time: ", 1)
     assert tail == "11:11:11"
     assert prompts[1] == f"{head}\n- Time: 22:22:22"
+
+
+def _tool_for(func, name):
+    hook.command(name)(func)
+    cmd_hook = CommandHook(MagicMock(), getattr(func, HOOK_ATTR)["command"])
+    return agent_plugin._build_tool(name, cmd_hook)
+
+
+async def _launch(cmd_hook, event):
+    if event.parse_command_args():
+        event.reply(call_with_args(cmd_hook.function, event))
+    return True
+
+
+def _invoke(tool, args_json):
+    irc_event = MagicMock()
+    irc_event.bot.plugin_manager.launch = _launch
+    ctx = SimpleNamespace(context=irc_event)
+    return asyncio.run(tool.on_invoke_tool(ctx, args_json))
+
+
+def _weather(
+    nick,
+    place: Annotated[str, Arg("Place to look up")],
+    days: Annotated[int, Arg("How many days")] = 1,
+    units: Annotated[Literal["metric", "imperial"] | None, Arg()] = None,
+):
+    """shows the forecast"""
+    return f"{place}|{days}|{units}"
+
+
+def _bare(nick):
+    return "ran"
+
+
+def _texty(nick, text):
+    return text
+
+
+def test_a_command_without_text_exposes_no_tool_parameters():
+    assert _tool_for(_bare, "bare").params_json_schema["properties"] == {}
+    assert "text" in _tool_for(_texty, "texty").params_json_schema["properties"]
+
+
+def test_a_command_with_args_exposes_them_as_tool_parameters():
+    tool = _tool_for(_weather, "weather")
+    assert tool.params_json_schema == {
+        "type": "object",
+        "properties": {
+            "place": {"type": "string", "description": "Place to look up"},
+            "days": {"type": "integer", "description": "How many days"},
+            "units": {
+                "type": "string",
+                "description": "units",
+                "enum": ["metric", "imperial"],
+            },
+        },
+        "required": ["place"],
+        "additionalProperties": False,
+    }
+    assert not tool.strict_json_schema
+
+
+def test_a_tool_call_fills_the_args_by_name():
+    tool = _tool_for(_weather, "weather")
+    assert (
+        _invoke(tool, '{"place": "New York", "days": 3}') == "New York|3|None"
+    )
+    assert _invoke(tool, "{}") == (
+        ".weather <place> [days] [metric|imperial] - shows the forecast"
+    )
+
+
+def test_a_command_without_args_keeps_the_text_parameter():
+    def echo(text):
+        """repeats <text>"""
+        return text
+
+    tool = _tool_for(echo, "echo")
+    assert list(tool.params_json_schema["properties"]) == ["text"]
+    assert _invoke(tool, '{"text": " a b "}') == "a b"

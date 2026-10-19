@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import MutableMapping
 from functools import total_ordering
 from threading import RLock
+from typing import Annotated
 
 from irclib.util.compare import match_mask
 from sqlalchemy import (
@@ -18,7 +19,9 @@ from sqlalchemy import (
 )
 
 from cloudbot import hook
-from cloudbot.hook import Priority
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg, OptionalChannel, Priority
 from cloudbot.util import database, web
 from cloudbot.util.formatting import gen_markdown_table
 from cloudbot.util.mapping import DefaultKeyFoldDict
@@ -206,14 +209,20 @@ def optout_sieve(bot, event, _hook):
 
 
 @hook.command()
-async def optout(text, event, chan, db, conn):
-    """[chan] <pattern> [allow] - Set the global allow option for hooks matching <pattern> in [chan], or the current
+async def optout(
+    event: CommandEvent,
+    chan: str,
+    db,
+    conn: IrcClient,
+    *,
+    channel: OptionalChannel = None,
+    pattern: Annotated[str, Arg("Hook pattern to match")],
+    allow: Annotated[str | None, Arg("Whether the hooks are allowed")] = None,
+):
+    """Set the global allow option for hooks matching <pattern> in [channel], or the current
     channel if not specified
     """
-    args = text.split()
-    if args[0].startswith("#") and len(args) > 1:
-        chan = args.pop(0)
-
+    chan = channel or chan
     has_perm = await check_channel_permissions(
         event, chan, "op", "chanop", "snoonetstaff", "botcontrol"
     )
@@ -224,11 +233,8 @@ async def optout(text, event, chan, db, conn):
         )
         return
 
-    pattern = args.pop(0)
-
     allowed = False
-    if args:
-        allow = args.pop(0)
+    if allow:
         try:
             allowed = parse_bool(allow)
         except KeyError:
@@ -244,13 +250,17 @@ async def optout(text, event, chan, db, conn):
 
 
 @hook.command()
-async def deloptout(text, event, chan, db, conn):
-    """[chan] <pattern> - Delete global optout hooks matching <pattern> in [chan], or the current channel if not
-    specified"""
-    args = text.split()
-    if len(args) > 1:
-        chan = args.pop(0)
-
+async def deloptout(
+    event: CommandEvent,
+    chan: str,
+    db,
+    conn: IrcClient,
+    *,
+    channel: OptionalChannel = None,
+    pattern: Annotated[str, Arg("Hook pattern to delete")],
+):
+    """Delete global optout hooks matching a pattern in a channel, the current one by default"""
+    chan = channel or chan
     has_perm = await check_channel_permissions(
         event, chan, "op", "chanop", "snoonetstaff", "botcontrol"
     )
@@ -261,8 +271,6 @@ async def deloptout(text, event, chan, db, conn):
         )
         return
 
-    pattern = args.pop(0)
-
     deleted = await event.async_call(del_optout, db, conn.name, chan, pattern)
 
     if deleted:
@@ -271,11 +279,14 @@ async def deloptout(text, event, chan, db, conn):
     return f"No matching optouts in channel '{chan}'."
 
 
-async def check_global_perms(event):
-    chan = event.chan
-    text = event.text
-    if text:
-        chan = text.split()[0]
+OptoutScope = Arg(
+    "Channel, or global for this network, the current one by default",
+    rest=False,
+)
+
+
+async def check_global_perms(event, channel: str | None):
+    chan = channel or event.chan
 
     can_global = await event.check_permissions("snoonetstaff", "botcontrol")
     allowed = can_global or (
@@ -296,29 +307,36 @@ async def check_global_perms(event):
 
 
 @hook.command("listoptout", autohelp=False)
-async def list_optout(conn, event, async_call):
-    """[channel] - View the opt out data for <channel> or the current channel if not specified. Specify "global" to
-    view all data for this network
-    """
-    chan, allowed = await check_global_perms(event)
+async def list_optout(
+    conn: IrcClient,
+    event: CommandEvent,
+    channel: Annotated[str | None, OptoutScope] = None,
+):
+    """View the opt out data for a channel, the current one by default, or global for this network"""
+    chan, allowed = await check_global_perms(event, channel)
 
     if not allowed:
         return
 
-    opts = await async_call(get_channel_optouts, conn.name, chan)
-    table = await async_call(format_optout_list, opts)
+    opts = await event.async_call(get_channel_optouts, conn.name, chan)
+    table = await event.async_call(format_optout_list, opts)
 
-    return await async_call(web.paste, table, "md", "hastebin")
+    return await event.async_call(web.paste, table, "md", "hastebin")
 
 
 @hook.command("clearoptout", autohelp=False)
-async def clear(conn, event, db, async_call):
-    """[channel] - Clears the optout list for a channel. Specify "global" to clear all data for this network"""
-    chan, allowed = await check_global_perms(event)
+async def clear(
+    conn: IrcClient,
+    event: CommandEvent,
+    db,
+    channel: Annotated[str | None, OptoutScope] = None,
+):
+    """Clears the optout list for a channel, the current one by default, or global for this network"""
+    chan, allowed = await check_global_perms(event, channel)
 
     if not allowed:
         return
 
-    count = await async_call(clear_optout, db, conn.name, chan)
+    count = await event.async_call(clear_optout, db, conn.name, chan)
 
     return f"Cleared {count} opt outs from the list."

@@ -1,6 +1,8 @@
+from typing import Annotated
 from urllib.parse import quote_plus
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 PIRATE_INSULT_API = "https://pirate.monkeyness.com/api/insult"
@@ -19,10 +21,8 @@ def pirate_insult() -> str:
 
 
 @hook.command("pirate")
-def pirate_translate(text: str) -> str:
-    """<text> - Translate text to pirate speak."""
-    if not text.strip():
-        return "Error: You must provide text to translate."
+def pirate_translate(text: Annotated[str, Arg("Text to translate")]) -> str:
+    """Translate <text> to pirate speak."""
     try:
         url = PIRATE_TRANSLATE_API + quote_plus(text)
         response = get_session().get(url, timeout=10)

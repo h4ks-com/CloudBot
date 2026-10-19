@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from cloudbot.util.command_args import build_spec
 from plugins import ping
 
 
@@ -26,7 +27,7 @@ PING 1.1.1.1 (1.1.1.1) 56(84) bytes of data.
 rtt min/avg/max/mdev = 11.403/12.584/14.632/1.270 ms
 """
         event = MagicMock()
-        res = ping.ping("1.1.1.1 5", event.reply)
+        res = ping.ping(event, "1.1.1.1", 5)
         assert patch_subproc.mock_calls == [
             call(["ping", "-c", "5", "1.1.1.1"])
         ]
@@ -35,6 +36,24 @@ rtt min/avg/max/mdev = 11.403/12.584/14.632/1.270 ms
         ]
         expted = "min: 11.403ms, max: 14.632ms, average: 12.584ms, range: 1.270ms, count: 5"
         assert res == expted
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("1.1.1.1", {"host": "1.1.1.1", "count": 5}),
+        ("1.1.1.1 3", {"host": "1.1.1.1", "count": 3}),
+    ],
+)
+def test_ping_args(text, expected):
+    assert build_spec(ping.ping).parse_text(text) == expected
+
+
+def test_ping_caps_count(patch_subproc):
+    patch_subproc.return_value = b"unknown host"
+    with patch.object(ping, "IS_WINDOWS", new=False):
+        assert ping.ping(MagicMock(), "h", 50) == "Could not ping host."
+    assert patch_subproc.mock_calls == [call(["ping", "-c", "20", "h"])]
 
 
 def test_ping_win(patch_subproc):
@@ -51,7 +70,7 @@ PING 1.1.1.1 (1.1.1.1) 56(84) bytes of data.
 Minimum = 5ms, Maximum = 10ms, Average = 7ms
 """
         event = MagicMock()
-        res = ping.ping("1.1.1.1 5", event.reply)
+        res = ping.ping(event, "1.1.1.1", 5)
         assert patch_subproc.mock_calls == [
             call(["ping", "-n", "5", "1.1.1.1"])
         ]

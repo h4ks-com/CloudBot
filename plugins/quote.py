@@ -14,9 +14,11 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 from sqlalchemy.types import REAL
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
 from cloudbot.util import database
 
 qtable = Table(
@@ -209,7 +211,7 @@ def get_quote_by_chan(db, chan, num=False):
 
 
 @hook.command("q", "quote")
-def quote(text, nick, chan, db, event):
+def quote(text: str, nick: str, chan: str, db: Session, event: CommandEvent):
     """[#chan] [nick] [#n] OR add <nick> <message> - gets the [#n]th quote by <nick> (defaulting to random)
     OR adds <message> as a quote for <nick> in the caller's channel"""
     add = re.match(r"add[^\w@]+(\S+?)>?\s+(.*)", text, re.I)

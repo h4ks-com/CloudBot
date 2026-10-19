@@ -1,6 +1,10 @@
 from re import findall
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util.formatting import get_text_list
 
 polls: dict[str, "Poll"] = {}
@@ -64,29 +68,37 @@ class Poll:
 
 
 @hook.command()
-def poll(text, conn, nick, chan, message, reply):
-    """{<question>[: <option1>, <option2>[, <option3>]...|close} - Creates a poll for [question] with the provided
-    options (default: Yes, No), or closes the poll if the argument is 'close'"""
+def poll(
+    conn: IrcClient,
+    nick: str,
+    chan: str,
+    event: CommandEvent,
+    question: Annotated[
+        str,
+        Arg("Question, then : and comma separated options, or close"),
+    ],
+):
+    """Creates a poll for <question> with the provided options (default: Yes, No), or closes the poll if the argument is 'close'"""
     # get poll ID
     uid = ":".join([conn.name, chan, nick]).lower()
 
-    if text.lower() == "close":
+    if question.lower() == "close":
         if uid not in polls.keys():
             return "You have no active poll to close."
 
         p = polls.get(uid)
-        reply(
+        event.reply(
             f'Your poll has been closed. Final results for \x02"{p.question}"\x02:'
         )
-        message(p.format_results())
+        event.message(p.format_results())
         del polls[uid]
         return None
 
     if uid in polls.keys():
         return "You already have an active poll in this channel, you must close it before you can create a new one."
 
-    if ":" in text:
-        question, options = text.strip().split(":")
+    if ":" in question:
+        question, options = question.split(":")
         c = findall(r"([^,]+)", options)
         if len(c) == 1:
             c = findall(r"(\S+)", options)
@@ -99,31 +111,30 @@ def poll(text, conn, nick, chan, message, reply):
 
         _poll = Poll(question, nick, options)
     else:
-        question = text.strip()
         _poll = Poll(question, nick)
 
     # store poll in list
     polls[uid] = _poll
 
     option_str = get_text_list(_poll.option_list, "and")
-    message(
+    event.message(
         f'Created poll \x02"{_poll.question}"\x02 with the following options: {option_str}'
     )
-    message(f"Use .vote {nick.lower()} <option> to vote on this poll!")
+    event.message(f"Use .vote {nick.lower()} <option> to vote on this poll!")
     return None
 
 
 @hook.command(autohelp=True)
-def vote(text, nick, conn, chan, notice):
-    """<poll> <choice> - Vote on a poll; responds on error and silently records on success."""
-    split = text.split(None, 1)
-    if len(split) != 2:
-        return (
-            "Invalid input, please use .vote <user> <option> to vote on a poll."
-        )
-
-    _user, option = split
-    uid = ":".join([conn.name, chan, _user]).lower()
+def vote(
+    nick: str,
+    conn: IrcClient,
+    chan: str,
+    event: CommandEvent,
+    user: Annotated[str, Arg("Nick whose poll to vote on", kind="user")],
+    option: Annotated[str, Arg("Option to vote for")],
+):
+    """Vote on a poll; responds on error and silently records on success."""
+    uid = ":".join([conn.name, chan, user]).lower()
 
     p = polls.get(uid)
 
@@ -135,15 +146,23 @@ def vote(text, nick, conn, chan, notice):
     except PollError as e:
         return str(e)
 
-    notice(f'Voted \x02"{o.title}"\x02 on {p.creator}\'s poll!')
+    event.notice(f'Voted \x02"{o.title}"\x02 on {p.creator}\'s poll!')
     return None
 
 
 @hook.command(autohelp=False)
-def results(text, conn, chan, nick, message, reply):
-    """[user] - Shows current results from [user]'s poll. If [user] is empty, it will show results for your poll."""
-    if text:
-        uid = ":".join([conn.name, chan, text]).lower()
+def results(
+    conn: IrcClient,
+    chan: str,
+    nick: str,
+    event: CommandEvent,
+    user: Annotated[
+        str | None, Arg("Nick whose poll to show", kind="user")
+    ] = None,
+):
+    """Shows current results from [user]'s poll. If [user] is empty, it will show results for your poll."""
+    if user:
+        uid = ":".join([conn.name, chan, user]).lower()
         if uid not in polls.keys():
             return "Sorry, there is no active poll from that user."
     else:
@@ -153,6 +172,6 @@ def results(text, conn, chan, nick, message, reply):
 
     p = polls.get(uid)
 
-    reply(f'Results for \x02"{p.question}"\x02 by \x02{p.creator}\x02:')
-    message(p.format_results())
+    event.reply(f'Results for \x02"{p.question}"\x02 by \x02{p.creator}\x02:')
+    event.message(p.format_results())
     return None

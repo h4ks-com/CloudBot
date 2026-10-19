@@ -12,8 +12,11 @@ License:
 
 import random
 import re
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 whitespace_re = re.compile(r"\s+")
 valid_diceroll = re.compile(
@@ -58,11 +61,14 @@ def approximate(count, n):
 
 
 @hook.command("roll", "dice")
-def dice(text, event):
-    """<dice roll> - simulates dice rolls. Example: 'dice 2d20-d5+4 roll 2': D20s, subtract 1D5, add 4"""
-    match = valid_diceroll.match(text)
+def dice(
+    event: CommandEvent,
+    dice_roll: Annotated[str, Arg("Dice roll, like 2d20-d5+4")],
+):
+    """simulates dice rolls. Example: 'dice 2d20-d5+4 roll 2': D20s, subtract 1D5, add 4"""
+    match = valid_diceroll.match(dice_roll)
     if not match:
-        event.notice(f"Invalid dice roll '{text}'")
+        event.notice(f"Invalid dice roll '{dice_roll}'")
         return None
 
     text, desc = match.groups()
@@ -113,9 +119,14 @@ def dice(text, event):
 
 
 @hook.command()
-def choose(text, event):
-    """<choice1>, [choice2], [choice3], etc. - randomly picks one of the given choices"""
-    choices = re.findall(r"([^,]+)", text.strip())
+def choose(
+    event: CommandEvent,
+    choices_text: Annotated[
+        str, Arg("Choices separated by commas, or by 'or'")
+    ],
+):
+    """randomly picks one of the given choices"""
+    choices = re.findall(r"([^,]+)", choices_text.strip())
     if len(choices) == 1:
         choices = choices[0].split(" or ")
         if len(choices) == 1:
@@ -126,20 +137,12 @@ def choose(text, event):
 
 
 @hook.command(autohelp=False)
-def coin(text, notice, action):
-    """[amount] - flips [amount] coins"""
-
-    if text:
-        try:
-            amount = int(text)
-        except (ValueError, TypeError):
-            notice(f"Invalid input '{text}': not a number")
-            return None
-    else:
-        amount = 1
-
+def coin(
+    event: CommandEvent, amount: Annotated[int, Arg("How many coins")] = 1
+):
+    """flips [amount] coins"""
     if amount == 1:
-        action(
+        event.action(
             "flips a coin and gets {}.".format(
                 random.choice(["heads", "tails"])
             )
@@ -147,7 +150,7 @@ def coin(text, notice, action):
         return None
 
     if amount == 0:
-        action("makes a coin flipping motion")
+        event.action("makes a coin flipping motion")
         return None
 
     mu = 0.5 * amount
@@ -155,5 +158,7 @@ def coin(text, notice, action):
     n = random.normalvariate(mu, sigma)
     heads = clamp(int(round(n)), 0, amount)
     tails = amount - heads
-    action(f"flips {amount} coins and gets {heads} heads and {tails} tails.")
+    event.action(
+        f"flips {amount} coins and gets {heads} heads and {tails} tails."
+    )
     return None

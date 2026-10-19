@@ -4,15 +4,23 @@ from enum import Enum
 
 import attr
 
+from cloudbot.client import Client
+from cloudbot.util.command_args import DEFAULT_CHANTYPES
+
 logger = logging.getLogger(__name__)
 
 
-def is_channel(conn, target: str) -> bool:
+def chantypes(conn: Client, default: str = DEFAULT_CHANTYPES) -> str:
+    """The channel prefixes the server advertised in CHANTYPES."""
+    isupport = conn.memory.get("server_info", {}).get("isupport_tokens", {})
+    return isupport.get("CHANTYPES") or default
+
+
+def is_channel(conn: Client, target: str) -> bool:
     """True if target is a channel name, per the server's advertised CHANTYPES."""
     if not target:
         return False
-    isupport = conn.memory.get("server_info", {}).get("isupport_tokens", {})
-    return target[0] in (isupport.get("CHANTYPES") or "#&")
+    return target[0] in chantypes(conn)
 
 
 class ModeType(Enum):

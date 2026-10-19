@@ -6,7 +6,7 @@ Users can catch different types of fish with varying rarities.
 import random
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Annotated, Any
 
 from sqlalchemy import (
     Column,
@@ -18,6 +18,7 @@ from sqlalchemy import (
 )
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import database
 from cloudbot.util.colors import get_format, parse
 from cloudbot.util.formatting import pluralize_auto
@@ -390,11 +391,15 @@ def fish_command(nick: str, db: Any) -> str | list[str]:
 
 
 @hook.command("fishes", autohelp=False)
-def fishes_command(text: str, nick: str, db: Any) -> str:
-    """[username] - Show fish collection for yourself or another user"""
-    if text and text.strip():
-        target = text.strip().lower()
-        display_name = text.strip()
+def fishes_command(
+    nick: str,
+    db: Any,
+    username: Annotated[str | None, Arg("User to look up", kind="user")] = None,
+) -> str:
+    """Show fish collection for yourself or another user"""
+    if username:
+        target = username.lower()
+        display_name = username
     else:
         target = nick.lower()
         display_name = nick
@@ -471,12 +476,11 @@ def baits_command(nick: str, db: Any) -> str:
 
 
 @hook.command("fishreset", permissions=["admin", "botcontrol"])
-def fishreset_command(text: str, db: Any) -> str:
-    """<username> - Reset a user's bait count and timestamp (Admin only)"""
-    if not text or not text.strip():
-        return "🎣 Usage: .fishreset <username>"
-
-    target_user = text.strip().lower()
+def fishreset_command(
+    username: Annotated[str, Arg("User to reset", kind="user")], db: Any
+) -> str:
+    """Reset a user's bait count and timestamp (Admin only)"""
+    target_user = username.lower()
     current_time = int(time.time())
 
     # Check if user exists in bait table
@@ -494,7 +498,9 @@ def fishreset_command(text: str, db: Any) -> str:
             .values(baits=BAITS_PER_RESET, last_reset=current_time)
         )
         db.commit()
-        return f"🎣 Reset {bold(text.strip())}'s bait count to {BAITS_PER_RESET} baits"
+        return (
+            f"🎣 Reset {bold(username)}'s bait count to {BAITS_PER_RESET} baits"
+        )
     else:
         # Create new user entry
         db.execute(
@@ -505,4 +511,4 @@ def fishreset_command(text: str, db: Any) -> str:
             )
         )
         db.commit()
-        return f"🎣 Created new bait entry for {bold(text.strip())} with {BAITS_PER_RESET} baits"
+        return f"🎣 Created new bait entry for {bold(username)} with {BAITS_PER_RESET} baits"

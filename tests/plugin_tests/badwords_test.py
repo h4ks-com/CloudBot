@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from cloudbot.clients.irc import IrcClient
+from cloudbot.util.command_args import build_spec
 from plugins import badwords
 from tests.util.mock_db import MockDB
 
@@ -20,7 +21,7 @@ pytestmark = pytest.mark.usefixtures("clear_bad_words")
 def test_add_bad(mock_db: MockDB):
     badwords.table.create(mock_db.engine)
     with mock_db.session() as session:
-        res = badwords.add_bad("foo #bar", "testnick", session)
+        res = badwords.add_bad("testnick", session, "foo", "#bar")
         assert res == "Current badwords: foo"
         assert mock_db.get_data(badwords.table) == [
             ("foo", "testnick", "#bar"),
@@ -37,7 +38,7 @@ def test_del_bad(mock_db: MockDB):
             ],
         )
         badwords.load_bad(session)
-        res = badwords.del_bad("foo #bar", session)
+        res = badwords.del_bad(session, "foo", "#bar")
         assert res == "Removing foo new bad word list for #bar is: foo"
         assert mock_db.get_data(badwords.table) == []
 
@@ -120,3 +121,19 @@ def test_check_badwords_no_match(mock_db: MockDB):
         assert res is None
         assert message.mock_calls == []
         assert conn.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "func,text,expected",
+    [
+        (badwords.add_bad, "Foo #Bar", {"word": "Foo", "channel": "#Bar"}),
+        (badwords.del_bad, "foo #bar", {"word": "foo", "channel": "#bar"}),
+        (badwords.list_bad, "#bar", {"channel": "#bar"}),
+    ],
+)
+def test_badwords_args(func, text, expected):
+    assert build_spec(func).parse_text(text) == expected
+
+
+def test_list_bad_requires_channel_prefix():
+    assert badwords.list_bad("bar") == "Please specify a valid channel name"

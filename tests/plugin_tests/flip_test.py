@@ -54,7 +54,7 @@ from plugins import flip
 def test_flip(text, chan, calls):
     random.seed(0)
     event = MagicMock()
-    assert flip.flip(text, event.message, chan) is None
+    assert flip.flip(text, event, chan) is None
     assert event.mock_calls == calls
 
 
@@ -93,20 +93,20 @@ def test_flip(text, chan, calls):
 def test_table(text, calls):
     random.seed(0)
     event = MagicMock()
-    assert flip.table(text, event.message) is None
+    assert flip.table(text, event) is None
     assert event.mock_calls == calls
 
 
 def test_fix_flipped():
     event = MagicMock()
     flip.table_status["#foo"] = True
-    assert flip.fix("table", event.message, "#foo") is None
+    assert flip.fix("table", event, "#foo") is None
     assert event.mock_calls == [call.message(flip.FIXED_TABLE)]
 
 
 def test_fix():
     event = MagicMock()
-    assert flip.fix("table", event.message, "#foo") is None
+    assert flip.fix("table", event, "#foo") is None
     assert event.mock_calls == [
         call.message(
             "no tables have been turned over in #foo, thanks for checking!"
@@ -117,7 +117,7 @@ def test_fix():
 def test_fix_other():
     random.seed(0)
     event = MagicMock()
-    assert flip.fix("foo", event.message, "#foo") is None
+    assert flip.fix("foo", event, "#foo") is None
     assert event.mock_calls == [
         call.message("(\u256f\xb0\u25a1\xb0\uff09\u256f \ufe35 oo\u025f")
     ]

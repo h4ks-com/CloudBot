@@ -11,10 +11,13 @@ Commands:
 
 import asyncio
 import time
+from typing import Annotated, Literal
 
 import aiohttp
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 _BASE_URL = "https://api.sigmally.h4ks.com"
 _WS_URL = "wss://api.sigmally.h4ks.com/ws/"
@@ -124,15 +127,16 @@ async def _fetch_skins() -> str:
 
 
 @hook.command("sigmally", "agar", autohelp=False)
-async def sigmally_cmd(text, reply):
-    """[who|top|bots|watch|skins] - sigmally agar.io server info"""
-    sub = (text or "").strip().lower()
-
+async def sigmally_cmd(
+    event: CommandEvent,
+    sub: Annotated[
+        Literal["who", "top", "bots", "watch", "skins"] | None,
+        Arg("Which part of the server info to show"),
+    ] = None,
+):
+    """sigmally agar.io server info"""
     if sub == "skins":
         return await _fetch_skins()
-
-    if sub and sub not in ("who", "top", "bots", "watch"):
-        return f"\x02sigmally\x02: Unknown subcommand '{sub}'. Try: who, top, bots, watch, skins"
 
     # All other subcommands (and no-arg) need the HTTP status
     ping_task = None
@@ -145,7 +149,7 @@ async def sigmally_cmd(text, reply):
     except (aiohttp.ClientError, asyncio.TimeoutError, ConnectionError) as e:
         if ping_task:
             ping_task.cancel()
-        reply(f"\x02sigmally\x02: Unable to connect: {e}")
+        event.reply(f"\x02sigmally\x02: Unable to connect: {e}")
         return
 
     if not sub:

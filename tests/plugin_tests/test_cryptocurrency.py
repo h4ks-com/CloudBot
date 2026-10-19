@@ -9,7 +9,7 @@ from responses import Response
 from cloudbot.bot import bot
 from cloudbot.event import CommandEvent
 from plugins import cryptocurrency
-from tests.util import HookResult, wrap_hook_response
+from tests.util import HookResult, command_hook, wrap_hook_response
 
 
 def test_parse():
@@ -309,12 +309,13 @@ def test_crypto_cmd(mock_requests):
         text="BTC USD",
         cmd_prefix=".",
         triggered_command="crypto",
-        hook=MagicMock(),
+        hook=command_hook(cryptocurrency.crypto_command),
         bot=conn.bot,
         conn=conn,
         channel="#foo",
         nick="foobaruser",
     )
+    assert event.parse_command_args()
     res = wrap_hook_response(cryptocurrency.crypto_command, event)
 
     assert res == [
@@ -407,12 +408,13 @@ def test_crypto_cmd_bad_symbol(mock_requests):
         text="ABC USD",
         cmd_prefix=".",
         triggered_command="crypto",
-        hook=MagicMock(),
+        hook=command_hook(cryptocurrency.crypto_command),
         bot=conn.bot,
         conn=conn,
         channel="#foo",
         nick="foobaruser",
     )
+    assert event.parse_command_args()
     res = wrap_hook_response(cryptocurrency.crypto_command, event)
 
     assert res == [HookResult("return", "Unknown cryptocurrency 'ABC'")]
@@ -429,12 +431,13 @@ def test_crypto_cmd_bad_fiat(mock_requests):
         text="BTC ABC",
         cmd_prefix=".",
         triggered_command="crypto",
-        hook=MagicMock(),
+        hook=command_hook(cryptocurrency.crypto_command),
         bot=conn.bot,
         conn=conn,
         channel="#foo",
         nick="foobaruser",
     )
+    assert event.parse_command_args()
     res = wrap_hook_response(cryptocurrency.crypto_command, event)
 
     assert res == [HookResult("return", "Unknown fiat currency 'ABC'")]
@@ -450,13 +453,14 @@ def test_cmd_api_error(mock_requests):
         text="BTC USD",
         cmd_prefix=".",
         triggered_command="crypto",
-        hook=MagicMock(),
+        hook=command_hook(cryptocurrency.crypto_command),
         bot=conn.bot,
         conn=conn,
         channel="#foo",
         nick="foobaruser",
     )
     res: list[HookResult] = []
+    assert event.parse_command_args()
     with pytest.raises(cryptocurrency.APIError, match="FooBar"):
         wrap_hook_response(cryptocurrency.crypto_command, event, res)
 

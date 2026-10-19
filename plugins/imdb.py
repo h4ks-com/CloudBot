@@ -1,10 +1,12 @@
 import json
 import re
+from typing import Annotated
 from urllib.parse import quote
 
 from requests import HTTPError, RequestException
 
 from cloudbot import hook
+from cloudbot.hook import Arg
 from cloudbot.util import web
 from cloudbot.util.queue import Queue
 from cloudbot.util.web import get_session
@@ -128,7 +130,7 @@ def _format_result(info: dict[str, str]) -> str:
 
 
 @hook.command("imdbn", "imdb_next", autohelp=False)
-def imdbn(nick, chan):
+def imdbn(nick: str, chan: str):
     """- Show the next IMDB result from your search."""
     results = results_queue[chan][nick]
     if len(results) == 0:
@@ -143,14 +145,15 @@ def imdbn(nick, chan):
 
 
 @hook.command("imdb")
-def imdb(text: str, nick, chan) -> str:
-    """<query> - Search IMDB for movie/show information including ratings"""
-    if not text.strip():
-        return "Please provide a movie or show title to search for."
-
-    tt_ids = search_imdb(text.strip())
+def imdb(
+    nick: str,
+    chan: str,
+    title: Annotated[str, Arg("Movie or show title to search for")],
+) -> str:
+    """Search IMDB for movie/show information including ratings"""
+    tt_ids = search_imdb(title)
     if not tt_ids:
-        return f"No IMDB results found for '{text.strip()}'"
+        return f"No IMDB results found for '{title}'"
 
     results_queue[chan][nick] = tt_ids[1:]
 

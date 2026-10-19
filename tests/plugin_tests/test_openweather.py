@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 from responses.matchers import query_param_matcher
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import openweather
 
 BASE_FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
@@ -82,10 +83,14 @@ def test_forecast_no_api_key(mock_api_keys):
     assert "API key" in result
 
 
-def test_forecast_no_city(mock_api_keys):
-    result = openweather.forecast("")
-    assert isinstance(result, str)
-    assert "city" in result.lower()
+@pytest.mark.parametrize(
+    "func",
+    [openweather.weather, openweather.forecast, openweather.forecast_week],
+)
+def test_city_is_required(func):
+    with pytest.raises(CommandArgError):
+        build_spec(func).parse_text("")
+    assert build_spec(func).parse_text("New York") == {"city": "New York"}
 
 
 def test_forecast_returns_lines(mock_api_keys, mock_requests):
@@ -183,12 +188,6 @@ def test_forecast_week_no_api_key(mock_api_keys):
     result = openweather.forecast_week("Berlin")
     assert isinstance(result, str)
     assert "API key" in result
-
-
-def test_forecast_week_no_city(mock_api_keys):
-    result = openweather.forecast_week("")
-    assert isinstance(result, str)
-    assert "city" in result.lower()
 
 
 def test_forecast_week_returns_lines(mock_api_keys, mock_requests):

@@ -7,6 +7,9 @@ from enum import Enum, IntEnum, unique
 
 from cloudbot.event import EventType
 from cloudbot.util import HOOK_ATTR
+from cloudbot.util.command_args import Arg as Arg
+from cloudbot.util.command_args import OptionalChannel as OptionalChannel
+from cloudbot.util.command_args import build_spec
 
 valid_command_re = re.compile(r"^\w+$")
 
@@ -58,6 +61,10 @@ class _CommandHook(_Hook):
             ).strip()
         else:
             self.doc = None
+
+        self.spec = build_spec(function)
+        if self.spec.args:
+            self.doc = self.spec.usage(self.doc)
 
     def add_hook(self, alias_param, kwargs):
         self._add_hook(kwargs)

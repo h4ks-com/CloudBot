@@ -1,6 +1,9 @@
 import random
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 
 FIXED_TABLE = "\u252c\u2500\u252c\u30ce(\u0ca0_\u0ca0\u30ce)"
@@ -84,10 +87,12 @@ table_flipper = "\u253b\u2501\u253b \ufe35\u30fd(`\u0414\xb4)\uff89\ufe35 \u253b
 
 
 @hook.command()
-def flip(text, message, chan):
-    """<text> - Flips <text> over."""
+def flip(
+    text: Annotated[str, Arg("Text to flip")], event: CommandEvent, chan: str
+):
+    """Flips <text> over."""
     if text in ["table", "tables"]:
-        message(
+        event.message(
             random.choice(
                 [
                     random.choice(flippers) + FLIP_CHAR + "\u253b\u2501\u253b",
@@ -98,12 +103,12 @@ def flip(text, message, chan):
         table_status[chan] = True
     elif text == "5318008":
         out = "BOOBIES"
-        message(random.choice(flippers) + FLIP_CHAR + out)
+        event.message(random.choice(flippers) + FLIP_CHAR + out)
     elif text == "BOOBIES":
         out = "5318008"
-        message(random.choice(flippers) + FLIP_CHAR + out)
+        event.message(random.choice(flippers) + FLIP_CHAR + out)
     else:
-        message(
+        event.message(
             random.choice(flippers)
             + FLIP_CHAR
             + formatting.multi_replace(text[::-1], replacements)
@@ -111,9 +116,9 @@ def flip(text, message, chan):
 
 
 @hook.command()
-def table(text, message):
-    """<text> - Flip text"""
-    message(
+def table(text: Annotated[str, Arg("Text to flip")], event: CommandEvent):
+    """Flip text"""
+    event.message(
         random.choice(flippers)
         + FLIP_CHAR
         + formatting.multi_replace(text[::-1].lower(), replacements)
@@ -121,14 +126,16 @@ def table(text, message):
 
 
 @hook.command()
-def fix(text, message, chan):
-    """<text> - fixes a flipped over table."""
+def fix(
+    text: Annotated[str, Arg("Text to fix")], event: CommandEvent, chan: str
+):
+    """fixes a flipped over table."""
     if text in ["table", "tables"]:
         if table_status.pop(chan, False) is True:
-            message(FIXED_TABLE)
+            event.message(FIXED_TABLE)
         else:
-            message(
+            event.message(
                 f"no tables have been turned over in {chan}, thanks for checking!"
             )
     else:
-        flip(text, message, chan)
+        flip(text, event, chan)

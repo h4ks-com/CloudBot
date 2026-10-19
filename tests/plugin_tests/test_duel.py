@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from cloudbot.util.command_args import CommandArgError, build_spec
 from plugins import duel
 from tests.util.mock_conn import MockConn
 
@@ -173,8 +174,9 @@ def test_start_duel_success(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = MockConn()
-    message = MagicMock()
-    result = duel.start_duel(db, "#a", message, conn)
+    event = MagicMock()
+    message = event.message
+    result = duel.start_duel(db, "#a", event, conn)
     assert result is None
     assert duel.get_state_table(conn.name, "#a").game_on is True
     message.assert_called_once()
@@ -333,7 +335,7 @@ def test_display_scores_opt_out(mock_db):
     conn = SimpleNamespace(name="net")
     duel.opt_out["net"].append("#a")
     result = duel.display_scores(
-        duel.SCORE_TYPES["killer"], MagicMock(), "", "#a", conn, db
+        duel.SCORE_TYPES["killer"], None, "#a", conn, db
     )
     assert result is None
 
@@ -342,7 +344,7 @@ def test_display_scores_no_data(mock_db):
     db = _load_scores(mock_db, [])
     conn = SimpleNamespace(name="net")
     result = duel.display_scores(
-        duel.SCORE_TYPES["killer"], MagicMock(), "", "#a", conn, db
+        duel.SCORE_TYPES["killer"], None, "#a", conn, db
     )
     assert result == "It appears no one has killed any duels yet."
 
@@ -354,7 +356,7 @@ def test_display_scores_channel(mock_db):
     )
     conn = SimpleNamespace(name="net")
     result = duel.display_scores(
-        duel.SCORE_TYPES["killer"], MagicMock(), "", "#a", conn, db
+        duel.SCORE_TYPES["killer"], None, "#a", conn, db
     )
     assert "duel killer scores in #a" in result
     assert "bob" in result.replace("\u200b", "")
@@ -367,7 +369,7 @@ def test_display_scores_global(mock_db):
     )
     conn = SimpleNamespace(name="net")
     result = duel.display_scores(
-        duel.SCORE_TYPES["killer"], MagicMock(), "global", "#a", conn, db
+        duel.SCORE_TYPES["killer"], "global", "#a", conn, db
     )
     assert "across the network" in result
 
@@ -382,20 +384,9 @@ def test_display_scores_average(mock_db):
     )
     conn = SimpleNamespace(name="net")
     result = duel.display_scores(
-        duel.SCORE_TYPES["killer"], MagicMock(), "average", "#a", conn, db
+        duel.SCORE_TYPES["killer"], "average", "#a", conn, db
     )
     assert "3" in result
-
-
-def test_display_scores_invalid_key(mock_db):
-    db = _load_scores(mock_db, [])
-    conn = SimpleNamespace(name="net")
-    event = MagicMock()
-    result = duel.display_scores(
-        duel.SCORE_TYPES["killer"], event, "bogus", "#a", conn, db
-    )
-    assert result is None
-    event.notice_doc.assert_called_once()
 
 
 def test_killers_command(mock_db):
@@ -404,7 +395,7 @@ def test_killers_command(mock_db):
         [{"network": "net", "chan": "#a", "name": "bob", "shot": 5}],
     )
     conn = SimpleNamespace(name="net")
-    result = duel.killers("", MagicMock(), "#a", conn, db)
+    result = duel.killers("#a", conn, db)
     assert "bob" in result.replace("\u200b", "")
 
 
@@ -415,7 +406,7 @@ def test_hunt_opt_out_status_enabled(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = MockConn()
-    result = duel.hunt_opt_out("", "#a", db, conn)
+    result = duel.hunt_opt_out("#a", db, conn)
     assert "duel is enabled in #a" in result
 
 
@@ -424,7 +415,7 @@ def test_hunt_opt_out_status_disabled(mock_db):
     db = mock_db.session()
     conn = MockConn()
     duel.opt_out[conn.name.casefold()].append("#a")
-    result = duel.hunt_opt_out("", "#a", db, conn)
+    result = duel.hunt_opt_out("#a", db, conn)
     assert "duel is disabled in #a" in result
 
 
@@ -434,7 +425,7 @@ def test_hunt_opt_out_list(mock_db):
     conn = MockConn()
     duel.opt_out["neta"] = ["#a"]
     duel.opt_out["netb"] = ["#b"]
-    result = duel.hunt_opt_out("list", "#a", db, conn)
+    result = duel.hunt_opt_out("#a", db, conn, "list")
     assert "neta" in result
     assert "netb" in result
 
@@ -443,7 +434,7 @@ def test_hunt_opt_out_missing_arg(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = MockConn()
-    result = duel.hunt_opt_out("add", "#a", db, conn)
+    result = duel.hunt_opt_out("#a", db, conn, "add")
     assert "please specify add or remove" in result
 
 
@@ -451,7 +442,7 @@ def test_hunt_opt_out_invalid_channel(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = MockConn()
-    result = duel.hunt_opt_out("add notachannel", "#a", db, conn)
+    result = duel.hunt_opt_out("#a", db, conn, "add", "notachannel")
     assert result == "Please specify a valid channel."
 
 
@@ -459,7 +450,7 @@ def test_hunt_opt_out_add(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = MockConn()
-    result = duel.hunt_opt_out("add #a", "#a", db, conn)
+    result = duel.hunt_opt_out("#a", db, conn, "add", "#a")
     assert result == "The duelhunt has been successfully disabled in #a."
     assert duel.is_opt_out(conn.name, "#a") is True
     assert mock_db.get_data(duel.optout) == [(conn.name, "#a")]
@@ -469,8 +460,8 @@ def test_hunt_opt_out_add_already_disabled(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = MockConn()
-    duel.hunt_opt_out("add #a", "#a", db, conn)
-    result = duel.hunt_opt_out("add #a", "#a", db, conn)
+    duel.hunt_opt_out("#a", db, conn, "add", "#a")
+    result = duel.hunt_opt_out("#a", db, conn, "add", "#a")
     assert result == "duel has already been disabled in #a."
 
 
@@ -478,8 +469,8 @@ def test_hunt_opt_out_remove(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = MockConn()
-    duel.hunt_opt_out("add #a", "#a", db, conn)
-    result = duel.hunt_opt_out("remove #a", "#a", db, conn)
+    duel.hunt_opt_out("#a", db, conn, "add", "#a")
+    result = duel.hunt_opt_out("#a", db, conn, "remove", "#a")
     assert result is None
     assert duel.is_opt_out(conn.name, "#a") is False
     assert mock_db.get_data(duel.optout) == []
@@ -489,7 +480,7 @@ def test_hunt_opt_out_remove_not_disabled(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = MockConn()
-    result = duel.hunt_opt_out("remove #a", "#a", db, conn)
+    result = duel.hunt_opt_out("#a", db, conn, "remove", "#a")
     assert result == "duel is already enabled in #a."
 
 
@@ -504,8 +495,9 @@ def test_duel_merge_no_overlap(mock_db):
     )
     db = mock_db.session()
     conn = SimpleNamespace(name="net")
-    message = MagicMock()
-    result = duel.duel_merge("oldnick newnick", conn, db, message)
+    event = MagicMock()
+    message = event.message
+    result = duel.duel_merge(conn, db, event, "oldnick", "newnick")
     assert result is None
     assert mock_db.get_data(duel.table) == [("net", "newnick", 5, "#a")]
     message.assert_called_once()
@@ -523,8 +515,7 @@ def test_duel_merge_with_overlap(mock_db):
     )
     db = mock_db.session()
     conn = SimpleNamespace(name="net")
-    message = MagicMock()
-    duel.duel_merge("oldnick newnick", conn, db, message)
+    duel.duel_merge(conn, db, MagicMock(), "oldnick", "newnick")
     data = {(r[1], r[3]): r[2] for r in mock_db.get_data(duel.table)}
     assert data[("newnick", "#a")] == 7
 
@@ -533,7 +524,7 @@ def test_duel_merge_no_old_scores(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = SimpleNamespace(name="net")
-    result = duel.duel_merge("oldnick newnick", conn, db, MagicMock())
+    result = duel.duel_merge(conn, db, MagicMock(), "oldnick", "newnick")
     assert "no duel scores to migrate" in result
 
 
@@ -544,7 +535,7 @@ def test_duels_user_no_scores(mock_db):
     create_tables(mock_db.engine)
     db = mock_db.session()
     conn = SimpleNamespace(name="net")
-    result = duel.duels_user("", "bob", "#a", conn, db, MagicMock())
+    result = duel.duels_user("bob", "#a", conn, db, MagicMock())
     assert "has not participated" in result
 
 
@@ -555,8 +546,9 @@ def test_duels_user_single_channel(mock_db):
     )
     db = mock_db.session()
     conn = SimpleNamespace(name="net")
-    message = MagicMock()
-    result = duel.duels_user("", "bob", "#a", conn, db, message)
+    event = MagicMock()
+    message = event.message
+    result = duel.duels_user("bob", "#a", conn, db, event)
     assert result is None
     message.assert_called_once_with("bob has killed 4 people in #a.")
 
@@ -572,8 +564,9 @@ def test_duels_user_multi_channel(mock_db):
     )
     db = mock_db.session()
     conn = SimpleNamespace(name="net")
-    message = MagicMock()
-    result = duel.duels_user("bob", "someone", "#a", conn, db, message)
+    event = MagicMock()
+    message = event.message
+    result = duel.duels_user("someone", "#a", conn, db, event, "bob")
     assert result is None
     message.assert_called_once()
     text = message.call_args.args[0]
@@ -600,8 +593,9 @@ def test_duel_stats_with_duels(mock_db):
     )
     db = mock_db.session()
     conn = SimpleNamespace(name="net")
-    message = MagicMock()
-    result = duel.duel_stats("#a", conn, db, message)
+    event = MagicMock()
+    message = event.message
+    result = duel.duel_stats("#a", conn, db, event)
     assert result is None
     text = message.call_args.args[0]
     assert "#b" in text
@@ -634,15 +628,13 @@ def test_clean_duel_nothing_to_clean():
 
 def test_duel_command_game_disabled():
     conn = MockConn()
-    result = duel.duel("alice", "bob", "#a", MagicMock(), conn, MagicMock())
+    result = duel.duel("bob", "#a", conn, MagicMock(), "alice")
     assert result == "Dueling is not currently enabled in #a."
 
 
-def test_duel_command_empty_text():
-    conn = MockConn()
-    enable_game(conn, "#a")
-    result = duel.duel("", "bob", "#a", MagicMock(), conn, MagicMock())
-    assert result == "Please specify a user to duel with."
+def test_duel_command_requires_opponent():
+    with pytest.raises(CommandArgError):
+        build_spec(duel.duel).parse_text("")
 
 
 def test_duel_command_invalid_nick():
@@ -650,7 +642,7 @@ def test_duel_command_invalid_nick():
     enable_game(conn, "#a")
     event = MagicMock()
     event.is_nick_valid.return_value = False
-    result = duel.duel("al!ce", "bob", "#a", MagicMock(), conn, event)
+    result = duel.duel("bob", "#a", conn, event, "al!ce")
     assert result == "That nickname is impossible to use!"
 
 
@@ -659,7 +651,7 @@ def test_duel_command_self():
     enable_game(conn, "#a")
     event = MagicMock()
     event.is_nick_valid.return_value = True
-    result = duel.duel("bob", "bob", "#a", MagicMock(), conn, event)
+    result = duel.duel("bob", "#a", conn, event, "bob")
     assert result == "You can't duel yourself."
 
 
@@ -669,7 +661,7 @@ def test_duel_command_already_pending():
     event = MagicMock()
     event.is_nick_valid.return_value = True
     duel.pending["alice"] = {"#a": "carl"}
-    result = duel.duel("alice", "bob", "#a", MagicMock(), conn, event)
+    result = duel.duel("bob", "#a", conn, event, "alice")
     assert "already has a pending duel request here with carl" in result
 
 
@@ -679,7 +671,7 @@ def test_duel_command_already_in_duel():
     event = MagicMock()
     event.is_nick_valid.return_value = True
     duel.duel_games[duel.duel_tuple("bob", "alice")] = make_game()
-    result = duel.duel("alice", "bob", "#a", MagicMock(), conn, event)
+    result = duel.duel("bob", "#a", conn, event, "alice")
     assert "already in a duel with you" in result
 
 
@@ -689,7 +681,7 @@ def test_duel_command_success():
     event = MagicMock()
     event.is_nick_valid.return_value = True
     duel.too_late_to_bang[("#a", "bob")] = {"start_time": None, "result": "win"}
-    result = duel.duel("alice", "bob", "#a", MagicMock(), conn, event)
+    result = duel.duel("bob", "#a", conn, event, "alice")
     assert (
         result
         == "<alice> bob has challenged you to a duel! Use .accept to accept it"
@@ -726,12 +718,13 @@ def test_accept_duel_success():
     conn = MockConn()
     enable_game(conn, "#a")
     duel.pending["bob"] = {"#a": "alice"}
-    message = MagicMock()
+    event = MagicMock()
+    message = event.message
     with patch("plugins.duel.Timer") as timer_cls:
         timer_instance = MagicMock()
         timer_cls.return_value = timer_instance
         with patch("plugins.duel.random.randrange", return_value=5):
-            result = duel.accept_duel("bob", "#a", message, conn)
+            result = duel.accept_duel("bob", "#a", event, conn)
     assert result is None
     assert duel.duel_opponents["bob"] == "alice"
     assert duel.duel_opponents["alice"] == "bob"
@@ -751,21 +744,19 @@ def test_accept_duel_success():
 
 def test_cancel_duel_game_disabled():
     conn = MockConn()
-    result = duel.cancel_duel("alice", "bob", "#a", MagicMock(), conn)
+    result = duel.cancel_duel("bob", "#a", conn, "alice")
     assert result == "Dueling is not currently enabled in #a."
 
 
-def test_cancel_duel_no_text():
-    conn = MockConn()
-    enable_game(conn, "#a")
-    result = duel.cancel_duel("", "bob", "#a", MagicMock(), conn)
-    assert result == "Please specify a user to cancel the duel with."
+def test_cancel_duel_requires_opponent():
+    with pytest.raises(CommandArgError):
+        build_spec(duel.cancel_duel).parse_text("")
 
 
 def test_cancel_duel_no_pending():
     conn = MockConn()
     enable_game(conn, "#a")
-    result = duel.cancel_duel("alice", "bob", "#a", MagicMock(), conn)
+    result = duel.cancel_duel("bob", "#a", conn, "alice")
     assert result == "You have no pending duels with that user."
 
 
@@ -773,7 +764,7 @@ def test_cancel_duel_pending_request():
     conn = MockConn()
     enable_game(conn, "#a")
     duel.pending["alice"] = {"#a": "bob"}
-    result = duel.cancel_duel("alice", "bob", "#a", MagicMock(), conn)
+    result = duel.cancel_duel("bob", "#a", conn, "alice")
     assert result == "<bob> alice duel has been canceled."
     assert "#a" not in duel.pending.get("alice", {})
 
@@ -784,7 +775,7 @@ def test_cancel_duel_active_duel():
     duel.duel_opponents["bob"] = "alice"
     duel.duel_opponents["alice"] = "bob"
     duel.duel_games[duel.duel_tuple("bob", "alice")] = make_game(canceled=False)
-    result = duel.cancel_duel("alice", "bob", "#a", MagicMock(), conn)
+    result = duel.cancel_duel("bob", "#a", conn, "alice")
     assert result == "<bob> alice duel has been canceled."
     assert duel.duel_games[duel.duel_tuple("bob", "alice")]["canceled"] is True
 
@@ -1060,3 +1051,18 @@ def test_bang_delegates_to_attack():
     attack_mock.assert_called_once_with(
         event, "bob", "#a", db, conn, "shoot", "alice"
     )
+
+
+def test_duel_args_parse():
+    spec = build_spec(duel.hunt_opt_out)
+    assert spec.parse_text("add #a") == {"action": "add", "channel": "#a"}
+    assert spec.parse_text("") == {"action": None, "channel": None}
+    with pytest.raises(CommandArgError):
+        spec.parse_text("frobnicate #a")
+    assert build_spec(duel.killers).parse_text("GLOBAL") == {"scope": "global"}
+    assert build_spec(duel.duel_merge).parse_text("a b") == {
+        "user1": "a",
+        "user2": "b",
+    }
+    with pytest.raises(CommandArgError):
+        build_spec(duel.duel_merge).parse_text("a")

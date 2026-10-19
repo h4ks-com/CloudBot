@@ -1,9 +1,13 @@
 import re
+from typing import Annotated
 
 from sqlalchemy import Column, Integer, String, Table
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
 from cloudbot.bot import CloudBot
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database
 from plugins.chain import get_hook_from_command, wrap_event
 
@@ -36,17 +40,17 @@ def load_cache(db) -> None:
 
 
 @hook.command("aliasadd", autohelp=False)
-def add_alias(text: str, nick: str, db, reply, notice) -> None:
+def add_alias(text: str, nick: str, db: Session, event: CommandEvent) -> None:
     """
     <name> = <cmdline> - Adds a new alias with the given name and commands
     """
     if not text:
-        reply("Usage: .addalias <name> = <cmdline>")
+        event.reply("Usage: .addalias <name> = <cmdline>")
         return
 
     match = re.match(r"(\S+)\s*=\s+(.*)", text)
     if not match:
-        reply("Usage: .addalias <name> = <cmdline>")
+        event.reply("Usage: .addalias <name> = <cmdline>")
         return
 
     name, cmdline = match.groups()
@@ -81,23 +85,24 @@ def add_alias(text: str, nick: str, db, reply, notice) -> None:
 
     db.commit()
     aliases_cache[nick_lower][name] = cmdline
-    reply(f"Alias '{name}' added successfully.")
+    event.reply(f"Alias '{name}' added successfully.")
 
 
-@hook.command("aliasdel", "aliasrm", "aliasremove", autohelp=False)
-def delete_alias(text: str, nick: str, db, reply, notice) -> None:
+@hook.command("aliasdel", "aliasrm", "aliasremove")
+def delete_alias(
+    nick: str,
+    db: Session,
+    event: CommandEvent,
+    name: Annotated[str, Arg("Name of the alias to delete")],
+) -> None:
     """
-    <name> - Deletes the alias with the given name
+    Deletes the alias with the given name
     """
-    if not text:
-        reply("Usage: .delalias <name>")
-        return
-
-    name = text.strip().lower()
+    name = name.lower()
     nick_lower = nick.lower()
 
     if nick_lower not in aliases_cache or name not in aliases_cache[nick_lower]:
-        reply(
+        event.reply(
             f"You do not have an alias named '{name}' or you are trying to delete an alias for another user?"
         )
         return
@@ -113,42 +118,46 @@ def delete_alias(text: str, nick: str, db, reply, notice) -> None:
     if not aliases_cache[nick_lower]:
         del aliases_cache[nick_lower]
 
-    reply(f"Alias '{name}' deleted successfully.")
+    event.reply(f"Alias '{name}' deleted successfully.")
 
 
 @hook.command("aliases", "aliaslist", autohelp=False)
-def list_aliases(text: str, nick: str, reply, notice) -> None:
+def list_aliases(
+    nick: str,
+    event: CommandEvent,
+    user: Annotated[
+        str | None, Arg("Nick whose aliases to list", kind="user")
+    ] = None,
+) -> None:
     """
-    [nick] - Lists all aliases for the user or yourself
+    Lists all aliases for the user or yourself
     """
-    nick_lower = text.split()[0].lower() if text else nick.lower()
+    nick_lower = (user or nick).lower()
     if nick_lower not in aliases_cache or not aliases_cache[nick_lower]:
-        reply(f"No aliases found for '{nick_lower}'.")
+        event.reply(f"No aliases found for '{nick_lower}'.")
         return
 
     if nick_lower != nick.lower():
-        notice(f"Aliases for {nick_lower}:")
+        event.notice(f"Aliases for {nick_lower}:")
     else:
-        notice("Your aliases:")
+        event.notice("Your aliases:")
     for name, cmdline in aliases_cache[nick_lower].items():
-        notice(f"{name}: {cmdline}")
+        event.notice(f"{name}: {cmdline}")
 
 
-@hook.command("aliascopy", "aliasimport", autohelp=False)
-def copy_alias(text: str, nick: str, db, reply, notice) -> None:
+@hook.command("aliascopy", "aliasimport")
+def copy_alias(
+    nick: str,
+    db: Session,
+    event: CommandEvent,
+    source_nick: Annotated[
+        str, Arg("Nick to copy the alias from", kind="user")
+    ],
+    alias_name: Annotated[str, Arg("Name of the alias to copy")],
+) -> None:
     """
-    <source_nick> <alias_name> - Copies an alias from another user
+    Copies an alias from another user
     """
-    if not text:
-        reply("Usage: .aliascopy <source_nick> <alias_name>")
-        return
-
-    parts = text.split()
-    if len(parts) != 2:
-        reply("Usage: .aliascopy <source_nick> <alias_name>")
-        return
-
-    source_nick, alias_name = parts
     source_nick_lower = source_nick.lower()
     alias_name_lower = alias_name.lower()
 
@@ -156,7 +165,7 @@ def copy_alias(text: str, nick: str, db, reply, notice) -> None:
         source_nick_lower not in aliases_cache
         or alias_name_lower not in aliases_cache[source_nick_lower]
     ):
-        reply(f"Alias '{alias_name}' not found for user '{source_nick}'.")
+        event.reply(f"Alias '{alias_name}' not found for user '{source_nick}'.")
         return
 
     cmdline = aliases_cache[source_nick_lower][alias_name_lower]
@@ -170,21 +179,25 @@ def copy_alias(text: str, nick: str, db, reply, notice) -> None:
     db.commit()
 
     aliases_cache.setdefault(nick.lower(), {})[alias_name_lower] = cmdline
-    reply(f"Alias '{alias_name}' copied successfully from '{source_nick}'.")
+    event.reply(
+        f"Alias '{alias_name}' copied successfully from '{source_nick}'."
+    )
 
 
-@hook.command("alias", "a", autohelp=False)
-async def run_alias(text: str, nick: str, bot: CloudBot, event, reply) -> str:
+@hook.command("alias", "a")
+async def run_alias(
+    nick: str,
+    bot: CloudBot,
+    event: CommandEvent,
+    name: Annotated[str, Arg("Name of the alias to run")],
+    cmdargs: Annotated[str | None, Arg("Arguments for the alias")] = None,
+) -> str:
     """
-    <name> [args] - Executes the alias with the given name optionally with arguments.
+    Executes the alias with the given name optionally with arguments.
 
     Arguments are appended to the command if no placeholder "<>" is used in the alias definition.
     """
-    if not text:
-        return "Usage: .alias <name> [args]"
-
-    # args may not be present
-    name, cmdargs = (text.split(maxsplit=1) + [""])[:2]
+    cmdargs = cmdargs or ""
     nick_lower = nick.lower()
 
     if nick_lower not in aliases_cache or name not in aliases_cache[nick_lower]:

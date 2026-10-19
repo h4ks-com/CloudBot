@@ -1,16 +1,21 @@
 import json
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.web import get_session
 
 
 @hook.command()
-def suggest(text, reply):
-    """<phrase> - Gets suggested phrases for a google search"""
-    params = {"output": "json", "client": "hp", "q": text}
+def suggest(
+    event: CommandEvent, phrase: Annotated[str, Arg("Phrase to complete")]
+):
+    """Gets suggested phrases for a google search"""
+    params = {"output": "json", "client": "hp", "q": phrase}
 
     try:
         request = get_session().get(
@@ -21,7 +26,7 @@ def suggest(text, reply):
         requests.exceptions.HTTPError,
         requests.exceptions.ConnectionError,
     ) as e:
-        reply(f"Could not get suggestions: {e}")
+        event.reply(f"Could not get suggestions: {e}")
         raise
 
     page = request.text

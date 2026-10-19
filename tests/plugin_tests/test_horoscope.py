@@ -5,6 +5,7 @@ import requests
 from responses import RequestsMock
 from responses.matchers import query_param_matcher
 
+from cloudbot.util.command_args import build_spec
 from plugins import horoscope
 from tests.util.mock_db import MockDB
 
@@ -45,7 +46,7 @@ def test_horoscope(mock_requests: RequestsMock, mock_db: MockDB):
     bot = MagicMock()
     bot.user_agent = "Some user agent"
 
-    response = horoscope.horoscope("aries", sess, bot, "some_user", event)
+    response = horoscope.horoscope(sess, bot, "some_user", event, sign="aries")
 
     assert response is None
 
@@ -61,7 +62,7 @@ def test_invalid_syntax(mock_requests: RequestsMock, mock_db: MockDB):
     bot = MagicMock()
     bot.user_agent = "Some user agent"
 
-    response = horoscope.horoscope("", sess, bot, "some_user", event)
+    response = horoscope.horoscope(sess, bot, "some_user", event)
 
     assert response is None
 
@@ -89,7 +90,7 @@ def test_database_read(mock_requests: RequestsMock, mock_db: MockDB):
     bot = MagicMock()
     bot.user_agent = "Some user agent"
 
-    response = horoscope.horoscope("", sess, bot, "some_user", event)
+    response = horoscope.horoscope(sess, bot, "some_user", event)
 
     assert response is None
 
@@ -115,7 +116,7 @@ def test_parse_fail(mock_requests: RequestsMock, mock_db: MockDB):
     bot.user_agent = "Some user agent"
 
     with pytest.raises(horoscope.HoroscopeParseError):
-        horoscope.horoscope("cancer", sess, bot, "some_user", event)
+        horoscope.horoscope(sess, bot, "some_user", event, sign="cancer")
 
     event.reply.assert_called_once_with("Unable to parse horoscope posting")
 
@@ -130,7 +131,7 @@ def test_page_error(mock_requests: RequestsMock, mock_db: MockDB):
     mock_requests.add("GET", URL.format(sign=1), status=404)
 
     with pytest.raises(requests.RequestException):
-        horoscope.horoscope("aries", sess, bot, "some_user", event)
+        horoscope.horoscope(sess, bot, "some_user", event, sign="aries")
 
     event.reply.assert_called_once_with(
         f"Could not get horoscope: 404 Client Error: Not Found for url: {URL.format(sign=1)}. URL Error"
@@ -141,7 +142,17 @@ def test_bad_sign(mock_requests: RequestsMock):
     db = MagicMock()
     event = MagicMock()
     sign = "some_sign"
-    res, err = horoscope.parse_or_lookup(sign, db, "foobar", event)
-    assert res is None
-    assert err is None
+    assert horoscope.parse_or_lookup(sign, db, "foobar", event) is None
     event.notice.assert_called_with(f"Unknown sign: {sign}")
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("", {"sign": None, "dontsave": None}),
+        ("aries", {"sign": "aries", "dontsave": None}),
+        ("aries dontsave", {"sign": "aries", "dontsave": "dontsave"}),
+    ],
+)
+def test_parse_text(text, expected):
+    assert build_spec(horoscope.horoscope).parse_text(text) == expected

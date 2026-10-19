@@ -16,8 +16,11 @@ License:
 import os
 import re
 import subprocess
+from typing import Annotated
 
 from cloudbot import hook
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 unix_ping_regex = re.compile(r"(\d+.\d+)/(\d+.\d+)/(\d+.\d+)/(\d+.\d+)")
 win_ping_regex = re.compile(
@@ -28,26 +31,20 @@ IS_WINDOWS = os.name == "nt"
 
 
 @hook.command()
-def ping(text, reply):
-    """<host> [count] - pings <host> [count] times"""
-
-    args = text.split(" ")
-    host = args[0]
-
-    # check for a second argument and set the ping count
-    if len(args) > 1:
-        count = int(args[1])
-        if count > 20:
-            count = 20
-    else:
-        count = 5
+def ping(
+    event: CommandEvent,
+    host: Annotated[str, Arg("Host to ping")],
+    count: Annotated[int, Arg("How many pings, at most 20")] = 5,
+):
+    """pings <host> [count] times"""
+    count = min(count, 20)
 
     if IS_WINDOWS:
         args = ["ping", "-n", str(count), host]
     else:
         args = ["ping", "-c", str(count), host]
 
-    reply(f"Attempting to ping {host} {count} times...")
+    event.reply(f"Attempting to ping {host} {count} times...")
     try:
         pingcmd = subprocess.check_output(args).decode("utf-8")
     except subprocess.CalledProcessError:

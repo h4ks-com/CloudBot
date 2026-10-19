@@ -1,6 +1,12 @@
+from typing import Annotated
+
 import unidecode
 
 from cloudbot import hook
+from cloudbot.bot import CloudBot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 
 origspace = "abcdefghijklmnopqrstuvwxyz"
 keyspace = "4bcd3fg8ijk1mn0pqr57uvwxy2"
@@ -18,8 +24,14 @@ def leetify(text):
 
 
 @hook.command("leet", "leetify", "l33t", "1337")
-def leet(text, chan, bot, conn, message):
-    """<text> - Converts text to leet"""
+def leet(
+    text: Annotated[str, Arg("Text or nick to convert")],
+    chan: str,
+    bot: CloudBot,
+    conn: IrcClient,
+    event: CommandEvent,
+):
+    """Converts text to leet"""
     if text.strip().split()[0] == text:
         max_i = 1000
         i = 0
@@ -38,6 +50,6 @@ def leet(text, chan, bot, conn, message):
                 mod_msg = msg
                 fmt = "<{}> {}"
             if name.casefold() == text.strip().casefold():
-                message(fmt.format(name, leetify(mod_msg)))
+                event.message(fmt.format(name, leetify(mod_msg)))
                 return None
     return leetify(text)

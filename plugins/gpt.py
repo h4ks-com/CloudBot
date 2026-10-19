@@ -3,6 +3,7 @@ import importlib
 import re
 import time
 from collections import deque
+from typing import Annotated
 from urllib.parse import urlparse
 
 import jwt
@@ -12,7 +13,10 @@ from markitdown import MarkItDown
 from pywikibot import input as original_pywikibot_input
 
 from cloudbot import hook
-from cloudbot.bot import bot
+from cloudbot.bot import CloudBot, bot
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import formatting
 from cloudbot.util.ai_common import (
     APP_HTML_PROMPT_SUFFIX,
@@ -130,8 +134,10 @@ gpt_messages_cache: dict[tuple[str, str], deque[Message]] = {}
 
 
 @hook.command("gpt")
-def gpt_command(text: str, nick: str, chan: str) -> str | list[str]:
-    """<text> - Get a response from text generating LLM."""
+def gpt_command(
+    nick: str, chan: str, text: Annotated[str, Arg("Prompt for the LLM")]
+) -> str | list[str]:
+    """Get a response from text generating LLM."""
 
     history = get_or_create_history(
         gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
@@ -166,8 +172,10 @@ def create_web_app(text: str, history: list[Message] | deque[Message]) -> str:
 
 
 @hook.command("gptweb", "gptapp")
-def gpt_app(text: str, nick: str, chan: str) -> str:
-    """<text> - Create a single page html web app on the fly with gpt"""
+def gpt_app(
+    nick: str, chan: str, text: Annotated[str, Arg("What the app should do")]
+) -> str:
+    """Create a single page html web app on the fly with gpt"""
 
     history = get_or_create_history(
         gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
@@ -176,19 +184,29 @@ def gpt_app(text: str, nick: str, chan: str) -> str:
 
 
 @hook.command("agiweb", "agiapp")
-def agi_app(conn, text: str, nick: str, chan: str) -> str:
-    """<text> - Create a single page html web app on the fly with gpt"""
+def agi_app(
+    conn: IrcClient,
+    nick: str,
+    chan: str,
+    text: Annotated[str, Arg("What the app should do")],
+) -> str:
+    """Create a single page html web app on the fly with gpt"""
     messages = generate_agi_history(conn, chan)
     return create_web_app(text, messages)
 
 
 @hook.command("gpth", "gpthistory", "gptpaste", autohelp=False)
-def gpt_paste_command(nick: str, chan: str, text: str) -> str:
-    """[nick] - Pastes the GPT conversation history with nick if specified."""
+def gpt_paste_command(
+    nick: str,
+    chan: str,
+    user: Annotated[
+        str | None, Arg("Nick to paste the history of", kind="user")
+    ] = None,
+) -> str:
+    """Pastes the GPT conversation history with [user] if specified."""
 
-    text = text.strip()
-    if text:
-        nick = text
+    if user:
+        nick = user
 
     channick = (chan, nick)
     if channick in gpt_messages_cache:
@@ -203,15 +221,15 @@ def gpt_paste_command(nick: str, chan: str, text: str) -> str:
 
 
 @hook.command("gptcopy")
-def gpt_copy_command(text: str, nick: str, chan: str) -> str:
-    """<user> - Copy another user's conversation history into yours, replacing your own."""
-
-    target = text.strip()
-    if not target:
-        return "Usage: .gptcopy <user>"
+def gpt_copy_command(
+    nick: str,
+    chan: str,
+    user: Annotated[str, Arg("Nick to copy the history of", kind="user")],
+) -> str:
+    """Copy another user's conversation history into yours, replacing your own."""
 
     return copy_history(
-        gpt_messages_cache, chan, nick, target, MAX_USER_HISTORY_LENGTH
+        gpt_messages_cache, chan, nick, user, MAX_USER_HISTORY_LENGTH
     )
 
 
@@ -286,7 +304,12 @@ def summarize(
 
 @hook.command("summarize", "summary", autohelp=False)
 def summarize_command(
-    bot, reply, text: str, chan: str, nick: str, conn
+    bot: CloudBot,
+    event: CommandEvent,
+    text: str,
+    chan: str,
+    nick: str,
+    conn: IrcClient,
 ) -> str | list[str] | None:
     """[max words] [nicks] - Summarize the last chat messages, optionally only from some nicks"""
     image = False
@@ -322,16 +345,16 @@ def summarize_command(
 
     messages = list(reversed(inner))
     if not messages:
-        reply("Nothing found in history to summarize")
+        event.reply("Nothing found in history to summarize")
         return None
     return summarize(
-        messages, image, nick, chan, bot, reply, max_words=worcount
+        messages, image, nick, chan, bot, event.reply, max_words=worcount
     )
 
 
 @hook.command("sumsum", "sumsummarize", "sumsummary", autohelp=False)
 def sumsum(
-    bot, text: str, reply, nick: str, chan: str, conn
+    bot: CloudBot, event: CommandEvent, nick: str, chan: str
 ) -> str | list[str] | None:
     """- Summarize the last summary"""
     if not _SummaryState.last_summary:
@@ -342,7 +365,7 @@ def sumsum(
         nick,
         chan,
         bot,
-        reply,
+        event.reply,
         what="text even more",
     )
 
@@ -398,24 +421,23 @@ def generate_agi_history(conn, chan: str) -> list[Message]:
 
 
 @hook.command("agipaste", autohelp=False)
-def agi_paste_command(nick: str, conn, chan: str) -> str:
+def agi_paste_command(nick: str, conn: IrcClient, chan: str) -> str:
     """- Paste the AGI context window."""
     messages = generate_agi_history(conn, chan)
     return upload_history("", messages, f"AGI conversation in {chan}")
 
 
-@hook.command("gpredict", "gptpredict", "gptpred", "predict", autohelp=False)
+@hook.command("gpredict", "gptpredict", "gptpred", "predict")
 def gpredict_command(
-    bot, reply, text: str, chan: str, nick: str, conn
+    chan: str,
+    conn: IrcClient,
+    user: Annotated[str, Arg("Nick to predict", kind="user")],
 ) -> str | list[str] | None:
-    """<nick> - Predict what the given user might say next based on their chat history."""
-    if not text.strip():
-        return "Error: You must provide a nick to predict."
-
-    if len(text.split()) > 1:
+    """Predict what the given user might say next based on their chat history."""
+    if len(user.split()) > 1:
         return "Error: Only one nick can be provided."
 
-    target_nick = text.strip().casefold()
+    target_nick = user.casefold()
     messages = []
     was_user_in_history = False
     for name, _timestamp, msg in reversed(conn.history[chan]):
@@ -438,7 +460,7 @@ def gpredict_command(
             break
 
     if not was_user_in_history or not messages:
-        return f"No chat history found for {text.strip()}."
+        return f"No chat history found for {user}."
 
     messages.reverse()
     messages.insert(
@@ -546,25 +568,29 @@ def edit_wiki(
     return search(WIKI, title, chan, nick)
 
 
-@hook.command("gptwiki", autohelp=False)
+@hook.command("gptwiki")
 def gptwiki(
-    bot, reply, text: str, chan: str, nick: str, conn
+    bot: CloudBot,
+    event: CommandEvent,
+    chan: str,
+    nick: str,
+    text: Annotated[str, Arg("What the wiki page should say")],
 ) -> list[str] | str:
-    """<text> - Create or edit a wiki page on demand from AI prompt"""
+    """Create or edit a wiki page on demand from AI prompt"""
     history = get_or_create_history(
         gpt_messages_cache, chan, nick, MAX_USER_HISTORY_LENGTH
     )
-    return edit_wiki(bot, reply, chan, nick, text, history)
+    return edit_wiki(bot, event.reply, chan, nick, text, history)
 
 
-@hook.command("gptsummarize", "gptsum", "gpts", autohelp=False)
+@hook.command("gptsummarize", "gptsum", "gpts")
 def gptsummarize(
-    bot, reply, text: str, chan: str, nick: str, conn
+    chan: str,
+    nick: str,
+    url: Annotated[str, Arg("Page to summarize")],
 ) -> list[str] | str:
-    """<url> - Summarizes the contents of the given url. Can also be youtube urls or anything supported by https://github.com/microsoft/markitdown"""
-    if not text.strip():
-        return "Error: You must provide a url to summarize."
-    parsed_url = urlparse(text.strip())
+    """Summarizes the contents of the given url. Can also be youtube urls or anything supported by https://github.com/microsoft/markitdown"""
+    parsed_url = urlparse(url)
     if not (parsed_url.scheme and parsed_url.netloc):
         return "Error: Invalid URL provided. Please provide a valid URL to summarize."
 

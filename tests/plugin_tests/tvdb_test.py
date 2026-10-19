@@ -8,7 +8,7 @@ from responses.matchers import query_param_matcher
 from cloudbot.bot import bot
 from cloudbot.event import CommandEvent
 from plugins import tvdb
-from tests.util import HookResult, wrap_hook_response
+from tests.util import HookResult, command_hook, wrap_hook_response
 
 
 @pytest.fixture()
@@ -175,15 +175,17 @@ class _Base(ABC):
         raise NotImplementedError
 
     def call(self, text: str, results=None):
+        hook = command_hook(self.get_func())
         event = CommandEvent(
             cmd_prefix=".",
-            hook=MagicMock(),
+            hook=hook,
             text=text,
             triggered_command="tv",
             conn=MagicMock(),
             channel="#foo",
             nick="nick",
         )
+        assert event.parse_command_args()
         return wrap_hook_response(self.get_func(), event, results=results)
 
     def test_api_off(self):

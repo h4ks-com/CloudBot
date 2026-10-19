@@ -1,4 +1,5 @@
 from fnmatch import fnmatch
+from typing import Annotated
 
 from sqlalchemy import (
     Boolean,
@@ -8,8 +9,12 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
 )
+from sqlalchemy.orm import Session
 
 from cloudbot import hook
+from cloudbot.clients.irc import IrcClient
+from cloudbot.event import CommandEvent
+from cloudbot.hook import Arg
 from cloudbot.util import database
 
 table = Table(
@@ -124,58 +129,86 @@ def get_user(conn, text):
 
 
 @hook.command(permissions=["ignore", "chanop"])
-def ignore(text, db, chan, conn, notice, admin_log, nick):
-    """<nick|mask> - ignores all input from <nick|mask> in this channel."""
-    target = get_user(conn, text)
+def ignore(
+    db: Session,
+    chan: str,
+    conn: IrcClient,
+    event: CommandEvent,
+    nick: str,
+    user: Annotated[str, Arg("Nick or mask to ignore", kind="user")],
+):
+    """ignores all input from <nick|mask> in this channel."""
+    target = get_user(conn, user)
 
     if is_ignored(conn.name, chan, target):
-        notice(f"{target} is already ignored in {chan}.")
+        event.notice(f"{target} is already ignored in {chan}.")
     else:
-        admin_log(f"{nick} used IGNORE to make me ignore {target} in {chan}")
-        notice(f"{target} has been ignored in {chan}.")
+        event.admin_log(
+            f"{nick} used IGNORE to make me ignore {target} in {chan}"
+        )
+        event.notice(f"{target} has been ignored in {chan}.")
         add_ignore(db, conn.name, chan, target)
 
 
 @hook.command(permissions=["ignore", "chanop"])
-def unignore(text, db, chan, conn, notice, nick, admin_log):
-    """<nick|mask> - un-ignores all input from <nick|mask> in this channel."""
-    target = get_user(conn, text)
+def unignore(
+    db: Session,
+    chan: str,
+    conn: IrcClient,
+    event: CommandEvent,
+    nick: str,
+    user: Annotated[str, Arg("Nick or mask to stop ignoring", kind="user")],
+):
+    """un-ignores all input from <nick|mask> in this channel."""
+    target = get_user(conn, user)
 
     if not is_ignored(conn.name, chan, target):
-        notice(f"{target} is not ignored in {chan}.")
+        event.notice(f"{target} is not ignored in {chan}.")
     else:
-        admin_log(
+        event.admin_log(
             f"{nick} used UNIGNORE to make me stop ignoring {target} in {chan}"
         )
-        notice(f"{target} has been un-ignored in {chan}.")
+        event.notice(f"{target} has been un-ignored in {chan}.")
         remove_ignore(db, conn.name, chan, target)
 
 
 @hook.command(permissions=["botcontrol"])
-def global_ignore(text, db, conn, notice, nick, admin_log):
-    """<nick|mask> - ignores all input from <nick|mask> in ALL channels."""
-    target = get_user(conn, text)
+def global_ignore(
+    db: Session,
+    conn: IrcClient,
+    event: CommandEvent,
+    nick: str,
+    user: Annotated[str, Arg("Nick or mask to ignore", kind="user")],
+):
+    """ignores all input from <nick|mask> in ALL channels."""
+    target = get_user(conn, user)
 
     if is_ignored(conn.name, "*", target):
-        notice(f"{target} is already globally ignored.")
+        event.notice(f"{target} is already globally ignored.")
     else:
-        notice(f"{target} has been globally ignored.")
-        admin_log(
+        event.notice(f"{target} has been globally ignored.")
+        event.admin_log(
             f"{nick} used GLOBAL_IGNORE to make me ignore {target} everywhere"
         )
         add_ignore(db, conn.name, "*", target)
 
 
 @hook.command(permissions=["botcontrol"])
-def global_unignore(text, db, conn, notice, nick, admin_log):
-    """<nick|mask> - un-ignores all input from <nick|mask> in ALL channels."""
-    target = get_user(conn, text)
+def global_unignore(
+    db: Session,
+    conn: IrcClient,
+    event: CommandEvent,
+    nick: str,
+    user: Annotated[str, Arg("Nick or mask to stop ignoring", kind="user")],
+):
+    """un-ignores all input from <nick|mask> in ALL channels."""
+    target = get_user(conn, user)
 
     if not is_ignored(conn.name, "*", target):
-        notice(f"{target} is not globally ignored.")
+        event.notice(f"{target} is not globally ignored.")
     else:
-        notice(f"{target} has been globally un-ignored.")
-        admin_log(
+        event.notice(f"{target} has been globally un-ignored.")
+        event.admin_log(
             f"{nick} used GLOBAL_UNIGNORE to make me stop ignoring {target} everywhere"
         )
         remove_ignore(db, conn.name, "*", target)
