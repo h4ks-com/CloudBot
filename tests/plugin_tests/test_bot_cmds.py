@@ -557,3 +557,10 @@ def test_invocation_invalid_args_fail(monkeypatch, options):
     assert len(lines) == 1
     assert "+draft/bot-cmd-error=INVALID_CMD_ARGS" in lines[0]
     assert "+reply=mid" in lines[0]
+
+
+def test_announces_commands_changed_on_own_join():
+    conn = _RecordingConn()
+    bot_cmds.announce_commands_changed(conn, "#dev", "testbot")
+    bot_cmds.announce_commands_changed(conn, "#dev", "alice")
+    assert conn.lines == ["@+draft/bot-cmds-changed=1 TAGMSG #dev"]

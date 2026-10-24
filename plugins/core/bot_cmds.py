@@ -212,6 +212,14 @@ def set_bot_mode(conn):
         conn.cmd("MODE", botnick, "+B-DR")
 
 
+@hook.irc_raw("JOIN")
+def announce_commands_changed(conn, chan, nick):
+    """Clients cache our command list for up to a day, so we tell each channel
+    we join to drop it and pick up commands added since."""
+    if nick.casefold() == conn.nick.casefold():
+        conn.tagmsg(chan, {"+draft/bot-cmds-changed": "1"})
+
+
 # --------------------------------------------------------------------------
 # Discovery
 # --------------------------------------------------------------------------
