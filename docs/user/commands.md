@@ -194,6 +194,8 @@ gonzobot Command list
 
 **la (lartist):** &lt;artist&gt; prints information about the specified artist
 
+**langlist (tlist):** - lists the language codes translate supports
+
 **lart**: &lt;user&gt; - LARTs &lt;user&gt;
 
 **lastfm (np, l):** [user] [dontsave] - displays the now playing (or last played) track of LastFM user [user]
@@ -400,7 +402,7 @@ gonzobot Command list
 
 **topten (loved, pointstop):** .topten or .pointstop prints the top 10 things with the highest points in the channel. To see the top 10 items in all of the channels the bot sits in use .topten global.
 
-**translate**: [source language [target language]] &lt;sentence&gt; - translates &lt;sentence&gt; from source language (default autodetect)
+**translate (tran):** &lt;target|source:target&gt; &lt;text&gt; - translates &lt;text&gt; to the target language, detecting the source unless you give source:target. `@ru text` and `@en:ru text` do the same in a channel
 
 **tv (tv_next):** tv &lt;series&gt; -- Get the next episode of &lt;series&gt;.
 

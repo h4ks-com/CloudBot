@@ -55,7 +55,6 @@ COMMAND_BLACKLIST = {
 BROKEN_PLUGINS = {
     "spellcheck",
     "tvdb",
-    "yandex_translate",
     "core",
 }
 

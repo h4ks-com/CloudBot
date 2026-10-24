@@ -2,7 +2,8 @@
 @<target> <text>           - translates <text> to <target>, detecting the source language
 @<source>:<target> <text>  - translates <text> from <source> to <target>
 
-Translates through a LibreTranslate API behind Kong key-auth.
+Translates through a LibreTranslate API behind Kong key-auth. We load its language
+list when the plugin starts, so clients see the codes it supports right now.
 
 Requires:
     - libretranslate in api_keys (the Kong key)
@@ -12,24 +13,29 @@ Requires:
 import logging
 import re
 from collections.abc import Callable
+from typing import Annotated
 
 import requests
 
 from cloudbot import hook
 from cloudbot.bot import bot
+from cloudbot.hook import Arg
 from cloudbot.util.web import get_session
 
 logger = logging.getLogger("cloudbot")
 
 LIBRETRANSLATE_URL = "https://translate.t3ks.com"
 TIMEOUT = 30
+AUTO = "auto"
 
 LANG = r"[a-zA-Z]{2,3}(?:-[a-zA-Z]{2,4})?"
 TRANSLATE_RE = re.compile(rf"^@({LANG})(?::({LANG}))?\s+(.+)$")
 
 LANG_ALIASES = {"zh": "zh-hans", "jp": "ja"}
 
-canonical_lang_by_lowercase: dict[str, str] = {}
+
+# We look codes up in lowercase and send LibreTranslate its own casing, e.g. "zh-Hans".
+languages_by_lowercase_code: dict[str, str] = {}
 
 
 class TranslateError(Exception):
@@ -64,22 +70,42 @@ def _request(
     return response
 
 
+@hook.on_start()
+def load_languages() -> None:
+    try:
+        langs = _request("GET", "/languages").json()
+        codes = {lang["code"].lower(): lang["code"] for lang in langs}
+    except (TranslateError, requests.JSONDecodeError, KeyError, TypeError) as e:
+        logger.warning("[libretranslate] could not load languages: %s", e)
+        return
+    languages_by_lowercase_code.update(codes)
+
+
+def language_codes() -> list[str]:
+    return sorted(languages_by_lowercase_code.values())
+
+
+def _ensure_languages() -> None:
+    # A failed startup fetch leaves the list empty, so we retry on use.
+    if not languages_by_lowercase_code:
+        load_languages()
+
+
 def _lang(code: str) -> str | None:
-    if not canonical_lang_by_lowercase:
-        # "@bob hi" is just someone talking to bob, so we stay quiet when we cannot tell.
-        try:
-            langs = _request("GET", "/languages").json()
-        except (TranslateError, requests.JSONDecodeError) as e:
-            logger.warning("[libretranslate] could not load languages: %s", e)
-            return None
-        canonical_lang_by_lowercase.update(
-            {lang["code"].lower(): lang["code"] for lang in langs}
-        )
+    _ensure_languages()
     lowered = code.lower()
-    return canonical_lang_by_lowercase.get(LANG_ALIASES.get(lowered, lowered))
+    return languages_by_lowercase_code.get(LANG_ALIASES.get(lowered, lowered))
 
 
-def translate(text: str, target: str, source: str = "auto") -> tuple[str, str]:
+def _pair(first: str, second: str | None) -> tuple[str | None, str | None]:
+    """Resolves "<target>" or "<source>:<target>" codes to (source, target)."""
+    if second is None:
+        return AUTO, _lang(first)
+    source = AUTO if first.lower() == AUTO else _lang(first)
+    return source, _lang(second)
+
+
+def translate(text: str, target: str, source: str = AUTO) -> tuple[str, str]:
     """Translates text and returns (translation, source language)."""
     response = _request(
         "POST",
@@ -98,19 +124,51 @@ def translate(text: str, target: str, source: str = "auto") -> tuple[str, str]:
 
 
 @hook.regex(TRANSLATE_RE)
-def translate_cmd(
+def translate_regex(
     match: re.Match, nick: str, message: Callable[[str], None]
 ) -> None:
-    first, second, text = match.group(1), match.group(2), match.group(3)
-    source = _lang(first) if second else "auto"
-    target = _lang(second or first)
+    source, target = _pair(match.group(1), match.group(2))
+    # "@bob hi" is just someone talking to bob, so we stay quiet on unknown codes.
     if not source or not target:
         return
     try:
-        translated, detected = translate(text, target, source)
+        translated, detected = translate(match.group(3), target, source)
     except TranslateError as e:
         message(f"<{nick}> {e}")
         return
-    if source == "auto" and detected == target:
+    if source == AUTO and detected == target:
         return
     message(f"<{nick} ({target.upper()})> {translated}")
+
+
+@hook.command("translate", "tran")
+def translate_command(
+    languages: Annotated[
+        str,
+        Arg(
+            "Target language, or source:target like en:ru",
+            rest=False,
+            suggestions=language_codes,
+        ),
+    ],
+    text: Annotated[str, Arg("Text to translate")],
+) -> str:
+    """Translates text, detecting the source language unless given."""
+    first, _, second = languages.partition(":")
+    source, target = _pair(first, second or None)
+    if not source or not target:
+        return f"unknown language in {languages!r}, see .langlist"
+    try:
+        translated, detected = translate(text, target, source)
+    except TranslateError as e:
+        return str(e)
+    return f"({detected} → {target}) {translated}"
+
+
+@hook.command("langlist", "tlist", autohelp=False)
+def langlist() -> str:
+    """- lists the languages .translate and @<code> support"""
+    _ensure_languages()
+    if not languages_by_lowercase_code:
+        return "the language list is not available right now"
+    return " ".join(language_codes())

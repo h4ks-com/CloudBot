@@ -156,8 +156,9 @@ def _build_option(arg: ArgSpec) -> CommandOption:
         required=arg.required,
         description=_truncate(arg.help),
     )
-    if arg.choices:
-        option["choices"] = list(arg.choices)
+    choices = arg.choices or (arg.suggestions() if arg.suggestions else ())
+    if choices:
+        option["choices"] = list(choices)
     return option
 
 

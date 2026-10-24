@@ -66,6 +66,8 @@ class Arg:
     # We give the rest of the line to the last plain text Arg while this is None; False keeps it to one word.
     rest: bool | None = None
     choices: Sequence[str] | None = None
+    # We publish these to clients as choices and still accept any value for the arg.
+    suggestions: Callable[[], Sequence[str]] | None = None
 
 
 OptionalChannel = Annotated[
@@ -83,6 +85,7 @@ class ArgSpec:
     kind: ArgKind | None = None
     choices: tuple[str, ...] = ()
     rest: bool = False
+    suggestions: Callable[[], Sequence[str]] | None = None
 
     @property
     def option_type(self) -> OptionType:
@@ -266,6 +269,10 @@ def _arg_spec(
             raise TypeError(
                 f"{func.__qualname__}: choices of {param.name!r} must be non-empty strings"
             )
+    if choices and marker.suggestions is not None:
+        raise TypeError(
+            f"{func.__qualname__}: {param.name!r} has both choices and suggestions="
+        )
     if annotation not in _OPTION_TYPES:
         raise TypeError(
             f"{func.__qualname__}: unsupported type {annotation!r} for "
@@ -292,6 +299,7 @@ def _arg_spec(
         kind=marker.kind,
         choices=choices,
         rest=marker.rest is True,
+        suggestions=marker.suggestions,
     )
 
 
