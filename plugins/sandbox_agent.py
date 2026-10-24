@@ -306,6 +306,7 @@ async def _run_sandbox_agent(agent_type: str, event, prompt: str) -> None:
             prompt=enriched,
             max_turns=max_turns,
             timeout_s=timeout,
+            settings=sandbox_cfg,
             on_tool_step=bot_cmds.tool_step_sink(
                 event.conn, target, workflow_id
             ),

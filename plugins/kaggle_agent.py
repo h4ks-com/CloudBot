@@ -200,6 +200,7 @@ async def run_kaggle(
         max_turns=max_turns,
         timeout_s=timeout_s,
         context=event,
+        settings=(bot.config.get("plugins") or {}).get("kaggle_agent"),
         on_tool_step=on_tool_step,
     )
     return _build_reply(text, last_run(event))

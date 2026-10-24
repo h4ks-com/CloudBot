@@ -410,11 +410,7 @@ async def run_hyperframes(
     agent = await _get_agent(url, key, kind)
     max_turns, timeout_s = _run_limits(bot)
     cfg = (bot.config.get("plugins") or {}).get("hyperframes_agent") or {}
-    model = cfg.get("model") or None
-    if effort is not None:
-        disable_thinking = effort == "fast"
-    else:
-        disable_thinking = bool(cfg.get("disable_thinking", False))
+    disable_thinking = None if effort is None else effort == "fast"
     ts = datetime.now().strftime("%H:%M:%S")
     # Only video has a re-render/iterate flow (video_get_recipe); surfacing recent
     # videos to a voice run would inject video-only guidance that contradicts its
@@ -433,7 +429,7 @@ async def run_hyperframes(
         max_turns=max_turns,
         timeout_s=timeout_s,
         context=captured,
-        model=model,
+        settings=cfg,
         disable_thinking=disable_thinking,
         on_tool_step=on_tool_step,
     )

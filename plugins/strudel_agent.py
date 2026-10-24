@@ -195,6 +195,7 @@ async def run_strudel(
         max_turns=max_turns,
         timeout_s=timeout_s,
         context=captured,
+        settings=(bot.config.get("plugins") or {}).get("strudel_agent"),
         on_tool_step=on_tool_step,
     )
     # The editor link is a short s.h4ks redirect to strudel.cc (the raw link is

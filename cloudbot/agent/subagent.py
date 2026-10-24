@@ -152,27 +152,36 @@ async def run_subagent(
     max_turns: int,
     timeout_s: float,
     context: Any = None,
-    model: str | None = None,
-    disable_thinking: bool = False,
+    settings: dict[str, Any] | None = None,
+    disable_thinking: bool | None = None,
     on_tool_step: ToolStepSink | None = None,
 ) -> str:
     """Run ``agent`` on ``prompt`` and return its final text output.
 
-    Runs on the backend the bot is set to, under a hard ``timeout_s``, and
-    raises :class:`SubagentError` when the agent is unconfigured or the run
-    fails. ``context`` is passed to the run so tools can record results the
-    caller reads back (e.g. exact URLs, instead of trusting the model to retype
-    them). ``on_tool_step``, when given, is called on every tool start/end so
-    the caller can stream the run as a draft/bot-tools workflow.
+    ``settings`` is the sub-agent's own config section: its ``backend`` and
+    ``model`` pin where it runs (default: the backend the bot is set to, with
+    that backend's model) and ``disable_thinking`` applies unless the caller
+    passes it. Runs under a hard ``timeout_s`` and raises :class:`SubagentError`
+    when the agent is unconfigured or the run fails. ``context`` is passed to
+    the run so tools can record results the caller reads back (e.g. exact URLs,
+    instead of trusting the model to retype them). ``on_tool_step``, when given,
+    is called on every tool start/end so the caller can stream the run as a
+    draft/bot-tools workflow.
     """
     agent_cfg = agent_config(bot)
     if not agent_cfg.get("enabled", False) or not agent_cfg.get("backends"):
         raise SubagentError("agent not configured")
 
+    settings = settings or {}
+    model = settings.get("model") or None
+    if disable_thinking is None:
+        disable_thinking = bool(settings.get("disable_thinking", False))
     run_context = context if context is not None else {}
-    backend = backends.active_name(bot)
+    backend = settings.get("backend") or backends.active_name(bot)
     if not backend:
         raise SubagentError("no agent backend configured")
+    if backend not in backends.names(bot):
+        raise SubagentError(f"agent backend '{backend}' is not configured")
 
     b = (agent_cfg.get("backends") or {}).get(backend) or {}
     backend_model = model or b.get("model")
