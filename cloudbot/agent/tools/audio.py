@@ -73,3 +73,42 @@ async def speech_to_text(ctx, data):
         ctx.context.bot,
         f"{model} {audio_url}" if model else audio_url,
     )
+
+
+@tool(
+    name="listen_to_audio",
+    description=(
+        "Listen to an audio clip at a public URL and describe it or answer a question "
+        "about it: what a sound is, a song's genre, instruments, vocals and mood, or "
+        "what a speaker says and how. Hears up to 5 minutes. The model is chosen by "
+        "the bot's operators."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "audio_url": {
+                "type": "string",
+                "description": "Public http(s) URL of the audio or video",
+            },
+            "question": {
+                "type": "string",
+                "description": "Optional question about the clip; omit to get a description",
+            },
+        },
+        "required": ["audio_url"],
+    },
+)
+async def listen_to_audio(ctx, data):
+    audio_url = str(data.get("audio_url") or "").strip()
+    question = str(data.get("question") or "").strip()
+    nick = getattr(ctx.context, "nick", "") or "agent"
+    from plugins.ollama import AudioError
+    from plugins.ollama import listen_to_audio as listen
+
+    try:
+        model, answer = await run_in_executor(
+            listen, ctx.context.bot, nick, audio_url, question
+        )
+    except AudioError as e:
+        return f"(error: {e})"
+    return f"[{model}] {answer}"

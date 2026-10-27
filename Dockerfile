@@ -6,6 +6,7 @@ RUN \
   apt-get update && \
   apt-get install -y --no-install-recommends \
     enchant-2 \
+    ffmpeg \
     git \
     libenchant-2-2
 
