@@ -1625,7 +1625,7 @@ def agimodel_command(
     return f"agi now runs on {_describe_backend(bot, name).lstrip('*')}"
 
 
-@hook.command("agi", "agent", "ask", autohelp=False, allow_private=False)
+@hook.command("agi", "si", "agent", "ask", autohelp=False, allow_private=False)
 async def agent_command(
     event: CommandEvent,
     reply_to: ChatMessage | None,
