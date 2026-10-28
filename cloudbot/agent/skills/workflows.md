@@ -56,6 +56,9 @@ you need is in `get_job`.
 
 ## Build a page or a game on a result
 
+For a game, read the `make-game` skill first: it builds the plot, several characters, bosses,
+camera, sound and music on top of these results.
+
 Use `web_app` with one self-contained HTML page. For anything with a GLB, start from the core
 below, which is tested with a real character: it loads the GLB from the bucket, puts the
 character on a lit ground at 1.8 m, crossfades between clips, and runs a third-person game with

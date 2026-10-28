@@ -31,5 +31,5 @@ up who is in it. The job reads the picture itself. Submit in your first steps.
 
 ## After it is done
 
-To show, play or build a game with a finished character, read the `workflows` skill. It has
-the tested three.js core that loads the GLB from the bucket.
+To show or play a finished character, read the `workflows` skill. It has the tested three.js
+core that loads the GLB from the bucket. To build a game with it, read the `make-game` skill.
