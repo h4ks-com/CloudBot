@@ -1,6 +1,7 @@
 import pytest
 
 from cloudbot.util.command_args import build_spec
+from cloudbot.util.messages import ChatMessage
 from plugins import libretranslate
 from plugins.core import bot_cmds
 
@@ -36,12 +37,23 @@ def _mock_translation(
     mock_requests.add("POST", URL + "/translate", json=body)
 
 
-def run(line: str) -> str | None:
+def run(line: str, reply_to: ChatMessage | None = None) -> str | None:
     match = libretranslate.TRANSLATE_RE.match(line)
     assert match
     sent: list[str] = []
-    libretranslate.translate_regex(match, "bob", sent.append)
+    libretranslate.translate_regex(match, "bob", sent.append, reply_to)
     return sent[0] if sent else None
+
+
+def test_a_bare_code_as_a_reply_translates_the_replied_message(mock_requests):
+    _mock_translation(mock_requests, "застрял", detected="en")
+    original = ChatMessage("m1", "doesnm", "#lobby", "it is stuck", 0.0)
+    assert run("@ru ", reply_to=original) == "<doesnm (RU)> застрял"
+    assert b'"q": "it is stuck"' in mock_requests.calls[-1].request.body
+
+
+def test_a_bare_code_without_a_reply_stays_quiet():
+    assert run("@ru") is None
 
 
 def test_target_only_detects_source(mock_requests):

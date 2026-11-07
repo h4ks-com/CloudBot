@@ -1,6 +1,7 @@
 """
 @<target> <text>           - translates <text> to <target>, detecting the source language
 @<source>:<target> <text>  - translates <text> from <source> to <target>
+@<target> as a reply        - translates the message it replies to
 
 Translates through a LibreTranslate API behind Kong key-auth. We load its language
 list when the plugin starts, so clients see the codes it supports right now.
@@ -20,6 +21,7 @@ import requests
 from cloudbot import hook
 from cloudbot.bot import bot
 from cloudbot.hook import Arg
+from cloudbot.util.messages import ChatMessage
 from cloudbot.util.web import get_session
 
 logger = logging.getLogger("cloudbot")
@@ -29,7 +31,7 @@ TIMEOUT = 30
 AUTO = "auto"
 
 LANG = r"[a-zA-Z]{2,3}(?:-[a-zA-Z]{2,4})?"
-TRANSLATE_RE = re.compile(rf"^@({LANG})(?::({LANG}))?\s+(.+)$")
+TRANSLATE_RE = re.compile(rf"^@({LANG})(?::({LANG}))?(?:\s+(.+?))?\s*$")
 
 LANG_ALIASES = {"zh": "zh-hans", "jp": "ja"}
 
@@ -125,14 +127,22 @@ def translate(text: str, target: str, source: str = AUTO) -> tuple[str, str]:
 
 @hook.regex(TRANSLATE_RE)
 def translate_regex(
-    match: re.Match, nick: str, message: Callable[[str], None]
+    match: re.Match,
+    nick: str,
+    message: Callable[[str], None],
+    reply_to: ChatMessage | None,
 ) -> None:
     source, target = _pair(match.group(1), match.group(2))
     # "@bob hi" is just someone talking to bob, so we stay quiet on unknown codes.
     if not source or not target:
         return
+    text = match.group(3)
+    if not text:
+        if not reply_to:
+            return
+        nick, text = reply_to.nick, reply_to.text
     try:
-        translated, detected = translate(match.group(3), target, source)
+        translated, detected = translate(text, target, source)
     except TranslateError as e:
         message(f"<{nick}> {e}")
         return
