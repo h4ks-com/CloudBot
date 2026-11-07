@@ -50,6 +50,64 @@ def extract_file_sha(result: dict) -> str | None:
     return None
 
 
+class GitHubApiError(Exception):
+    pass
+
+
+def _write_denied(event, action: str) -> str | None:
+    if event.conn.permissions.has_perm_mask(event.mask, "botcontrol"):
+        return None
+    return (
+        f"{action} changes a GitHub repo and needs botcontrol "
+        f"permission, which {event.nick} does not have. Reading is "
+        f"allowed. This is decided per nick on every call, so never save "
+        f"it as a fact: the next person who asks may well be allowed."
+    )
+
+
+def _mcp_config(bot) -> dict:
+    return ((bot.config.get("plugins") or {}).get("agent") or {}).get(
+        "github_mcp"
+    ) or {}
+
+
+def _github_token(bot) -> str | None:
+    return bot.config.get_api_key(
+        _mcp_config(bot).get("github_token_config_path") or "github"
+    )
+
+
+async def github_api(
+    event, method: str, path: str, body: dict | None = None
+) -> dict:
+    """Call the GitHub REST API as the bot, raising GitHubApiError.
+
+    Every method other than GET writes, so it needs botcontrol.
+    """
+    if method != "GET" and (denied := _write_denied(event, f"{method} {path}")):
+        raise GitHubApiError(denied)
+    token = _github_token(event.bot)
+    if not token:
+        raise GitHubApiError("no github token configured")
+    try:
+        resp = await run_in_executor(
+            requests.request,
+            method,
+            f"https://api.github.com{path}",
+            json=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+            },
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        raise GitHubApiError(str(e)) from e
+    if not resp.ok:
+        raise GitHubApiError(f"{resp.status_code} {resp.text[:300]}")
+    return resp.json()
+
+
 async def mcp_call_raw(event, tool_name: str, args: dict) -> Any:
     """JSON-RPC 2.0 call returning the raw MCP result dict, or an error string.
 
@@ -57,28 +115,18 @@ async def mcp_call_raw(event, tool_name: str, args: dict) -> Any:
     Callers that need extracted text use mcp_call below.
     """
     bot = event.bot
-    if (
-        tool_name not in _READONLY_METHODS
-        and not event.conn.permissions.has_perm_mask(event.mask, "botcontrol")
+    if tool_name not in _READONLY_METHODS and (
+        denied := _write_denied(event, tool_name)
     ):
-        return (
-            f"(error: {tool_name} changes a GitHub repo and needs botcontrol "
-            f"permission, which {event.nick} does not have. Reading is "
-            f"allowed. This is decided per nick on every call, so never save "
-            f"it as a fact: the next person who asks may well be allowed.)"
-        )
-    cfg = ((bot.config.get("plugins") or {}).get("agent") or {}).get(
-        "github_mcp"
-    ) or {}
+        return f"(error: {denied})"
+    cfg = _mcp_config(bot)
     if not cfg.get("enabled", True):
         return "(error: github_mcp disabled in config)"
     url = cfg.get("url") or ""
     api_key = bot.config.get_api_key(
         cfg.get("api_key_config_path") or "github_mcp_bot"
     )
-    github_token = bot.config.get_api_key(
-        cfg.get("github_token_config_path") or "github"
-    )
+    github_token = _github_token(bot)
     if not url or not api_key or not github_token:
         return (
             "(error: github_mcp url, api key, or github token not configured)"
@@ -166,7 +214,7 @@ async def mcp_call(event, tool_name: str, args: dict) -> str:
 
 
 async def wait_for_fork(
-    token: str, owner: str, repo: str, max_attempts: int = 10
+    event, owner: str, repo: str, max_attempts: int = 10
 ) -> bool:
     """Poll a fork's metadata until default_branch resolves (or timeout).
 
@@ -176,18 +224,11 @@ async def wait_for_fork(
     """
     for _ in range(max_attempts):
         try:
-            resp = await run_in_executor(
-                requests.get,
-                f"https://api.github.com/repos/{owner}/{repo}",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/vnd.github+json",
-                },
-                timeout=5,
-            )
-            if resp.status_code == 200 and resp.json().get("default_branch"):
+            if (await github_api(event, "GET", f"/repos/{owner}/{repo}")).get(
+                "default_branch"
+            ):
                 return True
-        except requests.RequestException:
+        except GitHubApiError:
             pass
         await asyncio.sleep(3)
     return False

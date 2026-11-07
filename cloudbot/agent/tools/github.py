@@ -22,8 +22,10 @@ from cloudbot.agent.common import (
 )
 from cloudbot.agent.github_client import (
     STALE_SHA_PATTERN,
+    GitHubApiError,
     bump_budget,
     extract_file_sha,
+    github_api,
     mcp_call,
     mcp_call_raw,
     wait_for_fork,
@@ -276,20 +278,19 @@ async def fork_github_repo(ctx, data):
     # Poll the fork's default branch until it exists (max ~30s) so the
     # next branch/edit calls don't 404. If the fork already exists this
     # returns immediately on the first poll.
-    bot = ctx.context.bot
-    token = bot.config.get_api_key("github") or ""
-    if token:
-        fork_owner = fetch_github_username(bot)
-        if fork_owner:
-            ready = await wait_for_fork(
-                token, fork_owner, repo_name, max_attempts=10
-            )
-            if ready:
-                return f"{result}\n\n(fork verified ready at {fork_owner}/{repo_name})"
+    fork_owner = fetch_github_username(ctx.context.bot)
+    if fork_owner:
+        ready = await wait_for_fork(
+            ctx.context, fork_owner, repo_name, max_attempts=10
+        )
+        if ready:
             return (
-                f"{result}\n\n(warning: fork at {fork_owner}/{repo_name} not yet "
-                f"propagated after 30s — branch creation may 404; retry the workflow once if so)"
+                f"{result}\n\n(fork verified ready at {fork_owner}/{repo_name})"
             )
+        return (
+            f"{result}\n\n(warning: fork at {fork_owner}/{repo_name} not yet "
+            f"propagated after 30s — branch creation may 404; retry the workflow once if so)"
+        )
     return result
 
 
@@ -298,7 +299,9 @@ async def fork_github_repo(ctx, data):
     description=(
         "Create a new git branch in a GitHub repo. "
         "Use a descriptive name like 'fix/command-name' or 'add/feature-name'. "
-        "Always create a branch before editing files."
+        "Always create a branch before editing files. In the bot's own fork, "
+        "leave base out: the branch then starts from the upstream repo's latest "
+        "commit, so a PR from it is up to date however stale the fork is."
     ),
     schema={
         "type": "object",
@@ -310,7 +313,8 @@ async def fork_github_repo(ctx, data):
             "branch": {"type": "string", "description": "New branch name"},
             "base": {
                 "type": "string",
-                "description": "Base branch to create from (default: main)",
+                "description": "Branch in this repo to start from (default: "
+                "upstream's default branch in the bot's fork, else main)",
             },
         },
         "required": ["repo", "branch"],
@@ -324,14 +328,136 @@ async def create_github_branch(ctx, data):
         return over
     repo = str(data.get("repo") or "").strip()
     branch = str(data.get("branch") or "").strip()
-    base = str(data.get("base") or "main").strip()
+    base = str(data.get("base") or "").strip()
     if not repo or not branch:
         return "(error: repo and branch required)"
+    event = ctx.context
+    try:
+        fork = None if base else await _own_fork(event, repo)
+        if fork:
+            upstream = fork["parent"]["full_name"]
+            upstream_base = fork["parent"]["default_branch"]
+            sha = await _branch_sha(event, upstream, upstream_base)
+            await github_api(
+                event,
+                "POST",
+                f"/repos/{repo}/git/refs",
+                {"ref": f"refs/heads/{branch}", "sha": sha},
+            )
+            return (
+                f"created {repo}:{branch} from {upstream}:{upstream_base} at "
+                f"{sha[:7]}. Open the PR into {upstream} with head "
+                f"'{fork['owner']['login']}:{branch}'."
+            )
+    except GitHubApiError as e:
+        return f"(error: {e})"
+    owner, name = split_repo(repo)
+    return await mcp_call(
+        event,
+        "create_branch",
+        {
+            "owner": owner,
+            "repo": name,
+            "branch": branch,
+            "from_branch": base or "main",
+        },
+    )
+
+
+async def _own_fork(event, repo: str) -> dict | None:
+    """The repo's metadata when it is a fork owned by the bot's account."""
+    meta = await github_api(event, "GET", f"/repos/{repo}")
+    if meta.get("parent") and meta["owner"]["login"] == fetch_github_username(
+        event.bot
+    ):
+        return meta
+    return None
+
+
+async def _branch_sha(event, repo: str, branch: str) -> str:
+    ref = await github_api(
+        event, "GET", f"/repos/{repo}/git/ref/heads/{branch}"
+    )
+    return ref["object"]["sha"]
+
+
+@tool(
+    name="sync_github_fork",
+    description=(
+        "Bring one of the bot's own forks up to date with its upstream repo by "
+        "resetting the fork's default branch to upstream's latest commit. That "
+        "branch is a mirror of upstream: do all work in other branches, which "
+        "this leaves alone. Use when asked to update or resync a fork."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "repo": {
+                "type": "string",
+                "description": "The fork in 'owner/repo' format",
+            },
+        },
+        "required": ["repo"],
+    },
+    wrap_errors=True,
+    is_github=True,
+)
+async def sync_github_fork(ctx, data):
+    repo = str(data.get("repo") or "").strip()
+    if not repo:
+        return "(error: repo required)"
+    event = ctx.context
+    try:
+        fork = await _own_fork(event, repo)
+        if not fork:
+            return f"(error: {repo} is not one of the bot's own forks)"
+        branch = fork["default_branch"]
+        upstream = fork["parent"]["full_name"]
+        sha = await _branch_sha(
+            event, upstream, fork["parent"]["default_branch"]
+        )
+        await github_api(
+            event,
+            "PATCH",
+            f"/repos/{repo}/git/refs/heads/{branch}",
+            {"sha": sha, "force": True},
+        )
+    except GitHubApiError as e:
+        return f"(error: {e})"
+    return f"reset {repo}:{branch} to {upstream} at {sha[:7]}"
+
+
+@tool(
+    name="update_github_pr_branch",
+    description=(
+        "Merge the latest base branch into an open pull request's branch so a "
+        "stale PR can merge again. On a merge conflict, create a fresh branch "
+        "with create_github_branch, redo the change and open a new PR."
+    ),
+    schema={
+        "type": "object",
+        "properties": {
+            "repo": {
+                "type": "string",
+                "description": "Repo the PR is opened against, 'owner/repo'",
+            },
+            "pull_number": {"type": "integer", "description": "PR number"},
+        },
+        "required": ["repo", "pull_number"],
+    },
+    wrap_errors=True,
+    is_github=True,
+)
+async def update_github_pr_branch(ctx, data):
+    repo = str(data.get("repo") or "").strip()
+    number = int(data.get("pull_number") or 0)
+    if not repo or not number:
+        return "(error: repo and pull_number required)"
     owner, name = split_repo(repo)
     return await mcp_call(
         ctx.context,
-        "create_branch",
-        {"owner": owner, "repo": name, "branch": branch, "from_branch": base},
+        "update_pull_request_branch",
+        {"owner": owner, "repo": name, "pullNumber": number},
     )
 
 
