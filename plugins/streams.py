@@ -34,7 +34,7 @@ def live_paths(listing: PathList) -> list[str]:
     return [item["name"] for item in listing["items"] if item["ready"]]
 
 
-@hook.command("streams", autohelp=False)
+@hook.command("streams", "weplay", autohelp=False)
 async def streams_cmd(
     bot: CloudBot, message: Callable[[str], None]
 ) -> str | None:
