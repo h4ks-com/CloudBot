@@ -23,6 +23,7 @@ from typing import TypedDict
 from irclib.parser import Message
 
 from cloudbot import hook
+from cloudbot.event import DRAFT_REPLY_TAG
 from cloudbot.hook import Priority
 from cloudbot.plugin_hooks import CommandInfo
 from cloudbot.util import async_util
@@ -56,11 +57,11 @@ CAPS = [
     "chathistory",
 ]
 
-_REPLY_TAG = "+draft/reply"
 _CTX_TAG = "+draft/channel-context"
 _BOT_TOOLS_TAG = "+draft/bot-tools"
 _INVOKED_BY_TAG = "+draft/invoked-by"
 _PENDING_KEY = "bot_cmds_pending"
+_PENDING_TTL = 3600
 _SENDING_KEY = "bot_cmds_sending"
 
 # obbyircd caps the +draft/bot-cmds tag value at 4096 chars; keep fragments
@@ -127,7 +128,6 @@ def fits_under(obj: object, budget: int = JSON_BUDGET) -> bool:
 
 @dataclass
 class PendingInvocation:
-    target: str
     invoker: str
     msgid: str
     context: str
@@ -296,25 +296,19 @@ def _send_cmd_error(
 
 
 def _set_pending(conn, pending: PendingInvocation) -> None:
-    conn.memory.setdefault(_PENDING_KEY, {})[pending.msgid] = pending
-
-
-def _consume_pending_by_target(conn, target: str) -> PendingInvocation | None:
-    """Pop the freshest pending invocation aimed at this target. The reply path
-    can't carry the original msgid through, so we correlate on target alone."""
-    store: dict[str, PendingInvocation] = conn.memory.get(_PENDING_KEY, {})
-    matches = sorted(
-        (
-            msgid
-            for msgid, pending in store.items()
-            if pending.target.casefold() == target.casefold()
-        ),
-        key=lambda m: store[m].ts,
-        reverse=True,
+    """Remember an invocation until its reply. An invocation that never replies
+    is dropped after _PENDING_TTL seconds."""
+    store: dict[str, PendingInvocation] = conn.memory.setdefault(
+        _PENDING_KEY, {}
     )
-    if not matches:
-        return None
-    return store.pop(matches[0])
+    expired = [
+        msgid
+        for msgid, old in store.items()
+        if pending.ts - old.ts > _PENDING_TTL
+    ]
+    for msgid in expired:
+        del store[msgid]
+    store[pending.msgid] = pending
 
 
 def discard_pending(conn, msgid: str) -> None:
@@ -327,17 +321,26 @@ def _inject_legacy_invocation(
     channel: str,
     invoker_mask: str,
     prefix_text: str,
+    msgid: str,
     named_args: dict[str, object] | None = None,
 ) -> bool:
     """Replay a synthesised PRIVMSG so CloudBot's normal command pipeline runs.
-    Named Arg values ride an internal tag the command dispatch parses."""
+
+    The PRIVMSG carries the invocation's msgid, so every reply the command sends
+    replies to the invocation and attach_reply_tags can find it by that msgid.
+    Named Arg values ride an internal tag the command dispatch parses.
+    """
     protocol = conn._protocol
     if protocol is None:
         return False
-    tags = None
+    tags: dict[str, str] = {}
+    if msgid:
+        tags["msgid"] = msgid
     if named_args is not None:
-        tags = {NAMED_ARGS_TAG: encode_named_args(named_args)}
-    line = Message(tags, invoker_mask, "PRIVMSG", [channel, prefix_text])
+        tags[NAMED_ARGS_TAG] = encode_named_args(named_args)
+    line = Message(
+        tags or None, invoker_mask, "PRIVMSG", [channel, prefix_text]
+    )
     event = protocol.parse_line(str(line))
     async_util.wrap_future(conn.bot.process(event), loop=conn.loop)
     return True
@@ -445,7 +448,6 @@ def _dispatch_invocation(
         return
 
     pending = PendingInvocation(
-        target=inject_target,
         invoker=event.nick,
         msgid=msgid,
         context=context,
@@ -453,11 +455,17 @@ def _dispatch_invocation(
         options=options,
         channel_context=channel if context == "private" else None,
     )
-    _set_pending(conn, pending)
+    if msgid:
+        _set_pending(conn, pending)
 
     line_body = f"{_command_prefix(conn)}{cmd_name}{' ' if args else ''}{args}"
     if not _inject_legacy_invocation(
-        conn, inject_target, event.mask or event.nick, line_body, named_args
+        conn,
+        inject_target,
+        event.mask or event.nick,
+        line_body,
+        msgid,
+        named_args,
     ):
         _send_cmd_error(
             conn,
@@ -519,7 +527,7 @@ async def handle_tagmsg(conn, event):
 
 
 def _reply_tags_for_pending(pending: PendingInvocation) -> dict[str, str]:
-    tags = {_REPLY_TAG: pending.msgid}
+    tags: dict[str, str] = {}
     if pending.channel_context:
         tags[_CTX_TAG] = pending.channel_context
     if pending.workflow_id:
@@ -537,39 +545,36 @@ def _reply_tags_for_pending(pending: PendingInvocation) -> dict[str, str]:
     return tags
 
 
-def _reply_target(parsed_line) -> str | None:
-    """The target of a line that can carry the reply tags. A multiline reply
-    carries its tags on the BATCH line, so we skip the lines inside it."""
+def _carries_reply_tags(parsed_line) -> bool:
+    """A multiline reply carries its tags on the BATCH line, so we skip the
+    lines inside it."""
     if parsed_line is None or not parsed_line.parameters:
-        return None
+        return False
     params = parsed_line.parameters
     if parsed_line.command == "BATCH":
-        if (
+        return (
             len(params) >= 3
             and params[0].startswith("+")
             and params[1] == "draft/multiline"
-        ):
-            return params[2]
-        return None
-    if parsed_line.command in ("PRIVMSG", "NOTICE") and "batch" not in (
+        )
+    return parsed_line.command in ("PRIVMSG", "NOTICE") and "batch" not in (
         parsed_line.tags or {}
-    ):
-        return params[0]
-    return None
+    )
 
 
 @hook.irc_out(priority=Priority.HIGHEST)
 def attach_reply_tags(parsed_line, conn, line):
-    """Stamp +reply/+invoked-by/workflow tags onto the bot's reply to a
-    structured invocation, correlating it back to the original +draft/bot-cmd.
+    """Stamp invoked-by/workflow tags onto the bot's first reply to a structured
+    invocation, found by the invocation msgid the reply replies to.
     """
-    target = _reply_target(parsed_line)
-    if target is None:
-        return line
-    pending = _consume_pending_by_target(conn, target)
-    if pending is None:
+    if not _carries_reply_tags(parsed_line):
         return line
     tags = {name: tag.value for name, tag in (parsed_line.tags or {}).items()}
+    pending = conn.memory.get(_PENDING_KEY, {}).pop(
+        tags.get(DRAFT_REPLY_TAG), None
+    )
+    if pending is None:
+        return line
     for name, value in _reply_tags_for_pending(pending).items():
         tags.setdefault(name, value)
     return Message(

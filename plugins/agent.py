@@ -1381,6 +1381,10 @@ async def _run_agent(event, prompt: str) -> None:
     try:
         last_err = await run_task
         if last_err:
+            # The pending would stamp "complete" on the failure reply, so we drop
+            # it and close the workflow as failed below.
+            if trigger_msgid:
+                bot_cmds.discard_pending(event.conn, trigger_msgid)
             _report_failure(event, tracker, last_err, prompt, [backend])
     except asyncio.CancelledError:
         # A cancel that loses the race to natural completion never reaches here,
@@ -1399,8 +1403,9 @@ async def _run_agent(event, prompt: str) -> None:
             )
         await stop_typing_for_command(event.conn, target, typing_id)
         # When mark_workflow opted a pending invocation in, the terminal rides the
-        # reply tags; otherwise (or on cancel) close it with a standalone TAGMSG.
-        if workflow_id and (run_cancelled or not marked):
+        # reply tags; otherwise (or on cancel or failure) close it with a
+        # standalone TAGMSG.
+        if workflow_id and (run_cancelled or last_err or not marked):
             try:
                 state = (
                     "cancelled"

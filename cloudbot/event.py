@@ -19,7 +19,8 @@ from cloudbot.util.messages import ChatMessage, MessageLog
 
 logger = logging.getLogger("cloudbot")
 
-REPLY_TAGS = ("+reply", "+draft/reply")
+DRAFT_REPLY_TAG = "+draft/reply"
+REPLY_TAGS = ("+reply", DRAFT_REPLY_TAG)
 
 
 @enum.unique
@@ -283,7 +284,7 @@ class Event(Mapping[str, Any]):
         msgid = self.tag_value("msgid")
         if not msgid:
             return None
-        return {"+draft/reply": msgid}
+        return {DRAFT_REPLY_TAG: msgid}
 
     def message(self, message, target=None):
         """sends a message to a specific or current channel/user"""

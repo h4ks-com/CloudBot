@@ -80,7 +80,6 @@ def make_command_hook(
 
 def pending(**kwargs):
     base = bot_cmds.PendingInvocation(
-        target="#chan",
         invoker="alice",
         msgid="mid",
         context="public",
@@ -171,18 +170,25 @@ def test_build_command_list_filters_truncates_and_falls_back():
 # --- pending invocation correlation ---
 
 
-def test_consume_pending_takes_freshest_then_pops():
+def test_an_invocation_without_a_reply_never_tags_another_message():
     conn = MagicMock()
     conn.memory = {}
-    older = pending(msgid="m1", ts=1.0)
-    newer = pending(msgid="m2", ts=2.0)
-    bot_cmds._set_pending(conn, older)
-    bot_cmds._set_pending(conn, newer)
+    bot_cmds._set_pending(conn, pending(msgid="silent", invoker="bob"))
+    line = "@+draft/reply=other PRIVMSG #chan :unrelated"
 
-    assert bot_cmds._consume_pending_by_target(conn, "#CHAN") is newer
-    assert bot_cmds._consume_pending_by_target(conn, "#chan") is older
-    assert bot_cmds._consume_pending_by_target(conn, "#chan") is None
-    assert bot_cmds._consume_pending_by_target(conn, "#other") is None
+    assert bot_cmds.attach_reply_tags(Message.parse(line), conn, line) == line
+    line = "PRIVMSG #chan :untagged"
+    assert bot_cmds.attach_reply_tags(Message.parse(line), conn, line) == line
+
+
+def test_a_pending_invocation_expires():
+    conn = MagicMock()
+    conn.memory = {}
+    bot_cmds._set_pending(conn, pending(msgid="old", ts=0.0))
+    bot_cmds._set_pending(
+        conn, pending(msgid="new", ts=bot_cmds._PENDING_TTL + 1)
+    )
+    assert list(conn.memory[bot_cmds._PENDING_KEY]) == ["new"]
 
 
 def test_reply_tags_public_carry_invoked_by():
@@ -194,7 +200,6 @@ def test_reply_tags_public_carry_invoked_by():
             options={"text": "NY"},
         )
     )
-    assert tags["+draft/reply"] == "mid"
     assert "+draft/channel-context" not in tags
     assert bot_cmds.decode(tags["+draft/invoked-by"]) == {
         "nick": "alice",
@@ -228,8 +233,8 @@ def test_reply_tags_workflow_terminal():
 def test_attach_reply_tags_stamps_matching_reply():
     conn = MagicMock()
     conn.memory = {}
-    bot_cmds._set_pending(conn, pending(target="#chan", msgid="mid"))
-    line = "PRIVMSG #chan :sunny"
+    bot_cmds._set_pending(conn, pending(msgid="mid"))
+    line = "@+draft/reply=mid PRIVMSG #chan :sunny"
     parsed = Message.parse(line)
 
     result = bot_cmds.attach_reply_tags(parsed, conn, line)
@@ -241,10 +246,8 @@ def test_attach_reply_tags_stamps_matching_reply():
 def test_attach_reply_tags_stamps_the_batch_of_a_multiline_reply():
     conn = MagicMock()
     conn.memory = {}
-    bot_cmds._set_pending(
-        conn, pending(target="#chan", msgid="mid", workflow_id="wf1")
-    )
-    opening = "BATCH +b1 draft/multiline #chan"
+    bot_cmds._set_pending(conn, pending(msgid="mid", workflow_id="wf1"))
+    opening = "@+draft/reply=mid BATCH +b1 draft/multiline #chan"
     inner = "@batch=b1 PRIVMSG #chan :first line"
 
     stamped = bot_cmds.attach_reply_tags(Message.parse(opening), conn, opening)
@@ -422,7 +425,7 @@ def test_discard_pending_removes_entry_and_tolerates_absent():
     conn.memory = {}
     bot_cmds._set_pending(conn, pending(msgid="m1"))
     bot_cmds.discard_pending(conn, "m1")
-    assert bot_cmds._consume_pending_by_target(conn, "#chan") is None
+    assert conn.memory[bot_cmds._PENDING_KEY] == {}
     bot_cmds.discard_pending(conn, "absent")
 
 
@@ -521,6 +524,7 @@ def _invoke(monkeypatch, options):
         return conn.lines, None
 
     line_event = _IrcProtocol(conn=MagicMock()).parse_line(replayed[0])
+    assert line_event.tag_value("msgid") == "mid"
     cmd_event = CommandEvent(
         hook=cmd_hook,
         text=line_event.content.split(None, 1)[1],
